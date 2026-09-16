@@ -21,3 +21,5 @@ __pycache__/
 *.egg-info
 .idea/*
 uv.lock
+docs/_build/
+docs/generated/

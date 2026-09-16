@@ -1,4 +1,9 @@
-"""Complex truncated power series objects."""
+"""Complex truncated power series objects.
+
+``ComplexTpsa`` stores complex coefficients in a
+:class:`~madng_tpsa.Descriptor`-defined algebraic space. It mirrors the real
+TPSA API where operations are defined for complex series.
+"""
 
 from __future__ import annotations
 
@@ -39,9 +44,22 @@ class ComplexTpsa(_TpsaBase[complex, SupportsFloat | SupportsComplex]):
     ) -> ComplexTpsa:
         """Return the interned ``ComplexTpsa`` for a raw C pointer.
 
-        A descriptor is inferred from an owned, newly allocated pointer. Unknown
-        pointers require ``owns=True`` to prevent multiple Python owners for one
-        C allocation.
+        If a live ``ComplexTpsa`` already wraps ``ptr`` it is returned directly,
+        so that at most one Python object exists per C allocation, preventing a
+        use-after-free if two owners existed for the same pointer.
+
+        Parameters
+        ----------
+        ptr:
+            Raw CFFI complex TPSA pointer.
+        descriptor:
+            Descriptor that owns this TPSA. When omitted it is inferred from
+            the pointer via ``mad_ctpsa_desc``. Required if ``owns`` is False.
+        owns:
+            Set it to ``True`` only when ``ptr`` points to a freshly allocated
+            C object that has no Python wrapper yet, i.e. the call site created
+            the allocation and is handing ownership. The default ``False``
+            treats an unknown pointer as a bug and will raise.
         """
         key = int(ffi.cast('uintptr_t', ptr))
 

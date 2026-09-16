@@ -91,4 +91,13 @@ pytest tests/
 
 The tests exercise the standalone engine bindings; xtrack is not imported.
 
+## Documentation
+
+Build the API documentation with:
+
+```bash
+python -m pip install --group docs -e .
+make -C docs html
+```
+
 [madng]: https://github.com/MethodicalAcceleratorDesign/MAD

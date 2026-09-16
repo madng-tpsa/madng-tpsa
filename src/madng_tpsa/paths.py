@@ -1,7 +1,8 @@
-"""Convenience functions for obtaining MAD-NG TPSA library and headers.
+"""Locate the packaged MAD-NG TPSA shared library and public headers.
 
-The build script of the package puts the shared library in ``src/madng_tpsa/lib``
-and copies the MAD-NG GTPSA public API headers in ``src/madng_tpsa/include``.
+Use :func:`core_library` and :func:`include_dir` when embedding the native TPSA
+library or compiling code against its C API. The build installs these artifacts
+alongside the Python package.
 """
 
 from __future__ import annotations
