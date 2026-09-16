@@ -225,6 +225,17 @@ def test_complex_elementary_functions_and_numpy_dispatch():
     )
 
 
+def test_numpy_scalar_left_binary_operations_with_complex_tpsa():
+    z = madng_tpsa.Descriptor(1, 3).constant(1 + 2j)
+    scalar = cast('Any', np.float64(3.0))
+
+    assert (scalar + z).const_part == pytest.approx(4 + 2j)
+    assert (scalar - z).const_part == pytest.approx(2 - 2j)
+    assert (scalar * z).const_part == pytest.approx(3 + 6j)
+    assert (scalar / z).const_part == pytest.approx(0.6 - 1.2j)
+    assert (scalar**z).const_part == pytest.approx(3.0 ** (1 + 2j))
+
+
 @pytest.mark.parametrize(
     ('method_name', 'function_name'),
     [

@@ -7,6 +7,7 @@ TPSA API where operations are defined for complex series.
 
 from __future__ import annotations
 
+import operator
 from numbers import Integral
 from typing import TYPE_CHECKING, Any, Literal, SupportsComplex, SupportsFloat
 
@@ -553,6 +554,11 @@ class ComplexTpsa(_TpsaBase[complex, SupportsFloat | SupportsComplex]):
         """Map supported NumPy ufunc calls to matching CTPSA operations."""
         if method != '__call__' or kwargs:
             return NotImplemented
+
+        # We need to "unpack" the numpy scalars to let Python normal operator fallback mechanism
+        # function properly: otherwise, if lhs is np.float64, we get into an infinite recursion
+        inputs = tuple(value.item() if isinstance(value, np.generic) else value for value in inputs)
+
         if ufunc in _UFUNC_DISPATCH:
             return _UFUNC_DISPATCH[ufunc](*inputs)
         return NotImplemented
@@ -595,13 +601,13 @@ _UFUNC_DISPATCH = {
     np.arccosh: ComplexTpsa.acosh,
     np.arctanh: ComplexTpsa.atanh,
     np.conjugate: ComplexTpsa.conjugate,
-    np.negative: ComplexTpsa.__neg__,
-    np.positive: ComplexTpsa.__pos__,
-    np.add: lambda left, right: left + right,
-    np.subtract: lambda left, right: left - right,
-    np.multiply: lambda left, right: left * right,
-    np.divide: lambda left, right: left / right,
-    np.power: lambda left, right: left**right,
+    np.negative: operator.neg,
+    np.positive: operator.pos,
+    np.add: operator.add,
+    np.subtract: operator.sub,
+    np.multiply: operator.mul,
+    np.divide: operator.truediv,
+    np.power: operator.pow,
     scipy.special.erf: ComplexTpsa.erf,
     scipy.special.erfc: ComplexTpsa.erfc,
     scipy.special.erfcx: ComplexTpsa.erfcx,

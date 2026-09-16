@@ -147,6 +147,17 @@ def test_numpy_binary_ufuncs(numpy_func, left, right, expected):
     assert numpy_func(left_arg, right_arg).const_part == pytest.approx(expected)
 
 
+def test_numpy_scalar_left_binary_operations():
+    x = madng_tpsa.Descriptor(1, 3).var(1, 2.0)
+    scalar = cast('Any', np.float64(3.0))
+
+    assert (scalar + x).const_part == pytest.approx(5.0)
+    assert (scalar - x).const_part == pytest.approx(1.0)
+    assert (scalar * x).const_part == pytest.approx(6.0)
+    assert (scalar / x).const_part == pytest.approx(1.5)
+    assert (scalar**x).const_part == pytest.approx(9.0)
+
+
 def test_hypot3_method():
     d = madng_tpsa.Descriptor(1, 3)
     x = d.var(1, 2.0)
