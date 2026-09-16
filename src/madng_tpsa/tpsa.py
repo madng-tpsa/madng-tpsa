@@ -7,11 +7,11 @@ truncated multivariate power series.
 
 from __future__ import annotations
 
+import operator
 from numbers import Integral
 from typing import TYPE_CHECKING, Any, Literal, SupportsComplex, SupportsFloat, overload
 
 import numpy as np
-import scipy.special
 
 from . import _cffi
 from ._cffi import ffi, lib
@@ -30,6 +30,18 @@ class Tpsa(_TpsaBase[float, SupportsFloat]):
     """A truncated power series in the algebraic space defined by a descriptor."""
 
     __slots__ = ('_descriptor', '_ptr', '__weakref__')
+
+    _UFUNC_DISPATCH = _TpsaBase._UFUNC_DISPATCH | {
+        np.absolute: operator.abs,
+        np.atan2: lambda left, right: (
+            left.atan2(right)
+            if isinstance(left, Tpsa)
+            else right.descriptor.constant(float(left)).atan2(right)
+        ),
+        np.hypot: lambda left, right: (
+            left.hypot(right) if isinstance(left, Tpsa) else right.hypot(left)
+        ),
+    }
 
     def __init__(self, descriptor: Descriptor, order: int | None = None) -> None:
         """Create a zero series on ``descriptor``."""
@@ -686,15 +698,6 @@ class Tpsa(_TpsaBase[float, SupportsFloat]):
         lib.mad_tpsa_hypot3(self._ptr, other._ptr, third._ptr, result._ptr)
         return result
 
-    def __array_ufunc__(self, ufunc: Any, method: str, *inputs: Any, **kwargs: Any) -> Any:
-        """Map supported NumPy ufunc calls to the matching TPSA operations."""
-        if method != '__call__' or kwargs:
-            return NotImplemented
-
-        if ufunc in _UFUNC_DISPATCH:
-            return _UFUNC_DISPATCH[ufunc](*inputs)
-        return NotImplemented
-
     def __array_function__(
         self,
         func: Any,
@@ -707,43 +710,3 @@ class Tpsa(_TpsaBase[float, SupportsFloat]):
             # We use mathematics convention, but NumPy prefers the DSP one (normalised sinc)
             return (np.pi * self).sinc()
         return NotImplemented
-
-
-_UFUNC_DISPATCH = {
-    np.absolute: Tpsa.abs,
-    np.sqrt: Tpsa.sqrt,
-    np.exp: Tpsa.exp,
-    np.log: Tpsa.log,
-    np.sin: Tpsa.sin,
-    np.cos: Tpsa.cos,
-    np.tan: Tpsa.tan,
-    np.sinh: Tpsa.sinh,
-    np.cosh: Tpsa.cosh,
-    np.tanh: Tpsa.tanh,
-    np.arcsin: Tpsa.asin,
-    np.arccos: Tpsa.acos,
-    np.arctan: Tpsa.atan,
-    np.arcsinh: Tpsa.asinh,
-    np.arccosh: Tpsa.acosh,
-    np.arctanh: Tpsa.atanh,
-    np.negative: Tpsa.__neg__,
-    np.positive: Tpsa.__pos__,
-    np.add: lambda left, right: left + right,
-    np.subtract: lambda left, right: left - right,
-    np.multiply: lambda left, right: left * right,
-    np.divide: lambda left, right: left / right,
-    np.power: lambda left, right: left**right,
-    np.atan2: lambda left, right: (
-        left.atan2(right)
-        if isinstance(left, Tpsa)
-        else right.descriptor.constant(float(left)).atan2(right)
-    ),
-    np.hypot: lambda left, right: (
-        left.hypot(right) if isinstance(left, Tpsa) else right.hypot(left)
-    ),
-    scipy.special.erf: Tpsa.erf,
-    scipy.special.erfc: Tpsa.erfc,
-    scipy.special.erfcx: Tpsa.erfcx,
-    scipy.special.erfi: Tpsa.erfi,
-    scipy.special.wofz: Tpsa.wofz,
-}
