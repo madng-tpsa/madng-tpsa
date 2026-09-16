@@ -1,3 +1,8 @@
+[![CI](https://github.com/madng-tpsa/madng-tpsa/actions/workflows/ci.yml/badge.svg)](https://github.com/madng-tpsa/madng-tpsa/actions/workflows/ci.yml)
+[![PyPI Version](https://img.shields.io/pypi/v/madng-tpsa)](https://pypi.org/project/madng-tpsa/)
+[![Docs](https://img.shields.io/badge/github_pages-docs-blue?logo=github&logoColor=white)](https://madng-tpsa.github.io/madng-tpsa/)
+
+
 # madng-tpsa - GTPSA (truncated power series) for Python
 
 This repository exposes the features of MAD-NG's GTPSA (Generalised Truncated Power Series
