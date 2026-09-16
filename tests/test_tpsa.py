@@ -41,11 +41,11 @@ def test_var_order_uses_descriptor_order_by_default():
     assert b.max_nonzero_order == 1
 
 
-def test_var_zero_and_param_accept_explicit_order():
+def test_var_zero_and_param_have_expected_orders():
     d = madng_tpsa.Descriptor(variables=['a', 'b'], order=4, max_orders=[2, 4, 1], params=['k'])
     zero = d.zero(order=2)
     a = d.var('a', order=2)
-    k = d.param('k', order=1)
+    k = d.param('k')
 
     assert zero.order == 2
     assert a.order == 2
@@ -53,9 +53,6 @@ def test_var_zero_and_param_accept_explicit_order():
 
     with pytest.raises(ValueError, match='Variable order must be positive'):
         d.var('a', order=0)
-
-    with pytest.raises(ValueError, match='Parameter order must be 1'):
-        d.param('k', order=2)
 
 
 def test_var_and_param_labels_can_seed_series():

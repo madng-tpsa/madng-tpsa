@@ -36,6 +36,28 @@ def test_descriptor_with_parameters():
     assert 'num_params=2' in repr(d)
 
 
+def test_factories_dispatch_to_complex_tpsas():
+    d = madng_tpsa.Descriptor(2, 2, num_params=2)
+
+    assert isinstance(d.constant(1 + 2j), madng_tpsa.ComplexTpsa)
+    assert isinstance(d.var(1, 1j), madng_tpsa.ComplexTpsa)
+    assert isinstance(d.param(1, 1j), madng_tpsa.ComplexTpsa)
+    variables = d.vars([0.0, 1j])
+    parameters = d.params([0.0, 1j])
+    assert isinstance(variables[0], madng_tpsa.Tpsa)
+    assert isinstance(variables[1], madng_tpsa.ComplexTpsa)
+    assert isinstance(parameters[0], madng_tpsa.Tpsa)
+    assert isinstance(parameters[1], madng_tpsa.ComplexTpsa)
+    assert [t.const_part for t in variables] == [0j, 1j]
+    assert [t.const_part for t in parameters] == [0j, 1j]
+
+    assert isinstance(d.constant(1.0), madng_tpsa.Tpsa)
+    assert isinstance(d.var(1), madng_tpsa.Tpsa)
+    assert isinstance(d.param(1), madng_tpsa.Tpsa)
+    assert all(isinstance(t, madng_tpsa.Tpsa) for t in d.vars())
+    assert all(isinstance(t, madng_tpsa.Tpsa) for t in d.params())
+
+
 def test_descriptor_param_order_must_be_positive():
     with pytest.raises(ValueError, match='Descriptor parameter order must be positive'):
         madng_tpsa.Descriptor(6, 2, num_params=2, param_order=0)
