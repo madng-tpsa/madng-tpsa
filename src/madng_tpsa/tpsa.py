@@ -128,9 +128,9 @@ class Tpsa(_TpsaBase[float, SupportsFloat]):
         monomial_arr = ffi.new('unsigned char[]', monomial_orders)
         return lib.mad_tpsa_getm(self._ptr, len(monomial_orders), monomial_arr)
 
-    def set_const_part(self, v: SupportsFloat) -> None:
+    def set_const_part(self, value: SupportsFloat) -> None:
         """Set the constant coefficient."""
-        lib.mad_tpsa_seti(self._ptr, 0, 0.0, float(v))
+        lib.mad_tpsa_seti(self._ptr, 0, 0.0, float(value))
 
     def set(self, monomial: Iterable[int], value: SupportsFloat) -> None:
         """Set the coefficient for ``monomial``."""

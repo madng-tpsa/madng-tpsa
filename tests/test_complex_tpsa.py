@@ -16,9 +16,9 @@ if TYPE_CHECKING:
 
 def test_complex_variable_and_parameter_seeds():
     d = madng_tpsa.Descriptor(variables=['x', 'y'], order=3, params=['k'])
-    x = d.complex_var('x', 1 + 2j)
-    y = d.complex_var('y')
-    k = d.complex_param('k', 3 - 4j)
+    x = d.var('x', 1 + 2j)
+    y = d.var('y', 0j)
+    k = d.param('k', 3 - 4j)
 
     assert x.const_part == pytest.approx(1 + 2j)
     assert x.grad() == pytest.approx([1, 0])
@@ -65,7 +65,8 @@ def test_complex_series_coefficient_state_operations():
 
 def test_complex_unit_normalises_by_the_constant_part_magnitude():
     d = madng_tpsa.Descriptor(1, 2)
-    t = d.complex_constant(3 + 4j)
+    t = d.constant(3 + 4j)
+    assert isinstance(t, madng_tpsa.ComplexTpsa)
     t[(1,)] = 1 + 2j
 
     result = t.unit()
@@ -96,7 +97,7 @@ def test_from_tpsa_promotes_real_tpsas():
 
 def test_complex_from_ptr_interns_and_infers_descriptor():
     d = madng_tpsa.Descriptor(1, 2)
-    t = d.complex_var(1)
+    t = d.var(1, 0j)
 
     assert madng_tpsa.ComplexTpsa.from_ptr(t.ptr, d) is t
 
@@ -113,7 +114,8 @@ def test_complex_from_ptr_interns_and_infers_descriptor():
 def test_complex_arithmetic_and_mixed_real_operands():
     d = madng_tpsa.Descriptor(1, 3)
     x = d.var(1, 1.0)
-    z = d.complex_var(1, 1 + 2j)
+    z = d.var(1, 1 + 2j)
+    assert isinstance(z, madng_tpsa.ComplexTpsa)
 
     assert (z + x).const_part == pytest.approx(2 + 2j)
     assert (x + z).const_part == pytest.approx(2 + 2j)
@@ -129,7 +131,8 @@ def test_complex_arithmetic_and_mixed_real_operands():
 
 def test_complex_power_conjugate_and_real_imaginary_parts():
     d = madng_tpsa.Descriptor(1, 2)
-    z = d.complex_var(1, 1 + 2j)
+    z = d.var(1, 1 + 2j)
+    assert isinstance(z, madng_tpsa.ComplexTpsa)
 
     assert (z**2).const_part == pytest.approx(-3 + 4j)
     assert z.conjugate().const_part == pytest.approx(1 - 2j)
@@ -141,7 +144,9 @@ def test_complex_power_conjugate_and_real_imaginary_parts():
 
 def test_complex_differential_algebra():
     d = madng_tpsa.Descriptor(variables=['x', 'y'], order=4)
-    x, y = d.complex_vars()
+    x, y = d.vars([0j, 0j])
+    assert isinstance(x, madng_tpsa.ComplexTpsa)
+    assert isinstance(y, madng_tpsa.ComplexTpsa)
     f = (1 + 2j) * x * x * y
 
     assert f.derivative('x').get((1, 1)) == pytest.approx(2 + 4j)
@@ -152,8 +157,8 @@ def test_complex_differential_algebra():
 
 def test_complex_derivative_resolves_variable_and_parameter_specifications():
     d = madng_tpsa.Descriptor(variables=['x'], order=3, params=['k'], param_order=3)
-    x = d.complex_var('x')
-    k = d.complex_param('k')
+    x = d.var('x', 0j)
+    k = d.param('k', 0j)
     real_x = d.var('x')
     real_k = d.param('k')
     f = x * x * k
@@ -173,7 +178,7 @@ def test_complex_derivative_resolves_variable_and_parameter_specifications():
 
 def test_complex_integrate_resolves_variable_specifications():
     d = madng_tpsa.Descriptor(variables=['x'], order=3, params=['k'], param_order=3)
-    x = d.complex_var('x')
+    x = d.var('x', 0j)
     real_x = d.var('x')
     f = x * x
 
@@ -184,8 +189,8 @@ def test_complex_integrate_resolves_variable_specifications():
 @pytest.mark.xfail(reason='MAD-NG integration does not support parameters')
 def test_complex_integrate_resolves_parameter_specifications():
     d = madng_tpsa.Descriptor(variables=['x'], order=3, params=['k'], param_order=3)
-    x = d.complex_var('x')
-    k = d.complex_param('k')
+    x = d.var('x', 0j)
+    k = d.param('k', 0j)
     real_k = d.param('k')
     f = x * x + k
 
@@ -195,7 +200,11 @@ def test_complex_integrate_resolves_parameter_specifications():
 
 def test_complex_poisson_bracket_with_explicit_pair_count():
     d = madng_tpsa.Descriptor(4, 3)
-    x, px, y, py = d.complex_vars()
+    x, px, y, py = d.vars([0j, 0j, 0j, 0j])
+    assert isinstance(x, madng_tpsa.ComplexTpsa)
+    assert isinstance(px, madng_tpsa.ComplexTpsa)
+    assert isinstance(y, madng_tpsa.ComplexTpsa)
+    assert isinstance(py, madng_tpsa.ComplexTpsa)
 
     assert x.poisson_bracket(px, num_pairs=1).const_part == pytest.approx(1)
     assert y.poisson_bracket(py, num_pairs=1).is_zero()
@@ -203,7 +212,7 @@ def test_complex_poisson_bracket_with_explicit_pair_count():
 
 def test_complex_elementary_functions_and_numpy_dispatch():
     d = madng_tpsa.Descriptor(1, 2)
-    z = d.complex_constant(1 + 2j)
+    z = d.constant(1 + 2j)
 
     assert z.exp().const_part == pytest.approx(np.exp(1 + 2j))
     assert z.log().const_part == pytest.approx(np.log(1 + 2j))
@@ -236,7 +245,7 @@ def test_complex_elementary_functions_and_numpy_dispatch():
 )
 def test_complex_sqrt_and_trigonometric_functions(method_name, function_name):
     value = 0.5 + 0.25j
-    t = madng_tpsa.Descriptor(1, 2).complex_constant(value)
+    t = madng_tpsa.Descriptor(1, 2).constant(value)
 
     result = getattr(t, method_name)()
     expected = getattr(np, function_name)(value)
@@ -247,7 +256,7 @@ def test_complex_sqrt_and_trigonometric_functions(method_name, function_name):
 @pytest.mark.parametrize('method_name', ('erf', 'erfc', 'erfcx', 'erfi', 'wofz'))
 def test_complex_error_functions(method_name):
     value = 0.5 + 0.25j
-    t = madng_tpsa.Descriptor(1, 2).complex_constant(value)
+    t = madng_tpsa.Descriptor(1, 2).constant(value)
 
     result = getattr(t, method_name)()
     expected = getattr(scipy.special, method_name)(value)
@@ -256,8 +265,8 @@ def test_complex_error_functions(method_name):
 
 
 def test_complex_operations_reject_incompatible_descriptors():
-    x = madng_tpsa.Descriptor(1, 2).complex_var(1)
-    y = madng_tpsa.Descriptor(2, 2).complex_var(1)
+    x = madng_tpsa.Descriptor(1, 2).var(1, 0j)
+    y = madng_tpsa.Descriptor(2, 2).var(1, 0j)
 
     with pytest.raises(ValueError, match='Incompatible TPSA descriptors'):
         x + y
@@ -316,9 +325,11 @@ def test_tpsa_arithmetic_dunder_dispatches_are_exhaustive():
 
 def test_complex_tpsa_arithmetic_dunder_dispatches_are_exhaustive():
     d = madng_tpsa.Descriptor(1, 2)
-    t = d.complex_var(1, 2 + 1j)
+    t = d.var(1, 2 + 1j)
     other_t = d.var(1, 3.0)
-    other_c = d.complex_constant(3 + 2j)
+    other_c = d.constant(3 + 2j)
+    assert isinstance(t, madng_tpsa.ComplexTpsa)
+    assert isinstance(other_c, madng_tpsa.ComplexTpsa)
 
     for method_name in ('__add__', '__sub__', '__mul__', '__truediv__'):
         method = getattr(t, method_name)
@@ -340,7 +351,7 @@ def test_complex_tpsa_arithmetic_dunder_dispatches_are_exhaustive():
     assert t.__pow__(cast('Any', object())) is NotImplemented
     assert isinstance(t.__rpow__(other_t), madng_tpsa.ComplexTpsa)
     assert isinstance(t.__rpow__(Decimal('2')), madng_tpsa.ComplexTpsa)
-    assert t.__rpow__(object()) is NotImplemented
+    assert t.__rpow__(cast('Any', object())) is NotImplemented
     assert isinstance(+t, madng_tpsa.ComplexTpsa)
     assert isinstance(-t, madng_tpsa.ComplexTpsa)
     assert repr(t).startswith('ComplexTpsa(')

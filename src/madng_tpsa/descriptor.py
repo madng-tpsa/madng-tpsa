@@ -14,7 +14,15 @@ same Python ``Descriptor`` object for the same C descriptor pointer.
 from __future__ import annotations
 
 import warnings
-from typing import TYPE_CHECKING, Any, ClassVar, NamedTuple, SupportsComplex, SupportsFloat
+from typing import (
+    TYPE_CHECKING,
+    Any,
+    ClassVar,
+    NamedTuple,
+    SupportsComplex,
+    SupportsFloat,
+    overload,
+)
 from weakref import WeakValueDictionary
 
 from . import _cffi
@@ -277,82 +285,140 @@ class Descriptor:
         arr = ffi.new('unsigned char[]', m)
         return lib.mad_desc_idxm(self._ptr, len(m), arr)
 
-    def constant(self, value: SupportsFloat, /) -> Tpsa:
+    @overload
+    def constant(self, value: SupportsComplex, /) -> ComplexTpsa: ...
+
+    @overload
+    def constant(self, value: SupportsFloat, /) -> Tpsa: ...
+
+    def constant(self, value: SupportsFloat | SupportsComplex, /) -> Tpsa | ComplexTpsa:
         """Create a constant TPSA series on this descriptor."""
+        if isinstance(value, SupportsComplex):
+            t = self.complex_zero()
+            t.set_const_part(value)
+            return t
+
         t = self.zero()
-        lib.mad_tpsa_seti(t.ptr, 0, 0.0, float(value))
+        t.set_const_part(value)
         return t
 
     def zero(self, order: int | None = None) -> Tpsa:
         """Create a zero TPSA series on this descriptor."""
         return Tpsa(self, order=order)
 
-    def complex_constant(self, value: SupportsFloat | SupportsComplex, /) -> ComplexTpsa:
-        """Create a constant complex TPSA series on this descriptor."""
-        t = self.complex_zero()
-        t.set_const_part(value)
-        return t
-
     def complex_zero(self, order: int | None = None) -> ComplexTpsa:
         """Create a zero complex TPSA series on this descriptor."""
         return ComplexTpsa(self, order=order)
 
-    def complex_var(
+    @overload
+    def var(
         self,
         index: int | str,
-        value: SupportsFloat | SupportsComplex = 0.0j,
+        value: SupportsFloat = 0.0,
         order: int | None = None,
-    ) -> ComplexTpsa:
-        """Create a complex identity variable series on this descriptor."""
+    ) -> Tpsa: ...
+
+    @overload
+    def var(
+        self,
+        index: int | str,
+        value: SupportsComplex,
+        order: int | None = None,
+    ) -> ComplexTpsa: ...
+
+    def var(
+        self,
+        index: int | str,
+        value: SupportsFloat | SupportsComplex = 0.0,
+        order: int | None = None,
+    ) -> Tpsa | ComplexTpsa:
+        """Create identity variable ``index`` on this descriptor.
+
+        The variable index starts from 1 and is expanded around ``value``.
+        A variable label may be passed instead of an index. A complex value
+        creates a ``ComplexTpsa``.
+        """
         if order is not None and order <= 0:
             message = 'Variable order must be positive'
             raise ValueError(message)
 
         variable_index = self._var_index(index)
-        t = self.complex_zero(order=order)
-        value = complex(value)
-        lib.mad_ctpsa_setvar_r(
-            t.ptr,
-            value.real,
-            value.imag,
-            variable_index,
-            0.0,
-            0.0,
-        )
+        if isinstance(value, SupportsComplex):
+            t = self.complex_zero(order=order)
+            value = complex(value)
+            lib.mad_ctpsa_setvar_r(t.ptr, value.real, value.imag, variable_index, 0.0, 0.0)
+            return t
+
+        t = self.zero(order=order)
+        lib.mad_tpsa_setvar(t.ptr, float(value), variable_index, 0.0)
         return t
 
-    def complex_vars(
+    @overload
+    def vars(self, values: Sequence[SupportsComplex]) -> tuple[ComplexTpsa, ...]: ...
+
+    @overload
+    def vars(self, values: Sequence[SupportsFloat] | None = None) -> tuple[Tpsa, ...]: ...
+
+    @overload
+    def vars(
+        self, values: Sequence[SupportsFloat | SupportsComplex]
+    ) -> tuple[Tpsa | ComplexTpsa, ...]: ...
+
+    def vars(
         self, values: Sequence[SupportsFloat | SupportsComplex] | None = None
-    ) -> tuple[ComplexTpsa, ...]:
-        """Create complex identity series for all variables on this descriptor."""
+    ) -> tuple[Tpsa | ComplexTpsa, ...]:
+        """Create identity series for all variables on this descriptor.
+
+        If ``values`` is provided, each variable is expanded around the
+        corresponding value. Complex values create ``ComplexTpsa`` series.
+        """
         if values is None:
-            values = [0.0j] * self.num_vars
+            values = [0.0] * self.num_vars
         if len(values) != self.num_vars:
             message = 'Values must contain one entry per variable'
             raise ValueError(message)
-        return tuple(self.complex_var(index, value) for index, value in enumerate(values, start=1))
+        return tuple(self.var(index, value) for index, value in enumerate(values, start=1))
 
-    def complex_param(
+    @overload
+    def param(
         self,
         index: int | str,
-        value: SupportsFloat | SupportsComplex = 0.0j,
-        order: int | None = None,
-    ) -> ComplexTpsa:
-        """Create a complex identity parameter series on this descriptor."""
-        if order is None:
-            order = 1
-        elif order != 1:
-            message = 'Parameter order must be 1'
-            raise ValueError(message)
-        parameter_index = self._param_index(index)
-        t = self.complex_zero(order=order)
-        value = complex(value)
-        lib.mad_ctpsa_setprm_r(t.ptr, value.real, value.imag, parameter_index)
-        return t
+        value: SupportsComplex,
+    ) -> ComplexTpsa: ...
 
-    def complex_params(self) -> tuple[ComplexTpsa, ...]:
-        """Create complex identity series for all parameters on this descriptor."""
-        return tuple(self.complex_param(index) for index in range(1, self.num_params + 1))
+    @overload
+    def param(
+        self,
+        index: int | str,
+        value: SupportsFloat = 0.0,
+    ) -> Tpsa: ...
+
+    def param(
+        self,
+        index: int | str,
+        value: SupportsFloat | SupportsComplex = 0.0,
+    ) -> Tpsa | ComplexTpsa:
+        """Create identity parameter ``index`` on this descriptor.
+
+        The parameter index starts from 1. Parameters are appended after
+        variables in monomial tuples. A parameter label may be passed instead of
+        an index. A complex value creates a ``ComplexTpsa``.
+
+        The created TPSA will automatically be of order 1; for higher orders
+        instantiate a new constant TPSA with the desired order and manually
+        call ``Tpsa.set`` to set the desired parameter coefficient.
+        """
+        order = 1
+        parameter_index = self._param_index(index)
+        if isinstance(value, SupportsComplex):
+            t = self.complex_zero(order=order)
+            value = complex(value)
+            lib.mad_ctpsa_setprm_r(t.ptr, value.real, value.imag, parameter_index)
+            return t
+
+        t = self.zero(order=order)
+        lib.mad_tpsa_setprm(t.ptr, float(value), parameter_index)
+        return t
 
     def _var_index(self, variable: int | str) -> int:
         if isinstance(variable, str):
@@ -386,53 +452,31 @@ class Descriptor:
 
         return index
 
-    def var(self, index: int | str, value: SupportsFloat = 0.0, order: int | None = None) -> Tpsa:
-        """Create identity variable ``index`` on this descriptor.
+    @overload
+    def params(self, values: Sequence[SupportsComplex]) -> tuple[ComplexTpsa, ...]: ...
 
-        The variable index starts from 1 and is expanded around ``value``.
-        A variable label may be passed instead of an index.
-        """
-        index = self._var_index(index)
-        if order is not None and order <= 0:
-            message = 'Variable order must be positive'
-            raise ValueError(message)
-        t = Tpsa(self, order=order)
-        lib.mad_tpsa_setvar(t.ptr, float(value), int(index), 0.0)
-        return t
+    @overload
+    def params(self, values: Sequence[SupportsFloat] | None = None) -> tuple[Tpsa, ...]: ...
 
-    def vars(self, values: Sequence[SupportsFloat] | None = None) -> tuple[Tpsa, ...]:
-        """Create identity series for all variables on this descriptor.
+    @overload
+    def params(
+        self, values: Sequence[SupportsFloat | SupportsComplex]
+    ) -> tuple[Tpsa | ComplexTpsa, ...]: ...
 
-        If ``values`` is provided, each variable is expanded around the
-        corresponding value.
+    def params(
+        self, values: Sequence[SupportsFloat | SupportsComplex] | None = None
+    ) -> tuple[Tpsa | ComplexTpsa, ...]:
+        """Create identity series for all parameters on this descriptor.
+
+        If ``values`` is provided, each parameter is expanded around the
+        corresponding value. Complex values create ``ComplexTpsa`` series.
         """
         if values is None:
-            values = [0.0] * self.num_vars
-        if len(values) != self.num_vars:
-            message = 'Values must contain one entry per variable'
+            values = [0.0] * self.num_params
+        if len(values) != self.num_params:
+            message = 'Values must contain one entry per parameter'
             raise ValueError(message)
-        return tuple(self.var(index, value) for index, value in enumerate(values, start=1))
-
-    def param(self, index: int | str, value: SupportsFloat = 0.0, order: int | None = None) -> Tpsa:
-        """Create identity parameter ``index`` on this descriptor.
-
-        The parameter index starts from 1. Parameters are appended after
-        variables in monomial tuples. A parameter label may be passed instead of
-        an index.
-        """
-        index = self._param_index(index)
-        if order is None:
-            order = 1
-        elif order != 1:
-            message = 'Parameter order must be 1'
-            raise ValueError(message)
-        t = Tpsa(self, order=order)
-        lib.mad_tpsa_setprm(t.ptr, float(value), int(index))
-        return t
-
-    def params(self) -> tuple[Tpsa, ...]:
-        """Create identity series for all parameters on this descriptor."""
-        return tuple(self.param(index) for index in range(1, self.num_params + 1))
+        return tuple(self.param(index, value) for index, value in enumerate(values, start=1))
 
     def __eq__(self, other: object) -> bool:
         return isinstance(other, Descriptor) and self._ptr == other._ptr
