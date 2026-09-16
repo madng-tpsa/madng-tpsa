@@ -35,6 +35,10 @@ dev = [
     "ruff==0.15.17",
     "ty==0.0.63",
 ]
+docs = [
+    "sphinx",
+    "sphinx-rtd-theme",
+]
 
 [tool.scikit-build]
 wheel.packages = ["src/madng_tpsa"]

@@ -1,4 +1,9 @@
-"""Polynomial formatting helpers for TPSA series."""
+"""Formatting helpers for TPSA polynomials.
+
+The public :data:`FormatStyle` alias selects code-like, mathematical, or table
+output. :func:`format_polynomial` is used by the TPSA objects' ``format``
+methods.
+"""
 
 from __future__ import annotations
 

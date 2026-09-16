@@ -1,4 +1,9 @@
-"""Truncated power series objects."""
+"""Real truncated power series objects.
+
+``Tpsa`` stores real coefficients in a :class:`~madng_tpsa.Descriptor`-defined
+algebraic space. It provides arithmetic, calculus, and elementary functions on
+truncated multivariate power series.
+"""
 
 from __future__ import annotations
 
@@ -255,7 +260,13 @@ class Tpsa(_TpsaBase[float, SupportsFloat]):
         return f'Tpsa({self.to_dict()!r})'
 
     def format(self, style: FormatStyle = 'code') -> object:
-        """Format this series as code, LaTeX math, or a rich table."""
+        """Format this series as code, LaTeX math, or a rich table.
+
+        Parameters
+        ----------
+        style
+            Output style. See :data:`madng_tpsa.formatting.FormatStyle`.
+        """
         return self.descriptor.format_polynomial(self, style=style)
 
     # --- arithmetic (fresh result on the same descriptor; scalars mix freely) --- #
@@ -549,7 +560,7 @@ class Tpsa(_TpsaBase[float, SupportsFloat]):
         return self._unary_op('mad_tpsa_tan')
 
     def sinc(self) -> Tpsa:
-        """Return ``sin(x) / x`` (unnormalised ``sinc``, maths convention) for this series."""
+        r"""Return :math:`\sin(x) / x` for this series (the unnormalised sinc)."""
         return self._unary_op('mad_tpsa_sinc')
 
     def asin(self) -> Tpsa:
@@ -565,15 +576,19 @@ class Tpsa(_TpsaBase[float, SupportsFloat]):
         return self._unary_op('mad_tpsa_atan')
 
     def sincos(self) -> tuple[Tpsa, Tpsa]:
-        """Return ``(sin(x), cos(x))`` for this series."""
+        r"""Return :math:`(\sin(x), \cos(x))` for this series."""
         return self._two_output_unary_op('mad_tpsa_sincos')
 
     def sincosq(self) -> tuple[Tpsa, Tpsa]:
-        """Return ``(sinc(sqrt(x)), cos(sqrt(x)))`` for this series."""
+        r"""Return :math:`(\operatorname{sinc}(\sqrt{x}), \cos(\sqrt{x}))` for this series."""
         return self._two_output_unary_op('mad_tpsa_sincosq')
 
     def sincosmq(self) -> tuple[Tpsa, Tpsa]:
-        """Return ``((sinc(sqrt(x)) - 1) / x, (cos(sqrt(x)) - 1) / x)``."""
+        r"""Return two related trigonometric series.
+
+        :math:`((\operatorname{sinc}(\sqrt{x}) - 1) / x,
+        (\cos(\sqrt{x}) - 1) / x)`.
+        """
         return self._two_output_unary_op('mad_tpsa_sincosmq')
 
     def sinh(self) -> Tpsa:
@@ -589,7 +604,7 @@ class Tpsa(_TpsaBase[float, SupportsFloat]):
         return self._unary_op('mad_tpsa_tanh')
 
     def sinhc(self) -> Tpsa:
-        """Return ``sinh(x) / x`` for this series (unnormalised ``sinhc``, maths convention)."""
+        r"""Return :math:`\sinh(x) / x` for this series (the unnormalised sinhc)."""
         return self._unary_op('mad_tpsa_sinhc')
 
     def asinh(self) -> Tpsa:
@@ -605,15 +620,19 @@ class Tpsa(_TpsaBase[float, SupportsFloat]):
         return self._unary_op('mad_tpsa_atanh')
 
     def sincosh(self) -> tuple[Tpsa, Tpsa]:
-        """Return ``(sinh(x), cosh(x))`` for this series."""
+        r"""Return :math:`(\sinh(x), \cosh(x))` for this series."""
         return self._two_output_unary_op('mad_tpsa_sincosh')
 
     def sincoshq(self) -> tuple[Tpsa, Tpsa]:
-        """Return ``(sinhc(sqrt(x)), cosh(sqrt(x)))`` for this series."""
+        r"""Return :math:`(\operatorname{sinhc}(\sqrt{x}), \cosh(\sqrt{x}))` for this series."""
         return self._two_output_unary_op('mad_tpsa_sincoshq')
 
     def sincoshmq(self) -> tuple[Tpsa, Tpsa]:
-        """Return ``((sinhc(sqrt(x)) - 1) / x, (cosh(sqrt(x)) - 1) / x)``."""
+        r"""Return two related hyperbolic series.
+
+        :math:`((\operatorname{sinhc}(\sqrt{x}) - 1) / x,
+        (\cosh(\sqrt{x}) - 1) / x)`.
+        """
         return self._two_output_unary_op('mad_tpsa_sincoshmq')
 
     def erf(self) -> Tpsa:
@@ -652,12 +671,12 @@ class Tpsa(_TpsaBase[float, SupportsFloat]):
         return self._binary_op(other, 'mad_tpsa_atan2')
 
     def hypot(self, other: Tpsa | SupportsFloat) -> Tpsa:
-        """Return ``sqrt(self**2 + other**2)``."""
+        r"""Return :math:`\sqrt{\mathrm{self}^2 + \mathrm{other}^2}`."""
         other = self._coerce_operand(other)
         return self._binary_op(other, 'mad_tpsa_hypot')
 
     def hypot3(self, other: Tpsa | SupportsFloat, third: Tpsa | SupportsFloat) -> Tpsa:
-        """Return ``sqrt(self**2 + other**2 + third**2)``."""
+        r"""Return :math:`\sqrt{\mathrm{self}^2 + \mathrm{other}^2 + \mathrm{third}^2}`."""
         other = self._coerce_operand(other)
         third = self._coerce_operand(third)
         if self.const_part == other.const_part == third.const_part == 0:

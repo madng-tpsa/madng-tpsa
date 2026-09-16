@@ -1,10 +1,9 @@
 """GTPSA descriptor objects.
 
-A descriptor defines the algebraic space for TPSA series: how many variables are
-available, the maximum polynomial order, and optionally how many parameters are
-part of the monomials. Every ``Tpsa`` object is created on a descriptor, and
-series can only be combined meaningfully when they belong to compatible
-descriptors.
+A descriptor defines the algebraic space for TPSA series: its variables,
+parameters, and their polynomial-order limits. Every ``Tpsa`` object is created
+on a descriptor, and series can only be combined meaningfully when they belong
+to compatible descriptors.
 
 The Python object is a small handle to the underlying MAD-NG GTPSA descriptor.
 MAD-NG interns equivalent descriptors, and this module mirrors that by reusing the
@@ -71,7 +70,27 @@ class Descriptor:
         params: Sequence[str] | None = None,
         max_orders: Sequence[int] | None = None,
     ) -> Descriptor:
-        """Create or reuse a descriptor."""
+        """Create or reuse a descriptor: equivalent descriptors are interned.
+
+        Parameters
+        ----------
+        num_vars
+            Number of variables. Omit it when ``variables`` provides their labels.
+        order
+            Maximum combined order of variable and parameter monomials.
+        num_params
+            Number of parameters. Omit it when ``params`` provides their labels;
+            defaults to zero when ``params`` is omitted.
+        param_order
+            Maximum combined order of parameter monomials.
+        variables
+            Variable labels. Their number must match ``num_vars`` when both are given.
+        params
+            Parameter labels. Their number must match ``num_params`` when both are given.
+        max_orders
+            Per-variable and per-parameter order caps. It must contain one positive
+            entry per variable and parameter.
+        """
         if order is None:
             message = 'Descriptor order is required'
             raise TypeError(message)
@@ -206,19 +225,6 @@ class Descriptor:
     def _default_param_labels(self) -> tuple[str, ...]:
         return tuple(f'p_{index}' for index in range(1, self.num_params + 1))
 
-    def __init__(
-        self,
-        num_vars: int | None = None,
-        order: int | None = None,
-        *,
-        num_params: int = 0,
-        param_order: int = 1,
-        variables: Sequence[str] | None = None,
-        params: Sequence[str] | None = None,
-        max_orders: Sequence[int] | None = None,
-    ) -> None:
-        """Descriptor initialisation is handled in ``__new__`` for interning."""
-
     @property
     def ptr(self) -> Any:
         """Descriptor pointer."""
@@ -261,7 +267,7 @@ class Descriptor:
 
     @property
     def monomial_length(self) -> int:
-        """Length of a full monomial: ``num_vars + num_params``."""
+        """Length of a full monomial, equal to ``num_vars`` + ``num_params``."""
         attrs = self._get_descriptor_attrs()
         return attrs.num_vars + attrs.num_params
 
@@ -273,7 +279,7 @@ class Descriptor:
         return tuple(max_order_arr)
 
     def is_valid_monomial(self, monomial: Sequence[int]) -> bool:
-        """Whether ``monomial`` is representable (querying beyond-order aborts C)."""
+        """Whether ``monomial`` is representable (querying beyond order is illegal in the C API)."""
         arr = ffi.new('unsigned char[]', monomial)
         return bool(lib.mad_desc_isvalidm(self._ptr, len(monomial), arr))
 
@@ -406,7 +412,7 @@ class Descriptor:
 
         The created TPSA will automatically be of order 1; for higher orders
         instantiate a new constant TPSA with the desired order and manually
-        call ``Tpsa.set`` to set the desired parameter coefficient.
+        call :meth:`madng_tpsa.Tpsa.set` to set the desired parameter coefficient.
         """
         order = 1
         parameter_index = self._param_index(index)
@@ -500,7 +506,13 @@ class Descriptor:
         )
 
     def format_polynomial(self, tpsa: Tpsa, style: FormatStyle = 'code') -> object:
-        """Format ``tpsa`` using this descriptor's variable and parameter labels."""
+        """Format ``tpsa`` using this descriptor's variable and parameter labels.
+
+        Parameters
+        ----------
+        style
+            Output style. See :data:`madng_tpsa.formatting.FormatStyle`.
+        """
         if tpsa.descriptor is not self:
             message = 'Cannot format a TPSA from a different descriptor'
             raise ValueError(message)
