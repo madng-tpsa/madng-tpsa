@@ -12,7 +12,6 @@ from numbers import Integral
 from typing import TYPE_CHECKING, Any, Literal, SupportsComplex, SupportsFloat
 
 import numpy as np
-import scipy.special
 
 from . import _cffi
 from ._cffi import ffi, lib
@@ -29,6 +28,10 @@ class ComplexTpsa(_TpsaBase[complex, SupportsFloat | SupportsComplex]):
     """A complex truncated power series on a :class:`Descriptor`."""
 
     __slots__ = ('_descriptor', '_ptr', '__weakref__')
+
+    _UFUNC_DISPATCH = _TpsaBase._UFUNC_DISPATCH | {
+        np.conjugate: operator.methodcaller('conjugate'),
+    }
 
     def __init__(self, descriptor: Descriptor, order: int | None = None) -> None:
         """Create a zero complex series on ``descriptor``."""
@@ -550,19 +553,6 @@ class ComplexTpsa(_TpsaBase[complex, SupportsFloat | SupportsComplex]):
         """Return the Faddeeva function of this series."""
         return self._unary_op('mad_ctpsa_wf')
 
-    def __array_ufunc__(self, ufunc: Any, method: str, *inputs: Any, **kwargs: Any) -> Any:
-        """Map supported NumPy ufunc calls to matching CTPSA operations."""
-        if method != '__call__' or kwargs:
-            return NotImplemented
-
-        # We need to "unpack" the numpy scalars to let Python normal operator fallback mechanism
-        # function properly: otherwise, if lhs is np.float64, we get into an infinite recursion
-        inputs = tuple(value.item() if isinstance(value, np.generic) else value for value in inputs)
-
-        if ufunc in _UFUNC_DISPATCH:
-            return _UFUNC_DISPATCH[ufunc](*inputs)
-        return NotImplemented
-
     def _protected_binary(
         self,
         left: ComplexTpsa | Tpsa,
@@ -582,35 +572,3 @@ class ComplexTpsa(_TpsaBase[complex, SupportsFloat | SupportsComplex]):
         if not self._compatible(other):
             message = 'Incompatible TPSA descriptors'
             raise ValueError(message)
-
-
-_UFUNC_DISPATCH = {
-    np.sqrt: ComplexTpsa.sqrt,
-    np.exp: ComplexTpsa.exp,
-    np.log: ComplexTpsa.log,
-    np.sin: ComplexTpsa.sin,
-    np.cos: ComplexTpsa.cos,
-    np.tan: ComplexTpsa.tan,
-    np.sinh: ComplexTpsa.sinh,
-    np.cosh: ComplexTpsa.cosh,
-    np.tanh: ComplexTpsa.tanh,
-    np.arcsin: ComplexTpsa.asin,
-    np.arccos: ComplexTpsa.acos,
-    np.arctan: ComplexTpsa.atan,
-    np.arcsinh: ComplexTpsa.asinh,
-    np.arccosh: ComplexTpsa.acosh,
-    np.arctanh: ComplexTpsa.atanh,
-    np.conjugate: ComplexTpsa.conjugate,
-    np.negative: operator.neg,
-    np.positive: operator.pos,
-    np.add: operator.add,
-    np.subtract: operator.sub,
-    np.multiply: operator.mul,
-    np.divide: operator.truediv,
-    np.power: operator.pow,
-    scipy.special.erf: ComplexTpsa.erf,
-    scipy.special.erfc: ComplexTpsa.erfc,
-    scipy.special.erfcx: ComplexTpsa.erfcx,
-    scipy.special.erfi: ComplexTpsa.erfi,
-    scipy.special.wofz: ComplexTpsa.wofz,
-}

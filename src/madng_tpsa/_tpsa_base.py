@@ -2,10 +2,12 @@
 
 from __future__ import annotations
 
+import operator
 from abc import ABC, abstractmethod
 from typing import TYPE_CHECKING, Any, Generic, TypeVar
 
 import numpy as np
+import scipy.special
 
 from ._cffi import ffi, lib
 from .errors import TpsaError
@@ -25,6 +27,36 @@ class _TpsaBase(ABC, Generic[_Coefficient, _InputCoefficient]):
     """Common functionality for wrappers around MAD-NG TPSA objects."""
 
     __slots__ = ()
+
+    _UFUNC_DISPATCH = {
+        np.sqrt: operator.methodcaller('sqrt'),
+        np.exp: operator.methodcaller('exp'),
+        np.log: operator.methodcaller('log'),
+        np.sin: operator.methodcaller('sin'),
+        np.cos: operator.methodcaller('cos'),
+        np.tan: operator.methodcaller('tan'),
+        np.sinh: operator.methodcaller('sinh'),
+        np.cosh: operator.methodcaller('cosh'),
+        np.tanh: operator.methodcaller('tanh'),
+        np.arcsin: operator.methodcaller('asin'),
+        np.arccos: operator.methodcaller('acos'),
+        np.arctan: operator.methodcaller('atan'),
+        np.arcsinh: operator.methodcaller('asinh'),
+        np.arccosh: operator.methodcaller('acosh'),
+        np.arctanh: operator.methodcaller('atanh'),
+        np.negative: operator.neg,
+        np.positive: operator.pos,
+        np.add: operator.add,
+        np.subtract: operator.sub,
+        np.multiply: operator.mul,
+        np.divide: operator.truediv,
+        np.power: operator.pow,
+        scipy.special.erf: operator.methodcaller('erf'),
+        scipy.special.erfc: operator.methodcaller('erfc'),
+        scipy.special.erfcx: operator.methodcaller('erfcx'),
+        scipy.special.erfi: operator.methodcaller('erfi'),
+        scipy.special.wofz: operator.methodcaller('wofz'),
+    }
 
     @property
     @abstractmethod
@@ -54,6 +86,19 @@ class _TpsaBase(ABC, Generic[_Coefficient, _InputCoefficient]):
 
     def __setitem__(self, monomial: Iterable[int], value: _InputCoefficient) -> None:
         self.set(monomial, value)
+
+    def __array_ufunc__(self, ufunc: Any, method: str, *inputs: Any, **kwargs: Any) -> Any:
+        """Map supported NumPy ufunc calls to the matching TPSA operations."""
+        if method != '__call__' or kwargs:
+            return NotImplemented
+
+        # NumPy scalar operators re-enter ufunc dispatch, so unpack them for Python dispatch.
+        inputs = tuple(value.item() if isinstance(value, np.generic) else value for value in inputs)
+
+        dispatcher = self._UFUNC_DISPATCH.get(ufunc)
+        if dispatcher is None:
+            return NotImplemented
+        return dispatcher(*inputs)
 
     @abstractmethod
     def clear(self) -> None:
