@@ -17,6 +17,20 @@ from ._version import __version__
 from .complex_tpsa import ComplexTpsa
 from .descriptor import Descriptor
 from .errors import TpsaError
+from .maps import (
+    TpsaMap,
+    compose,
+    evaluate,
+    exp_poisson,
+    field_to_vector,
+    inverse,
+    lie_bracket,
+    log_generator,
+    log_poisson,
+    partial_inverse,
+    translate,
+    vector_to_field,
+)
 from .paths import core_library, include_dir
 from .tpsa import Tpsa
 
@@ -31,4 +45,16 @@ __all__ = [
     'include_dir',
     'lib',
     '__version__',
+    'TpsaMap',
+    'compose',
+    'evaluate',
+    'exp_poisson',
+    'field_to_vector',
+    'inverse',
+    'lie_bracket',
+    'log_generator',
+    'log_poisson',
+    'partial_inverse',
+    'translate',
+    'vector_to_field',
 ]

@@ -288,7 +288,7 @@ def test_get_and_set_reject_invalid_or_out_of_order_monomials():
     with pytest.raises(ValueError, match='Monomial order exceeds TPSA order 2'):
         a[1, 3] = 1.0
 
-    with pytest.raises(ValueError, match='not valid for this descriptor'):
+    with pytest.raises(ValueError, match='Monomial order exceeds TPSA order 2'):
         a[3, 0]
 
     full_order_a = d.var('a')

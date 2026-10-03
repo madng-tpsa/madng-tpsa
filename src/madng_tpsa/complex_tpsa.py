@@ -191,6 +191,27 @@ class ComplexTpsa(_TpsaBase[complex, SupportsFloat | SupportsComplex]):
                 coefficients[tuple(monomial_arr)] = value
         return coefficients
 
+    def homogeneous(self, order: int) -> ComplexTpsa:
+        """Return only the homogeneous part of exactly `order`."""
+        order = self._validate_order(order, self.order)
+        result = self.descriptor.complex_zero(order=order)
+        lib.mad_ctpsa_getord(self._ptr, result._ptr, order)
+        return result
+
+    def truncate(self, order: int) -> ComplexTpsa:
+        """Return the ComplexTpsa truncated through `order`."""
+        order = self._validate_order(order, self.order)
+        result = self.descriptor.complex_zero(order=order)
+        lib.mad_ctpsa_cutord(self._ptr, result._ptr, order + 1)
+        return result
+
+    def clear_order(self, order: int) -> ComplexTpsa:
+        """Return a copy with homogeneous order `order` removed."""
+        order = self._validate_order(order, self.order)
+        result = self.copy()
+        lib.mad_ctpsa_clrord(result._ptr, order)
+        return result
+
     def is_zero(self) -> bool:
         """Return whether this series has no non-zero coefficients."""
         return bool(lib.mad_ctpsa_isnul(self._ptr))
@@ -205,10 +226,13 @@ class ComplexTpsa(_TpsaBase[complex, SupportsFloat | SupportsComplex]):
 
     def grad(self) -> list[complex]:
         """First-order coefficients for the descriptor variables."""
-        return [
-            self.get([int(index == variable) for index in range(self.descriptor.num_vars)])
-            for variable in range(self.descriptor.num_vars)
-        ]
+        monomial_len = self.descriptor.monomial_length
+        grad = []
+        for var_idx in range(self.descriptor.num_vars):
+            monomial = [0] * monomial_len
+            monomial[var_idx] = 1
+            grad.append(self.get(monomial))
+        return grad
 
     def param_grad(self) -> list[complex]:
         """First-order coefficients for the descriptor parameters."""
@@ -222,7 +246,7 @@ class ComplexTpsa(_TpsaBase[complex, SupportsFloat | SupportsComplex]):
 
     def copy(self) -> ComplexTpsa:
         """Return an independent copy of this series."""
-        result = self.descriptor.complex_zero()
+        result = self.descriptor.complex_zero(order=self.order)
         lib.mad_ctpsa_copy(self._ptr, result._ptr)
         return result
 

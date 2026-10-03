@@ -4,6 +4,7 @@ from __future__ import annotations
 
 import operator
 from abc import ABC, abstractmethod
+from numbers import Integral
 from typing import TYPE_CHECKING, Any, Generic, TypeVar
 
 import numpy as np
@@ -120,6 +121,17 @@ class _TpsaBase(ABC, Generic[_Coefficient, _InputCoefficient]):
             raise TpsaError(f'GTPSA error in {location}: {message}')
         raise TpsaError(f'GTPSA error: {message}')
 
+    @staticmethod
+    def _validate_order(order: object, max_order: int) -> int:
+        if not isinstance(order, Integral) or isinstance(order, bool):
+            message = 'order must be an integer'
+            raise TypeError(message)
+        order = int(order)
+        if not 0 <= order <= max_order:
+            message = f'order must satisfy 0 <= order <= {max_order}'
+            raise ValueError(message)
+        return order
+
     def coefficient(
         self,
         monomials: Sequence[int] | Sequence[Sequence[int]] | np.ndarray,
@@ -148,12 +160,13 @@ class _TpsaBase(ABC, Generic[_Coefficient, _InputCoefficient]):
 
     def _check_monomial(self, monomial: list[int]) -> None:
         """Raise if ``monomial`` is invalid for this descriptor or series order."""
-        if not self.descriptor.is_valid_monomial(monomial):
-            message = 'Monomial is not valid for this descriptor'
-            raise ValueError(message)
-
+        if len(monomial) != self.descriptor.monomial_length:
+            raise ValueError(f'Monomial must have length {self.descriptor.monomial_length}')
         if sum(monomial) > self.order:
             message = f'Monomial order exceeds TPSA order {self.order}'
+            raise ValueError(message)
+        if not self.descriptor.is_valid_monomial(monomial):
+            message = 'Monomial is not valid for this descriptor'
             raise ValueError(message)
 
     def _resolve_single_monomial(

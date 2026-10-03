@@ -176,6 +176,27 @@ class Tpsa(_TpsaBase[float, SupportsFloat]):
 
         return coeffs
 
+    def homogeneous(self, order: int) -> Tpsa:
+        """Return only the homogeneous part of exactly `order`."""
+        order = self._validate_order(order, self.order)
+        result = self.descriptor.zero(order=order)
+        lib.mad_tpsa_getord(self._ptr, result._ptr, order)
+        return result
+
+    def truncate(self, order: int) -> Tpsa:
+        """Return the TPSA truncated through `order`."""
+        order = self._validate_order(order, self.order)
+        result = self.descriptor.zero(order=order)
+        lib.mad_tpsa_cutord(self._ptr, result._ptr, order + 1)
+        return result
+
+    def clear_order(self, order: int) -> Tpsa:
+        """Return a copy with homogeneous order `order` removed."""
+        order = self._validate_order(order, self.order)
+        result = self.copy()
+        lib.mad_tpsa_clrord(result._ptr, order)
+        return result
+
     def is_zero(self) -> bool:
         """Return whether this series has no non-zero coefficients."""
         return bool(lib.mad_tpsa_isnul(self._ptr))
@@ -190,10 +211,10 @@ class Tpsa(_TpsaBase[float, SupportsFloat]):
 
     def grad(self) -> list[float]:
         """First-order coefficients for the descriptor variables."""
-        num_vars = self.descriptor.num_vars
+        monomial_len = self.descriptor.monomial_length
         grad = []
-        for var_idx in range(num_vars):
-            monomial = [0] * num_vars
+        for var_idx in range(self.descriptor.num_vars):
+            monomial = [0] * monomial_len
             monomial[var_idx] = 1
             grad.append(self.get(monomial))
         return grad
@@ -211,7 +232,7 @@ class Tpsa(_TpsaBase[float, SupportsFloat]):
 
     def copy(self) -> Tpsa:
         """Return an independent copy of this series."""
-        result = self.descriptor.zero()
+        result = self.descriptor.zero(order=self.order)
         lib.mad_tpsa_copy(self._ptr, result._ptr)
         return result
 

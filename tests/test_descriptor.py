@@ -228,3 +228,14 @@ def test_tpsa_keeps_descriptor_alive():
 
     assert descriptor_ref() is t.descriptor
     assert t.descriptor.var_labels == ('x',)
+
+
+def test_get_rejects_wrong_monomial_length_with_parameters():
+    d = madng_tpsa.Descriptor(variables=['x', 'y'], order=3, params=['k'])
+    x = d.var('x')
+
+    with pytest.raises(ValueError, match='length 3'):
+        x.get((1, 0))
+
+    with pytest.raises(ValueError, match='length 3'):
+        x.set((1, 0), 1.0)
