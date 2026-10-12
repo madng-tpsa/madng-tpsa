@@ -13,6 +13,7 @@ authors = [
     {name = "Bernardo Abreu Figueiredo", email = "bernardo.abreu.figueiredo@cern.ch"},
     {name = "Laurent Deniau", email = "laurent.deniau@cern.ch"},
     {name = "Szymon Łopaciuk", email = "szymon.lopaciuk@cern.ch"},
+    {name = "Frederik Florentinus Van der Veken", email = "frederik@cern.ch"},
 ]
 dynamic = ["version"]
 description = "Python bindings to the GTPSA (truncated power series) engine of MAD-NG"

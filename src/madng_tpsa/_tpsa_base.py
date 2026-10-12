@@ -11,7 +11,7 @@ import numpy as np
 import scipy.special
 
 from ._cffi import ffi, lib
-from .errors import TpsaError
+from .functions import _raise_mad_error
 
 if TYPE_CHECKING:
     from collections.abc import Iterable, Mapping, Sequence
@@ -115,11 +115,8 @@ class _TpsaBase(ABC, Generic[_Coefficient, _InputCoefficient]):
 
     @staticmethod
     def _raise_mad_error() -> None:
-        location = ffi.string(lib.madng_tpsa_last_error_location()).decode()
-        message = ffi.string(lib.madng_tpsa_last_error_message()).decode()
-        if location:
-            raise TpsaError(f'GTPSA error in {location}: {message}')
-        raise TpsaError(f'GTPSA error: {message}')
+        # For backwards compatibility
+        return _raise_mad_error()
 
     @staticmethod
     def _validate_order(order: object, max_order: int) -> int:

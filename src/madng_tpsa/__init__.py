@@ -19,8 +19,7 @@ from ._version import __version__
 from .complex_tpsa import ComplexTpsa
 from .descriptor import Descriptor
 from .errors import TpsaError
-from .maps import (
-    TpsaMap,
+from .functions import (
     compose,
     evaluate,
     exp_poisson,
@@ -34,6 +33,7 @@ from .maps import (
     translate,
     vector_to_field,
 )
+from .maps import TpsaMap
 from .paths import core_library, include_dir
 from .tpsa import Tpsa
 
