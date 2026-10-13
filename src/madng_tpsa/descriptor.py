@@ -54,12 +54,12 @@ class Descriptor:
 
     _instances_by_ptr: ClassVar[WeakValueDictionary[int, Descriptor]] = WeakValueDictionary()
     _ptr: Any
-    var_labels: tuple[str, ...]
-    param_labels: tuple[str, ...]
+    variables: tuple[str, ...]
+    parameters: tuple[str, ...]
     _tpsas: WeakValueDictionary[int, Tpsa]
     _complex_tpsas: WeakValueDictionary[int, ComplexTpsa]
 
-    __slots__ = ('_ptr', 'param_labels', 'var_labels', '_tpsas', '_complex_tpsas', '__weakref__')
+    __slots__ = ('_ptr', 'variables', 'parameters', '_tpsas', '_complex_tpsas', '__weakref__')
 
     def __new__(
         cls,
@@ -69,8 +69,9 @@ class Descriptor:
         num_params: int | None = None,
         param_order: int = 1,
         variables: Sequence[str] | None = None,
-        params: Sequence[str] | None = None,
+        parameters: Sequence[str] | None = None,
         max_orders: Sequence[int] | None = None,
+        params: Sequence[str] | None = None,  # Only for backwards compatibility
     ) -> Descriptor:
         """Create or reuse a descriptor: equivalent descriptors are interned.
 
@@ -81,13 +82,13 @@ class Descriptor:
         order
             Maximum combined order of variable and parameter monomials.
         num_params
-            Number of parameters. Omit it when ``params`` provides their labels;
-            defaults to zero when ``params`` is omitted.
+            Number of parameters. Omit it when ``parameters`` provides their labels;
+            defaults to zero when ``parameters`` is omitted.
         param_order
             Maximum combined order of parameter monomials.
         variables
             Variable labels. Their number must match ``num_vars`` when both are given.
-        params
+        parameters
             Parameter labels. Their number must match ``num_params`` when both are given.
         max_orders
             Per-variable and per-parameter order caps. It must contain one positive
@@ -97,12 +98,20 @@ class Descriptor:
             message = 'Descriptor order is required'
             raise TypeError(message)
 
+        if parameters is None and params is not None:
+            warnings.warn(
+                'The params argument is deprecated and will be removed in a future version. '
+                'Use parameters instead.',
+                stacklevel=2,
+            )
+            parameters = params
+
         var_labels = cls._resolve_labels('variable', num_vars, variables, 'v_')
 
-        if num_params is None and params is None:
+        if num_params is None and parameters is None:
             num_params = 0
 
-        param_labels = cls._resolve_labels('param', num_params, params, 'p_')
+        param_labels = cls._resolve_labels('param', num_params, parameters, 'p_')
 
         num_vars = len(var_labels)
         num_params = len(param_labels)
@@ -123,19 +132,19 @@ class Descriptor:
         else:
             ptr = lib.mad_desc_newv(num_vars, order)
 
-        descriptor = cls.from_ptr(ptr, var_labels=var_labels, param_labels=param_labels)
+        descriptor = cls.from_ptr(ptr, variables=var_labels, parameters=param_labels)
 
-        if variables is not None and tuple(variables) != descriptor.var_labels:
+        if variables is not None and tuple(variables) != descriptor.variables:
             warnings.warn(
                 'A descriptor of this shape already exists with different variable labels.'
                 'The variables argument will be ignored, and the original labels will be reused.',
                 stacklevel=2,
             )
 
-        if params is not None and tuple(params) != descriptor.param_labels:
+        if parameters is not None and tuple(parameters) != descriptor.parameters:
             warnings.warn(
                 'A descriptor of this shape already exists with different parameter labels.'
-                'The params argument will be ignored, and the original labels will be reused.',
+                'The parameters argument will be ignored, and the original labels will be reused.',
                 stacklevel=2,
             )
 
@@ -175,9 +184,8 @@ class Descriptor:
     ) -> list[int]:
         resolved = [int(max_order) for max_order in max_orders]
         if len(resolved) != monomial_length:
-            message = (
-                f'Length of max_orders must have the length of vars + params ({monomial_length}).'
-            )
+            message = 'Length of max_orders must have the length of vars + parameters '
+            message += f'({monomial_length}).'
             raise ValueError(message)
 
         if any(max_order <= 0 for max_order in resolved):
@@ -189,8 +197,8 @@ class Descriptor:
     def from_ptr(
         cls,
         ptr: Any,
-        var_labels: Sequence[str] | None = None,
-        param_labels: Sequence[str] | None = None,
+        variables: Sequence[str] | None = None,
+        parameters: Sequence[str] | None = None,
     ) -> Descriptor:
         """Return the interned ``Descriptor`` for a raw C pointer."""
         key = int(ffi.cast('uintptr_t', ptr))
@@ -199,14 +207,14 @@ class Descriptor:
         if descriptor is not None:
             return descriptor
 
-        if var_labels is None or param_labels is None:
-            message = 'No existing Descriptor found: var_labels, param_labels must be provided.'
+        if variables is None or parameters is None:
+            message = 'No existing Descriptor found: variables, parameters must be provided.'
             raise ValueError(message)
 
         descriptor = super().__new__(cls)
         descriptor._ptr = ptr
-        descriptor.var_labels = tuple(var_labels)
-        descriptor.param_labels = tuple(param_labels)
+        descriptor.variables = tuple(variables)
+        descriptor.parameters = tuple(parameters)
         descriptor._tpsas = WeakValueDictionary()
         descriptor._complex_tpsas = WeakValueDictionary()
         cls._instances_by_ptr[key] = descriptor
@@ -246,6 +254,26 @@ class Descriptor:
             num_params=num_params_ptr[0],
             param_order=param_order_ptr[0],
         )
+
+    @property
+    def var_labels(self) -> tuple[str, ...]:
+        """Backwards-compatible property for variable labels (deprecated)."""
+        warnings.warn(
+            'The var_labels property is deprecated and will be removed in a future version. '
+            'Use the variables property instead.',
+            stacklevel=2,
+        )
+        return self.variables
+
+    @property
+    def param_labels(self) -> tuple[str, ...]:
+        """Backwards-compatible property for parameter labels (deprecated)."""
+        warnings.warn(
+            'The param_labels property is deprecated and will be removed in a future version. '
+            'Use the parameters property instead.',
+            stacklevel=2,
+        )
+        return self.parameters
 
     @property
     def num_vars(self) -> int:
@@ -442,7 +470,7 @@ class Descriptor:
     def _var_index(self, variable: int | str) -> int:
         if isinstance(variable, str):
             try:
-                return self.var_labels.index(variable) + 1
+                return self.variables.index(variable) + 1
             except ValueError as exc:
                 raise KeyError(variable) from exc
         return int(variable)
@@ -450,7 +478,7 @@ class Descriptor:
     def _param_index(self, parameter: int | str) -> int:
         if isinstance(parameter, str):
             try:
-                return self.param_labels.index(parameter) + 1
+                return self.parameters.index(parameter) + 1
             except ValueError as exc:
                 raise KeyError(parameter) from exc
         return int(parameter)
@@ -458,10 +486,10 @@ class Descriptor:
     def var_or_param_index(self, variable: int | str) -> int:
         """Return the 1-based combined variable/parameter index for ``variable``."""
         if isinstance(variable, str):
-            if variable in self.var_labels:
-                return self.var_labels.index(variable) + 1
-            if variable in self.param_labels:
-                return self.num_vars + self.param_labels.index(variable) + 1
+            if variable in self.variables:
+                return self.variables.index(variable) + 1
+            if variable in self.parameters:
+                return self.num_vars + self.parameters.index(variable) + 1
             raise KeyError(variable)
 
         index = int(variable)
@@ -510,12 +538,12 @@ class Descriptor:
             return (
                 f'Descriptor(num_vars={attrs.num_vars}, order={attrs.order}, '
                 f'num_params={attrs.num_params}, param_order={attrs.param_order}, '
-                f'var_labels={self.var_labels!r}, param_labels={self.param_labels!r})'
+                f'variables={self.variables!r}, parameters={self.parameters!r})'
             )
 
         return (
             f'Descriptor(num_vars={attrs.num_vars}, order={attrs.order}, '
-            f'var_labels={self.var_labels!r})'
+            f'variables={self.variables!r})'
         )
 
     def format_polynomial(self, tpsa: Tpsa, style: FormatStyle = 'code') -> object:
@@ -532,4 +560,4 @@ class Descriptor:
 
         from .formatting import format_polynomial
 
-        return format_polynomial(tpsa, self.var_labels + self.param_labels, style=style)
+        return format_polynomial(tpsa, self.variables + self.parameters, style=style)
