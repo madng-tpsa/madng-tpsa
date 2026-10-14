@@ -17,8 +17,8 @@ def test_var_is_an_identity_seed():
     assert t.const_part == 0.25
     assert t.grad() == [0, 1, 0, 0, 0, 0]
     assert t.descriptor is d
-    assert t.order == d.order
-    assert t.max_nonzero_order == 1
+    assert t.truncation_order == d.order
+    assert t.degree == 1
 
 
 def test_vars_unpack_all_identity_seeds():
@@ -35,28 +35,28 @@ def test_var_order_uses_descriptor_order_by_default():
     d = madng_tpsa.Descriptor(variables=['a', 'b'], order=4, max_orders=[2, 4])
     a, b = d.vars()
 
-    assert a.order == 4
-    assert b.order == 4
-    assert a.max_nonzero_order == 1
-    assert b.max_nonzero_order == 1
+    assert a.truncation_order == 4
+    assert b.truncation_order == 4
+    assert a.degree == 1
+    assert b.degree == 1
 
 
 def test_var_zero_and_param_have_expected_orders():
-    d = madng_tpsa.Descriptor(variables=['a', 'b'], order=4, max_orders=[2, 4, 1], params=['k'])
+    d = madng_tpsa.Descriptor(variables=['a', 'b'], order=4, max_orders=[2, 4, 1], parameters=['k'])
     zero = d.zero(order=2)
     a = d.var('a', order=2)
     k = d.param('k')
 
-    assert zero.order == 2
-    assert a.order == 2
-    assert k.order == 1
+    assert zero.truncation_order == 2
+    assert a.truncation_order == 2
+    assert k.truncation_order == 1
 
     with pytest.raises(ValueError, match='Variable order must be positive'):
         d.var('a', order=0)
 
 
 def test_var_and_param_labels_can_seed_series():
-    d = madng_tpsa.Descriptor(variables=['x', 'y'], order=2, params=['k'])
+    d = madng_tpsa.Descriptor(variables=['x', 'y'], order=2, parameters=['k'])
     x = d.var('x', 0.5)
     y = d.var('y')
     k = d.param('k', 2.0)
@@ -94,12 +94,12 @@ def test_constant_series():
     assert zero.is_zero()
     assert zero.is_constant()
     assert zero.const_part == 0.0
-    assert zero.order == d.order
-    assert zero.max_nonzero_order == 0
+    assert zero.truncation_order == d.order
+    assert zero.degree == 0
     assert zero.grad() == [0.0] * d.num_vars
     assert const.const_part == 1.5
-    assert const.order == d.order
-    assert const.max_nonzero_order == 0
+    assert const.truncation_order == d.order
+    assert const.degree == 0
     assert not const.is_zero()
     assert const.is_constant()
     assert const.grad() == [0.0] * d.num_vars
@@ -112,8 +112,8 @@ def test_arithmetic_carries_derivatives():
 
     f = x * x + 2.0 * y
     assert f.const_part == pytest.approx(0.25 + 4.0)
-    assert f.order == d.order
-    assert f.max_nonzero_order == 2
+    assert f.truncation_order == d.order
+    assert f.degree == 2
     assert f.grad() == pytest.approx([2 * 0.5, 2.0])
     assert f.monomial_coeffs()[(2, 0)] == pytest.approx(1.0)
 
@@ -259,7 +259,7 @@ def test_clear_sets_series_to_zero_in_place():
 
     assert t.is_zero()
     assert t.is_constant()
-    assert t.to_dict() == {}
+    assert t.to_dict() == {'__class__': 'Tpsa', 'descriptor': d.to_dict(), 'truncation_order': 2}
 
 
 def test_set_and_get_coefficients():
@@ -282,13 +282,13 @@ def test_get_and_set_reject_invalid_or_out_of_order_monomials():
     a = d.var('a', order=2)
 
     assert d.is_valid_monomial((1, 3))
-    with pytest.raises(ValueError, match='Monomial order exceeds TPSA order 2'):
+    with pytest.raises(ValueError, match='Monomial degree exceeds TPSA order 2'):
         a[1, 3]
 
-    with pytest.raises(ValueError, match='Monomial order exceeds TPSA order 2'):
+    with pytest.raises(ValueError, match='Monomial degree exceeds TPSA order 2'):
         a[1, 3] = 1.0
 
-    with pytest.raises(ValueError, match='Monomial order exceeds TPSA order 2'):
+    with pytest.raises(ValueError, match='Monomial degree exceeds TPSA order 2'):
         a[3, 0]
 
     full_order_a = d.var('a')
@@ -310,8 +310,19 @@ def test_to_dict_uses_monomial_coeffs():
     t.set((1, 0), 1e-20)
     t.set((0, 1), 1.0)
 
-    assert t.to_dict() == {(0, 1): 1.0}
-    assert t.to_dict(tol=1e-30) == t.monomial_coeffs(tol=1e-30)
+    assert t.to_dict() == {
+        '__class__': 'Tpsa',
+        'descriptor': d.to_dict(),
+        'truncation_order': 2,
+        '[0, 1]': 1.0,
+    }
+    assert t.to_dict(tol=1e-30) == {
+        '__class__': 'Tpsa',
+        'descriptor': d.to_dict(),
+        'truncation_order': 2,
+        '[1, 0]': 1e-20,
+        '[0, 1]': 1.0,
+    }
 
 
 def test_from_dict_replaces_coefficients_and_round_trips():
@@ -321,12 +332,12 @@ def test_from_dict_replaces_coefficients_and_round_trips():
     original.set((1, 0), 2.0)
     original.set((0, 2), -3.0)
 
-    restored = d.var(1, 10.0)
-    restored.from_dict(original.to_dict())
+    restored = madng_tpsa.Tpsa.from_dict(original.to_dict())
     assert restored == original
 
-    restored.from_dict({(0, 1): 4.0})
-    assert restored.to_dict() == {(0, 1): 4.0}
+    dct = {'__class__': 'Tpsa', 'descriptor': d.to_dict(), 'truncation_order': 2, '[0, 1]': 4.0}
+    restored = madng_tpsa.Tpsa.from_dict(dct)
+    assert restored.to_dict() == dct
     assert restored.const_part == 0.0
     assert restored.get((1, 0)) == 0.0
 
@@ -447,7 +458,7 @@ def test_get_and_set_reject_wrong_monomial_length_with_parameters():
     descriptor = madng_tpsa.Descriptor(
         variables=['x', 'px'],
         order=3,
-        params=['k'],
+        parameters=['k'],
     )
     x = descriptor.var('x')
     with pytest.raises(ValueError, match='Monomial must have length 3'):
@@ -460,7 +471,7 @@ def test_coefficient_rejects_wrong_monomial_length_with_parameters():
     descriptor = madng_tpsa.Descriptor(
         variables=['x', 'px'],
         order=3,
-        params=['k'],
+        parameters=['k'],
     )
     x = descriptor.var('x')
     with pytest.raises(ValueError, match='Monomial must have length 3'):
@@ -478,7 +489,7 @@ def test_grad_uses_full_monomials_with_parameters():
     descriptor = madng_tpsa.Descriptor(
         variables=['x', 'px'],
         order=2,
-        params=['k1', 'k2'],
+        parameters=['k1', 'k2'],
         param_order=1,
     )
     x, px = descriptor.vars()

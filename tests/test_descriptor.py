@@ -1,6 +1,7 @@
 """Tests for GTPSA descriptors."""
 
 import gc
+import json
 import weakref
 
 import pytest
@@ -136,12 +137,12 @@ def test_descriptor_instances_and_from_ptr():
 
 
 def test_descriptor_accepts_variable_and_parameter_labels():
-    d = madng_tpsa.Descriptor(variables=['x', 'px'], order=3, params=['delta'])
+    d = madng_tpsa.Descriptor(variables=['x', 'px'], order=3, parameters=['delta'])
 
     assert d.num_vars == 2
     assert d.num_params == 1
-    assert d.var_labels == ('x', 'px')
-    assert d.param_labels == ('delta',)
+    assert d.variables == ('x', 'px')
+    assert d.parameters == ('delta',)
     assert d.var('px').grad() == [0.0, 1.0]
     assert d.param('delta').param_grad() == [1.0]
 
@@ -149,8 +150,8 @@ def test_descriptor_accepts_variable_and_parameter_labels():
 def test_descriptor_generates_default_labels():
     d = madng_tpsa.Descriptor(2, 3, num_params=1)
 
-    assert d.var_labels == ('v_1', 'v_2')
-    assert d.param_labels == ('p_1',)
+    assert d.variables == ('v_1', 'v_2')
+    assert d.parameters == ('p_1',)
 
 
 def test_descriptor_accepts_per_variable_max_orders():
@@ -163,7 +164,7 @@ def test_descriptor_accepts_per_variable_max_orders():
 
 
 def test_descriptor_accepts_parameter_max_orders():
-    d = madng_tpsa.Descriptor(variables=['x'], order=3, params=['k'], max_orders=[3, 1])
+    d = madng_tpsa.Descriptor(variables=['x'], order=3, parameters=['k'], max_orders=[3, 1])
 
     assert d.max_orders == (3, 1)
     assert d.is_valid_monomial((1, 1))
@@ -182,7 +183,7 @@ def test_descriptor_rejects_mismatched_label_counts():
         madng_tpsa.Descriptor(3, 2, variables=['x', 'y'])
 
     with pytest.raises(ValueError, match='Param labels must contain 2 entries'):
-        madng_tpsa.Descriptor(2, 2, num_params=2, params=['k'])
+        madng_tpsa.Descriptor(2, 2, num_params=2, parameters=['k'])
 
     with pytest.raises(ValueError, match='Length of max_orders must have the length'):
         madng_tpsa.Descriptor(2, 2, num_params=1, max_orders=[1, 1])
@@ -196,11 +197,11 @@ def test_descriptor_rejects_duplicate_labels():
         madng_tpsa.Descriptor(variables=['x', 'x'], order=2)
 
     with pytest.raises(ValueError, match='Param labels must be unique'):
-        madng_tpsa.Descriptor(1, 2, params=['k', 'k'])
+        madng_tpsa.Descriptor(1, 2, parameters=['k', 'k'])
 
 
 def test_descriptor_unknown_labels_raise_key_error():
-    d = madng_tpsa.Descriptor(variables=['x'], order=2, params=['k'])
+    d = madng_tpsa.Descriptor(variables=['x'], order=2, parameters=['k'])
 
     with pytest.raises(KeyError):
         d.var('y')
@@ -215,7 +216,7 @@ def test_descriptor_reuses_existing_labels_and_warns_on_mismatch():
         same = madng_tpsa.Descriptor(variables=['a', 'b'], order=2)
 
     assert same is d
-    assert same.var_labels == ('x', 'y')
+    assert same.variables == ('x', 'y')
 
 
 def test_tpsa_keeps_descriptor_alive():
@@ -227,16 +228,114 @@ def test_tpsa_keeps_descriptor_alive():
     gc.collect()
 
     assert descriptor_ref() is t.descriptor
-    assert t.descriptor.var_labels == ('x',)
+    assert t.descriptor.variables == ('x',)
 
 
 def test_is_valid_monomial_rejects_wrong_length():
     descriptor = madng_tpsa.Descriptor(
         variables=['x', 'px'],
         order=3,
-        params=['k'],
+        parameters=['k'],
     )
 
     assert not descriptor.is_valid_monomial((1, 0))
     assert not descriptor.is_valid_monomial((1, 0, 0, 0))
     assert descriptor.is_valid_monomial((1, 0, 0))
+
+
+def test_descriptor_to_dict():
+    desc1 = madng_tpsa.Descriptor(order=5, variables=('x', 'y'))
+    dct1 = desc1.to_dict()
+    assert set(dct1.keys()) == {
+        '__class__',
+        'order',
+        'param_order',
+        'variables',
+        'parameters',
+        'max_orders',
+    }
+    assert dct1['__class__'] == 'Descriptor'
+    assert dct1['order'] == 5
+    assert dct1['param_order'] == 0
+    assert dct1['variables'] == ('x', 'y')
+    assert dct1['parameters'] == ()
+    assert dct1['max_orders'] is None
+    desc1_copy1 = madng_tpsa.Descriptor.from_dict(dct1)
+    assert desc1_copy1 is desc1
+    # Test json serialisation
+    desc1_copy2 = madng_tpsa.Descriptor.from_dict(json.loads(json.dumps(dct1)))
+    assert desc1_copy2 is desc1
+
+    desc2 = madng_tpsa.Descriptor(order=5, variables=('x', 'y'), max_orders=(3, 4))
+    dct2 = desc2.to_dict()
+    assert set(dct2.keys()) == {
+        '__class__',
+        'order',
+        'param_order',
+        'variables',
+        'parameters',
+        'max_orders',
+    }
+    assert dct2['__class__'] == 'Descriptor'
+    assert dct2['order'] == 5
+    assert dct2['param_order'] == 0
+    assert dct2['variables'] == ('x', 'y')
+    assert dct2['parameters'] == ()
+    assert dct2['max_orders'] == (3, 4)
+    desc2_copy1 = madng_tpsa.Descriptor.from_dict(dct2)
+    assert desc2_copy1 is desc2
+    # Test json serialisation
+    desc2_copy2 = madng_tpsa.Descriptor.from_dict(json.loads(json.dumps(dct2)))
+    assert desc2_copy2 is desc2
+
+    desc3 = madng_tpsa.Descriptor(
+        order=5, variables=('x', 'y'), param_order=2, parameters=('k1', 'k2')
+    )
+    dct3 = desc3.to_dict()
+    assert set(dct3.keys()) == {
+        '__class__',
+        'order',
+        'param_order',
+        'variables',
+        'parameters',
+        'max_orders',
+    }
+    assert dct3['__class__'] == 'Descriptor'
+    assert dct3['order'] == 5
+    assert dct3['param_order'] == 2
+    assert dct3['variables'] == ('x', 'y')
+    assert dct3['parameters'] == ('k1', 'k2')
+    assert dct3['max_orders'] is None
+    desc3_copy1 = madng_tpsa.Descriptor.from_dict(dct3)
+    assert desc3_copy1 is desc3
+    # Test json serialisation
+    desc3_copy2 = madng_tpsa.Descriptor.from_dict(json.loads(json.dumps(dct3)))
+    assert desc3_copy2 is desc3
+
+    desc4 = madng_tpsa.Descriptor(
+        order=5,
+        variables=('x', 'y'),
+        param_order=2,
+        parameters=('k1', 'k2'),
+        max_orders=(5, 4, 1, 1),
+    )
+    dct4 = desc4.to_dict()
+    assert set(dct4.keys()) == {
+        '__class__',
+        'order',
+        'param_order',
+        'variables',
+        'parameters',
+        'max_orders',
+    }
+    assert dct4['__class__'] == 'Descriptor'
+    assert dct4['order'] == 5
+    assert dct4['param_order'] == 2
+    assert dct4['variables'] == ('x', 'y')
+    assert dct4['parameters'] == ('k1', 'k2')
+    assert dct4['max_orders'] == (5, 4, 1, 1)
+    desc4_copy1 = madng_tpsa.Descriptor.from_dict(dct4)
+    assert desc4_copy1 is desc4
+    # Test json serialisation
+    desc4_copy2 = madng_tpsa.Descriptor.from_dict(json.loads(json.dumps(dct4)))
+    assert desc4_copy2 is desc4

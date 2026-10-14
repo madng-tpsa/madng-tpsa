@@ -7,8 +7,16 @@ import madng_tpsa
 
 def _polynomial():
     desc = madng_tpsa.Descriptor(variables=['x', 'y'], order=2)
-    t = desc.zero()
-    t.from_dict({(0, 0): -6.0, (1, 0): 2.0, (0, 2): 3.0})
+    t = madng_tpsa.Tpsa.from_dict(
+        {
+            '__class__': 'Tpsa',
+            'descriptor': desc.to_dict(),
+            'truncation_order': desc.order,
+            '[0, 0]': -6.0,
+            '[1, 0]': 2.0,
+            '[0, 2]': 3.0,
+        }
+    )
     return desc, t
 
 

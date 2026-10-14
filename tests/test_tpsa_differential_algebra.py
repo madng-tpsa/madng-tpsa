@@ -19,7 +19,7 @@ def test_integrate_accepts_index_or_identity_variable():
 
 
 def test_integrate_resolves_variable_specifications():
-    d = madng_tpsa.Descriptor(variables=['x'], order=3, params=['k'], param_order=3)
+    d = madng_tpsa.Descriptor(variables=['x'], order=3, parameters=['k'], param_order=3)
     x = d.var('x')
     k = d.param('k')
     f = x * x + k
@@ -30,7 +30,7 @@ def test_integrate_resolves_variable_specifications():
 
 @pytest.mark.xfail(reason='MAD-NG integration does not support parameters')
 def test_integrate_resolves_parameter_specifications():
-    d = madng_tpsa.Descriptor(variables=['x'], order=3, params=['k'], param_order=3)
+    d = madng_tpsa.Descriptor(variables=['x'], order=3, parameters=['k'], param_order=3)
     x = d.var('x')
     k = d.param('k')
     f = x * x + k
@@ -64,7 +64,7 @@ def test_derivative_accepts_index_identity_variable_tuple_or_single_monomial_tps
 
 
 def test_derivative_resolves_variable_and_parameter_specifications():
-    d = madng_tpsa.Descriptor(variables=['x'], order=3, params=['k'])
+    d = madng_tpsa.Descriptor(variables=['x'], order=3, parameters=['k'])
     x = d.var('x')
     k = d.param('k')
     f = x * x * k
@@ -78,7 +78,7 @@ def test_derivative_resolves_variable_and_parameter_specifications():
 
 @pytest.mark.parametrize('receiver_factory', ('zero', 'complex_zero'))
 def test_resolve_single_monomial(receiver_factory):
-    d = madng_tpsa.Descriptor(variables=['x'], order=3, params=['k'], param_order=3)
+    d = madng_tpsa.Descriptor(variables=['x'], order=3, parameters=['k'], param_order=3)
     receiver = getattr(d, receiver_factory)()
     x = d.var('x')
     k = d.param('k')
@@ -96,7 +96,7 @@ def test_resolve_single_monomial(receiver_factory):
     assert receiver._resolve_single_monomial(k) == (0, 1)
     assert receiver._resolve_single_monomial(monomial) == (2, 1)
 
-    with pytest.raises(ValueError, match='positive order'):
+    with pytest.raises(ValueError, match='positive degree'):
         receiver._resolve_single_monomial((0, 0))
     with pytest.raises(ValueError, match='Monomial must have length'):
         receiver._resolve_single_monomial((1,))
@@ -122,7 +122,7 @@ def test_derivative_rejects_invalid_monomials():
     d = madng_tpsa.Descriptor(2, 2)
     x, y = d.vars()
 
-    with pytest.raises(ValueError, match='positive order'):
+    with pytest.raises(ValueError, match='positive degree'):
         x.derivative((0, 0))
     with pytest.raises(ValueError, match='Monomial must have length'):
         x.derivative((1,))

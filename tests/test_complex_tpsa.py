@@ -15,7 +15,7 @@ if TYPE_CHECKING:
 
 
 def test_complex_variable_and_parameter_seeds():
-    d = madng_tpsa.Descriptor(variables=['x', 'y'], order=3, params=['k'])
+    d = madng_tpsa.Descriptor(variables=['x', 'y'], order=3, parameters=['k'])
     x = d.var('x', 1 + 2j)
     y = d.var('y', 0j)
     k = d.param('k', 3 - 4j)
@@ -36,7 +36,7 @@ def test_complex_coefficients_and_copy_are_independent():
     copied = t.copy()
     t.set_const_part(9j)
 
-    assert copied.to_dict() == pytest.approx({(0, 0): 1 + 2j, (1, 1): -3 + 4j})
+    assert copied.monomial_coeffs() == pytest.approx({(0, 0): 1 + 2j, (1, 1): -3 + 4j})
     assert t.coefficient((1, 1)) == pytest.approx(-3 + 4j)
     np.testing.assert_allclose(t.coefficient([(0, 0), (1, 1)]), [9j, -3 + 4j])
 
@@ -47,14 +47,14 @@ def test_complex_series_coefficient_state_operations():
 
     assert t.is_zero()
     assert t.is_constant()
-    assert t.max_nonzero_order == 0
+    assert t.degree == 0
 
-    t.from_dict({(0, 0): 1 + 2j, (2, 0): 3 - 4j})
+    t.update_from_coeff_dict({(0, 0): 1 + 2j, (2, 0): 3 - 4j})
 
     assert t[(2, 0)] == pytest.approx(3 - 4j)
     assert not t.is_zero()
     assert not t.is_constant()
-    assert t.max_nonzero_order == 2
+    assert t.degree == 2
     assert t.norm() == pytest.approx(abs(1 + 2j) + abs(3 - 4j))
 
     t.clear()
@@ -156,7 +156,7 @@ def test_complex_differential_algebra():
 
 
 def test_complex_derivative_resolves_variable_and_parameter_specifications():
-    d = madng_tpsa.Descriptor(variables=['x'], order=3, params=['k'], param_order=3)
+    d = madng_tpsa.Descriptor(variables=['x'], order=3, parameters=['k'], param_order=3)
     x = d.var('x', 0j)
     k = d.param('k', 0j)
     real_x = d.var('x')
@@ -177,7 +177,7 @@ def test_complex_derivative_resolves_variable_and_parameter_specifications():
 
 
 def test_complex_integrate_resolves_variable_specifications():
-    d = madng_tpsa.Descriptor(variables=['x'], order=3, params=['k'], param_order=3)
+    d = madng_tpsa.Descriptor(variables=['x'], order=3, parameters=['k'], param_order=3)
     x = d.var('x', 0j)
     real_x = d.var('x')
     f = x * x
@@ -188,7 +188,7 @@ def test_complex_integrate_resolves_variable_specifications():
 
 @pytest.mark.xfail(reason='MAD-NG integration does not support parameters')
 def test_complex_integrate_resolves_parameter_specifications():
-    d = madng_tpsa.Descriptor(variables=['x'], order=3, params=['k'], param_order=3)
+    d = madng_tpsa.Descriptor(variables=['x'], order=3, parameters=['k'], param_order=3)
     x = d.var('x', 0j)
     k = d.param('k', 0j)
     real_k = d.param('k')
@@ -383,7 +383,7 @@ def test_complex_get_and_set_reject_wrong_monomial_length_with_parameters():
     descriptor = madng_tpsa.Descriptor(
         variables=['x', 'px'],
         order=3,
-        params=['k'],
+        parameters=['k'],
     )
     x = descriptor.var('x', 0j)
     with pytest.raises(ValueError, match='Monomial must have length 3'):
@@ -396,7 +396,7 @@ def test_complex_grad_uses_full_monomials_with_parameters():
     descriptor = madng_tpsa.Descriptor(
         variables=['x', 'px'],
         order=2,
-        params=['k'],
+        parameters=['k'],
         param_order=1,
     )
     x = descriptor.var('x', 0j)
