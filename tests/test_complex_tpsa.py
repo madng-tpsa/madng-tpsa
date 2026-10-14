@@ -1,5 +1,6 @@
 """Tests for complex TPSA series."""
 
+import json
 from decimal import Decimal
 from typing import TYPE_CHECKING, cast
 
@@ -52,7 +53,7 @@ def test_complex_series_coefficient_state_operations():
     assert t.is_constant()
     assert t.degree == 0
 
-    t.update_from_coeff_dict({(0, 0): 1 + 2j, (2, 0): 3 - 4j})
+    t.update({(0, 0): 1 + 2j, (2, 0): 3 - 4j})
     assert len(t) == 2
 
     assert t[(2, 0)] == pytest.approx(3 - 4j)
@@ -113,6 +114,20 @@ def test_complex_from_ptr_interns_and_infers_descriptor():
 
     with pytest.raises(ValueError, match='A descriptor must be provided'):
         madng_tpsa.ComplexTpsa.from_ptr(ptr)
+
+
+def test_json_round_trip():
+    d = madng_tpsa.Descriptor(2, 2)
+    original = d.complex_zero()
+    original.set_const_part(1.5 + 0.2j)
+    original.set((1, 0), 2.0 + 0j)
+    original.set((0, 2), -3.0 + 1.3j)
+
+    encoded = json.dumps(original.to_dict())
+    restored = madng_tpsa.ComplexTpsa.from_dict(json.loads(encoded))
+
+    assert restored == original
+    assert restored.to_dict() == original.to_dict()
 
 
 def test_complex_arithmetic_and_mixed_real_operands():

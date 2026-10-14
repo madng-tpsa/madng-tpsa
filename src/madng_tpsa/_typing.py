@@ -10,8 +10,6 @@ if TYPE_CHECKING:
     import numpy as np
 
     from .complex_tpsa import ComplexTpsa
-
-    # Only import when checking types to avoid circular imports
     from .tpsa import Tpsa
 
     Scalar: TypeAlias = SupportsFloat | SupportsComplex

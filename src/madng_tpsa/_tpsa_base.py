@@ -238,10 +238,10 @@ class _TpsaBase(ABC, Generic[_Coefficient, _InputCoefficient]):
                 err_mess = f'Invalid monomial: {monomial}'
                 raise ValueError(err_mess)
             coeff_dict[monomial] = cls._from_json_friendly_coefficient(coefficient)
-        instance.update_from_coeff_dict(coeff_dict)
+        instance.update(coeff_dict)
         return instance
 
-    def update_from_coeff_dict(self, coeff_dict: dict[tuple[int, ...], _InputCoefficient]) -> None:
+    def update(self, coeff_dict: dict[tuple[int, ...], _InputCoefficient]) -> None:
         """Update the TPSA series from a dictionary of monomial coefficients."""
         for monomial, coeff in coeff_dict.items():
             self.set(monomial, coeff)

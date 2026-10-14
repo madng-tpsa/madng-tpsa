@@ -13,15 +13,7 @@ same Python ``Descriptor`` object for the same C descriptor pointer.
 from __future__ import annotations
 
 import warnings
-from typing import (
-    TYPE_CHECKING,
-    Any,
-    ClassVar,
-    NamedTuple,
-    SupportsComplex,
-    SupportsFloat,
-    overload,
-)
+from typing import TYPE_CHECKING, NamedTuple, SupportsComplex, overload
 from weakref import WeakValueDictionary
 
 import numpy as np
@@ -31,6 +23,7 @@ from ._cffi import ffi, lib
 
 if TYPE_CHECKING:
     from collections.abc import Iterable, Sequence
+    from typing import Any, ClassVar, SupportsFloat
 
     from .complex_tpsa import ComplexTpsa
     from .formatting import FormatStyle

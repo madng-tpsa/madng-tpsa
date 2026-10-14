@@ -1,6 +1,7 @@
 """Tests for TPSA series."""
 
 import gc
+import json
 import math
 import weakref
 
@@ -350,6 +351,20 @@ def test_from_dict_replaces_coefficients_and_round_trips():
     assert restored.to_dict() == dct
     assert restored.const_part == 0.0
     assert restored.get((1, 0)) == 0.0
+
+
+def test_json_round_trip():
+    d = madng_tpsa.Descriptor(2, 2)
+    original = d.zero()
+    original.set_const_part(1.5)
+    original.set((1, 0), 2.0)
+    original.set((0, 2), -3.0)
+
+    encoded = json.dumps(original.to_dict())
+    restored = madng_tpsa.Tpsa.from_dict(json.loads(encoded))
+
+    assert restored == original
+    assert restored.to_dict() == original.to_dict()
 
 
 def test_param_seed_and_param_grad():
