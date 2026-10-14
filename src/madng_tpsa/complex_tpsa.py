@@ -10,17 +10,18 @@ from __future__ import annotations
 import operator
 import warnings
 from numbers import Integral
-from typing import TYPE_CHECKING, Any, Literal, SupportsComplex, SupportsFloat
+from typing import TYPE_CHECKING, SupportsComplex, SupportsFloat
 
 import numpy as np
 
 from . import _cffi
 from ._cffi import ffi, lib
-from ._tpsa_base import _TpsaBase
+from ._tpsa_base import _JsonCoefficient, _TpsaBase
 from .tpsa import Tpsa
 
 if TYPE_CHECKING:
     from collections.abc import Iterable
+    from typing import Any, Literal
 
     from .descriptor import Descriptor
 
@@ -336,6 +337,19 @@ class ComplexTpsa(_TpsaBase[complex, SupportsFloat | SupportsComplex]):
 
     def __repr__(self) -> str:
         return f'ComplexTpsa({self.to_dict()!r})'
+
+    @staticmethod
+    def _to_json_friendly_coefficient(value: complex) -> list[float]:
+        """Convert a coefficient to a JSON-friendly format."""
+        return [value.real, value.imag]
+
+    @staticmethod
+    def _from_json_friendly_coefficient(value: _JsonCoefficient) -> complex:
+        """Convert a JSON-friendly coefficient back to its internal format."""
+        if not isinstance(value, list) or len(value) != 2:
+            err_mess = 'Coefficients for ComplexTpsa monomials must be a list [real, imag].'
+            raise ValueError(err_mess)
+        return complex(value[0], value[1])
 
     def __eq__(self, other: object) -> bool:
         return isinstance(other, ComplexTpsa) and self.equals(other)

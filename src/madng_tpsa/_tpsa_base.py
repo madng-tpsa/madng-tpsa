@@ -2,27 +2,30 @@
 
 from __future__ import annotations
 
+import json
 import operator
 import warnings
 from abc import ABC, abstractmethod
 from numbers import Integral
-from typing import TYPE_CHECKING, Any, Generic, TypeVar
+from typing import TYPE_CHECKING, Generic, TypeAlias, TypeVar
 
 import numpy as np
 import scipy.special
 
 from ._cffi import ffi, lib
+from .descriptor import Descriptor
 from .functions import _raise_mad_error
 
 if TYPE_CHECKING:
-    from collections.abc import Iterable, Mapping, Sequence
+    from collections.abc import Iterable, Sequence
+    from typing import Any, Self
 
-    from .descriptor import Descriptor
     from .tpsa import Tpsa
 
 
 _Coefficient = TypeVar('_Coefficient')
 _InputCoefficient = TypeVar('_InputCoefficient')
+_JsonCoefficient: TypeAlias = float | list[float]
 
 
 class _TpsaBase(ABC, Generic[_Coefficient, _InputCoefficient]):
@@ -59,6 +62,10 @@ class _TpsaBase(ABC, Generic[_Coefficient, _InputCoefficient]):
         scipy.special.erfi: operator.methodcaller('erfi'),
         scipy.special.wofz: operator.methodcaller('wofz'),
     }
+
+    @abstractmethod
+    def __init__(self, descriptor: Descriptor, truncation_order: int | None = None) -> None:
+        """Initialize the TPSA object with a descriptor and an optional truncation order."""
 
     @property
     @abstractmethod
@@ -112,6 +119,16 @@ class _TpsaBase(ABC, Generic[_Coefficient, _InputCoefficient]):
     @abstractmethod
     def set(self, monomial: Iterable[int], value: _InputCoefficient) -> None:
         """Set a monomial coefficient."""
+
+    @staticmethod
+    @abstractmethod
+    def _to_json_friendly_coefficient(value: _Coefficient) -> _JsonCoefficient:
+        """Convert a coefficient to a JSON-friendly format."""
+
+    @staticmethod
+    @abstractmethod
+    def _from_json_friendly_coefficient(value: _JsonCoefficient) -> _InputCoefficient:
+        """Convert a JSON-friendly coefficient back to its internal format."""
 
     def __getitem__(self, monomial: Iterable[int]) -> _Coefficient:
         return self.get(monomial)
@@ -176,15 +193,55 @@ class _TpsaBase(ABC, Generic[_Coefficient, _InputCoefficient]):
         message = 'Monomials must be one monomial or a two-dimensional batch'
         raise ValueError(message)
 
-    def to_dict(self, tol: float = 1e-14) -> dict[tuple[int, ...], _Coefficient]:
-        """Return this series as a monomial-to-coefficient dictionary."""
-        return self.monomial_coeffs(tol=tol)
+    def to_dict(self, tol: float = 1e-14) -> dict[str, Any]:
+        """Return a dictionary representation of the TPSA series."""
+        dct = {
+            '__class__': self.__class__.__name__,
+            'descriptor': self.descriptor.to_dict(),
+            'truncation_order': self.truncation_order,
+        }
+        for mon, coeff in self.monomial_coeffs(tol=tol).items():
+            dct[json.dumps(mon)] = self._to_json_friendly_coefficient(coeff)
+        return dct
 
-    def from_dict(self, coefficients: Mapping[tuple[int, ...], _InputCoefficient]) -> None:
-        """Replace coefficients from a monomial-to-coefficient dictionary."""
-        self.clear()
-        for monomial, coefficient in coefficients.items():
-            self.set(monomial, coefficient)
+    @classmethod
+    def from_dict(cls, dct: dict[str, Any]) -> Self:
+        """Instantiate a Tpsa from a dictionary representation."""
+        class_name = dct.get('__class__')
+        if cls.__name__ != class_name:
+            err_mess = f'Wrong dict: expected class {cls.__name__}, got {class_name}'
+            raise ValueError(err_mess)
+        descriptor = dct.get('descriptor')
+        if descriptor is None:
+            err_mess = 'Descriptor is missing in the dictionary'
+            raise ValueError(err_mess)
+        descriptor = Descriptor.from_dict(descriptor)
+        truncation_order = dct.get('truncation_order')
+        if truncation_order is None:
+            err_mess = 'Truncation order is missing in the dictionary'
+            raise ValueError(err_mess)
+        instance = cls(descriptor=descriptor, truncation_order=truncation_order)
+        instance.clear()
+        coeff_dict: dict[tuple[int, ...], _InputCoefficient] = {}
+        for monomial_json, coefficient in dct.items():
+            if monomial_json in ('__class__', 'descriptor', 'truncation_order'):
+                continue
+            try:
+                monomial = tuple(json.loads(monomial_json))
+            except json.JSONDecodeError as e:
+                raise ValueError(f'Unknown key: {monomial_json}') from e
+            dim = descriptor.num_vars + descriptor.num_params
+            if not all(tt >= 0 for tt in monomial) or len(monomial) != dim:
+                err_mess = f'Invalid monomial: {monomial}'
+                raise ValueError(err_mess)
+            coeff_dict[monomial] = cls._from_json_friendly_coefficient(coefficient)
+        instance.update_from_coeff_dict(coeff_dict)
+        return instance
+
+    def update_from_coeff_dict(self, coeff_dict: dict[tuple[int, ...], _InputCoefficient]) -> None:
+        """Update the TPSA series from a dictionary of monomial coefficients."""
+        for monomial, coeff in coeff_dict.items():
+            self.set(monomial, coeff)
 
     def _check_monomial(self, monomial: list[int]) -> None:
         """Raise if ``monomial`` is invalid for this descriptor or series order."""

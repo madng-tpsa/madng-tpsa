@@ -19,7 +19,7 @@ FormatStyle = Literal['code', 'math', 'table']
 
 def format_polynomial(tpsa: Tpsa, labels: Sequence[str], style: FormatStyle) -> object:
     """Format ``tpsa`` using ``labels`` for variables and parameters."""
-    coefficients = tpsa.to_dict()
+    coefficients = tpsa.monomial_coeffs()
     if style == 'code':
         return _format_code(coefficients, labels)
     if style == 'math':

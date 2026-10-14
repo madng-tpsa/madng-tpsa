@@ -222,6 +222,49 @@ class Descriptor:
 
         return descriptor
 
+    def to_dict(self) -> dict[str, Any]:
+        """Return a dictionary representation of the descriptor."""
+        attr = self._get_descriptor_attrs()
+        if len(self.variables) != attr.num_vars:
+            raise ValueError(f'Expected {attr.num_vars} variables, got {len(self.variables)}')
+        if len(self.parameters) != attr.num_params:
+            raise ValueError(f'Expected {attr.num_params} parameters, got {len(self.parameters)}')
+        max_orders = self.max_orders
+        var_orders = np.unique(max_orders[: self.num_vars])
+        param_orders = np.unique(max_orders[self.num_vars :])
+        if len(var_orders) == 1 and var_orders[0] == attr.order:
+            if attr.num_params > 0:
+                if len(param_orders) == 1 and param_orders[0] == attr.param_order:
+                    max_orders = None
+            else:
+                max_orders = None
+        return {
+            '__class__': self.__class__.__name__,
+            'variables': self.variables,
+            'parameters': self.parameters,
+            'order': attr.order,
+            'param_order': attr.param_order,
+            'max_orders': max_orders,
+        }
+
+    @classmethod
+    def from_dict(cls, dct) -> Descriptor:
+        """Instantiate a Descriptor from a dictionary representation."""
+        class_name = dct.get('__class__')
+        if cls.__name__ != class_name:
+            err_mess = f'Wrong dict: expected class {cls.__name__}, got {class_name}'
+            raise ValueError(err_mess)
+        for kk in ('variables', 'parameters', 'order', 'param_order', 'max_orders'):
+            if kk not in dct:
+                raise ValueError(f'Missing required key: {kk}')
+        return cls(
+            variables=dct['variables'],
+            parameters=dct['parameters'],
+            order=dct['order'],
+            param_order=dct['param_order'],
+            max_orders=dct['max_orders'],
+        )
+
     def __del__(self) -> None:
         if getattr(self, '_ptr', None) is None:
             return

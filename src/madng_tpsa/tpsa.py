@@ -10,17 +10,18 @@ from __future__ import annotations
 import operator
 import warnings
 from numbers import Integral
-from typing import TYPE_CHECKING, Any, Literal, SupportsComplex, SupportsFloat, overload
+from typing import TYPE_CHECKING, SupportsComplex, SupportsFloat, overload
 
 import numpy as np
 
 from . import _cffi
 from ._cffi import ffi, lib
-from ._tpsa_base import _TpsaBase
+from ._tpsa_base import _JsonCoefficient, _TpsaBase
 from .errors import TpsaError
 
 if TYPE_CHECKING:
     from collections.abc import Iterable
+    from typing import Any, Literal
 
     from .complex_tpsa import ComplexTpsa
     from .descriptor import Descriptor
@@ -369,6 +370,19 @@ class Tpsa(_TpsaBase[float, SupportsFloat]):
         if not lib.madng_tpsa_check_tpsa_compatibility(self._ptr, other._ptr):
             message = 'Incompatible TPSA descriptors'
             raise ValueError(message)
+
+    @staticmethod
+    def _to_json_friendly_coefficient(value: float) -> float:
+        """Convert a coefficient to a JSON-friendly format."""
+        return value
+
+    @staticmethod
+    def _from_json_friendly_coefficient(value: _JsonCoefficient) -> float:
+        """Convert a JSON-friendly coefficient back to its internal format."""
+        if not isinstance(value, (int, float)) or isinstance(value, bool):
+            err_mess = 'Expected a real coefficient.'
+            raise ValueError(err_mess)
+        return value
 
     def equals(self, other: Tpsa, tol: SupportsFloat = 0.0) -> bool:
         """Return whether this series and ``other`` have matching coefficients."""
