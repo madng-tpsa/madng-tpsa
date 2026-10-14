@@ -28,13 +28,13 @@ import numpy as np
 
 from . import _cffi
 from ._cffi import ffi, lib
-from .complex_tpsa import ComplexTpsa
-from .tpsa import Tpsa
 
 if TYPE_CHECKING:
     from collections.abc import Iterable, Sequence
 
+    from .complex_tpsa import ComplexTpsa
     from .formatting import FormatStyle
+    from .tpsa import Tpsa
 
 
 class _DescriptorAttrs(NamedTuple):
@@ -102,6 +102,7 @@ class Descriptor:
             warnings.warn(
                 'The params argument is deprecated and will be removed in a future version. '
                 'Use parameters instead.',
+                FutureWarning,
                 stacklevel=2,
             )
             parameters = params
@@ -261,6 +262,7 @@ class Descriptor:
         warnings.warn(
             'The var_labels property is deprecated and will be removed in a future version. '
             'Use the variables property instead.',
+            FutureWarning,
             stacklevel=2,
         )
         return self.variables
@@ -271,6 +273,7 @@ class Descriptor:
         warnings.warn(
             'The param_labels property is deprecated and will be removed in a future version. '
             'Use the parameters property instead.',
+            FutureWarning,
             stacklevel=2,
         )
         return self.parameters
@@ -343,11 +346,15 @@ class Descriptor:
 
     def zero(self, order: int | None = None) -> Tpsa:
         """Create a zero TPSA series on this descriptor."""
-        return Tpsa(self, order=order)
+        from .tpsa import Tpsa
+
+        return Tpsa(self, truncation_order=order)
 
     def complex_zero(self, order: int | None = None) -> ComplexTpsa:
         """Create a zero complex TPSA series on this descriptor."""
-        return ComplexTpsa(self, order=order)
+        from .complex_tpsa import ComplexTpsa
+
+        return ComplexTpsa(self, truncation_order=order)
 
     def from_monomial_coeffs(self, coeffs, *, order=None):
         """Construct a TPSA from {monomial: coefficient}."""

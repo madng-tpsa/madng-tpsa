@@ -8,6 +8,7 @@ TPSA API where operations are defined for complex series.
 from __future__ import annotations
 
 import operator
+import warnings
 from numbers import Integral
 from typing import TYPE_CHECKING, Any, Literal, SupportsComplex, SupportsFloat
 
@@ -33,13 +34,26 @@ class ComplexTpsa(_TpsaBase[complex, SupportsFloat | SupportsComplex]):
         np.conjugate: operator.methodcaller('conjugate'),
     }
 
-    def __init__(self, descriptor: Descriptor, order: int | None = None) -> None:
+    def __init__(
+        self,
+        descriptor: Descriptor,
+        truncation_order: int | None = None,
+        *,
+        order: int | None = None,  # Deprecated: use truncation_order instead of order
+    ) -> None:
         """Create a zero complex series on ``descriptor``."""
-        if order is None:
-            order = lib.mad_tpsa_dflt
+        if truncation_order is None and order is not None:
+            warnings.warn(
+                'The order property is deprecated, use truncation_order instead.',
+                FutureWarning,
+                stacklevel=2,
+            )
+            truncation_order = order
+        if truncation_order is None:
+            truncation_order = lib.mad_tpsa_dflt
 
         self._descriptor = descriptor
-        self._ptr = lib.mad_ctpsa_newd(descriptor.ptr, order)
+        self._ptr = lib.mad_ctpsa_newd(descriptor.ptr, truncation_order)
         descriptor._complex_tpsas[int(ffi.cast('uintptr_t', self._ptr))] = self
 
     @classmethod
@@ -98,11 +112,11 @@ class ComplexTpsa(_TpsaBase[complex, SupportsFloat | SupportsComplex]):
     def from_tpsa(cls, real: Tpsa, imag: Tpsa | None = None) -> ComplexTpsa:
         """Promote real and optional imaginary TPSAs to a complex TPSA."""
         if imag is None:
-            imag = real.descriptor.zero(order=real.order)
+            imag = real.descriptor.zero(order=real.truncation_order)
         else:
             real._check_compatible(imag)
 
-        result = cls(real.descriptor, order=real.order)
+        result = cls(real.descriptor, truncation_order=real.truncation_order)
         lib.mad_ctpsa_cplx(real.ptr, imag.ptr, result.ptr)
         return result
 
@@ -122,13 +136,13 @@ class ComplexTpsa(_TpsaBase[complex, SupportsFloat | SupportsComplex]):
         return self._descriptor
 
     @property
-    def order(self) -> int:
+    def truncation_order(self) -> int:
         """Maximum order stored by this series."""
         highest_non_zero_order = False
         return lib.mad_ctpsa_ord(self._ptr, highest_non_zero_order)
 
     @property
-    def max_nonzero_order(self) -> int:
+    def degree(self) -> int:
         """Highest order currently containing a non-zero coefficient."""
         highest_non_zero_order = True
         return lib.mad_ctpsa_ord(self._ptr, highest_non_zero_order)
@@ -137,6 +151,11 @@ class ComplexTpsa(_TpsaBase[complex, SupportsFloat | SupportsComplex]):
     def const_part(self) -> complex:
         """Constant coefficient of the series."""
         return self._geti(0)
+
+    @property
+    def is_complex(self) -> bool:
+        """Return True if this series is complex-valued."""
+        return True
 
     def _geti(self, index: int) -> complex:
         value = ffi.new('double _Complex*')
@@ -191,25 +210,25 @@ class ComplexTpsa(_TpsaBase[complex, SupportsFloat | SupportsComplex]):
                 coefficients[tuple(monomial_arr)] = value
         return coefficients
 
-    def homogeneous(self, order: int) -> ComplexTpsa:
-        """Return only the homogeneous part of exactly `order`."""
-        order = self._validate_order(order, self.order)
-        result = self.descriptor.complex_zero(order=order)
-        lib.mad_ctpsa_getord(self._ptr, result._ptr, order)
+    def homogeneous(self, degree: int) -> ComplexTpsa:
+        """Return only the homogeneous part of exactly `degree`."""
+        degree = self._validate_degree(degree, self.truncation_order)
+        result = self.descriptor.complex_zero(order=degree)
+        lib.mad_ctpsa_getord(self._ptr, result._ptr, degree)
         return result
 
-    def truncate(self, order: int) -> ComplexTpsa:
-        """Return the ComplexTpsa truncated through `order`."""
-        order = self._validate_order(order, self.order)
-        result = self.descriptor.complex_zero(order=order)
-        lib.mad_ctpsa_cutord(self._ptr, result._ptr, order + 1)
+    def truncate(self, degree: int) -> ComplexTpsa:
+        """Return the ComplexTpsa truncated through `degree`."""
+        degree = self._validate_degree(degree, self.truncation_order)
+        result = self.descriptor.complex_zero(order=degree)
+        lib.mad_ctpsa_cutord(self._ptr, result._ptr, degree + 1)
         return result
 
-    def clear_order(self, order: int) -> ComplexTpsa:
-        """Return a copy with homogeneous order `order` removed."""
-        order = self._validate_order(order, self.order)
+    def clear_order(self, degree: int) -> ComplexTpsa:
+        """Return a copy with homogeneous degree `degree` removed."""
+        degree = self._validate_degree(degree, self.truncation_order)
         result = self.copy()
-        lib.mad_ctpsa_clrord(result._ptr, order)
+        lib.mad_ctpsa_clrord(result._ptr, degree)
         return result
 
     def is_zero(self) -> bool:
@@ -246,7 +265,7 @@ class ComplexTpsa(_TpsaBase[complex, SupportsFloat | SupportsComplex]):
 
     def copy(self) -> ComplexTpsa:
         """Return an independent copy of this series."""
-        result = self.descriptor.complex_zero(order=self.order)
+        result = self.descriptor.complex_zero(order=self.truncation_order)
         lib.mad_ctpsa_copy(self._ptr, result._ptr)
         return result
 
@@ -272,7 +291,7 @@ class ComplexTpsa(_TpsaBase[complex, SupportsFloat | SupportsComplex]):
             variable with exactly one first-order monomial of coefficient 1. See
             :meth:`_resolve_single_monomial` for accepted inputs.
         """
-        result = self.descriptor.complex_zero()
+        result = self.descriptor.complex_zero(order=self.truncation_order)
         lib.mad_ctpsa_integ(self._ptr, result._ptr, self._integration_index(variable))
         return result
 
@@ -286,7 +305,7 @@ class ComplexTpsa(_TpsaBase[complex, SupportsFloat | SupportsComplex]):
             or a TPSA with exactly one non-constant coefficient equal to one. See
             :meth:`_resolve_single_monomial` for accepted inputs.
         """
-        result = self.descriptor.complex_zero()
+        result = self.descriptor.complex_zero(order=self.truncation_order)
         monomial = self._resolve_single_monomial(variable)
         monomial_arr = ffi.new('unsigned char[]', monomial)
         lib.mad_ctpsa_derivm(self._ptr, result._ptr, len(monomial), monomial_arr)

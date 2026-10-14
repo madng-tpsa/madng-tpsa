@@ -8,6 +8,7 @@ truncated multivariate power series.
 from __future__ import annotations
 
 import operator
+import warnings
 from numbers import Integral
 from typing import TYPE_CHECKING, Any, Literal, SupportsComplex, SupportsFloat, overload
 
@@ -43,13 +44,26 @@ class Tpsa(_TpsaBase[float, SupportsFloat]):
         ),
     }
 
-    def __init__(self, descriptor: Descriptor, order: int | None = None) -> None:
+    def __init__(
+        self,
+        descriptor: Descriptor,
+        truncation_order: int | None = None,
+        *,
+        order: int | None = None,  # Deprecated: use truncation_order instead of order
+    ) -> None:
         """Create a zero series on ``descriptor``."""
-        if order is None:
-            order = lib.mad_tpsa_dflt
+        if truncation_order is None and order is not None:
+            warnings.warn(
+                'The order property is deprecated, use truncation_order instead.',
+                FutureWarning,
+                stacklevel=2,
+            )
+            truncation_order = order
+        if truncation_order is None:
+            truncation_order = lib.mad_tpsa_dflt
 
         self._descriptor = descriptor
-        self._ptr = lib.mad_tpsa_newd(descriptor.ptr, order)
+        self._ptr = lib.mad_tpsa_newd(descriptor.ptr, truncation_order)
         descriptor._tpsas[int(ffi.cast('uintptr_t', self._ptr))] = self
 
     @classmethod
@@ -122,13 +136,13 @@ class Tpsa(_TpsaBase[float, SupportsFloat]):
         return self._descriptor
 
     @property
-    def order(self) -> int:
+    def truncation_order(self) -> int:
         """Maximum order stored by this series."""
         highest_non_zero_order = False
         return lib.mad_tpsa_ord(self._ptr, highest_non_zero_order)
 
     @property
-    def max_nonzero_order(self) -> int:
+    def degree(self) -> int:
         """Highest order currently containing a non-zero coefficient."""
         highest_non_zero_order = True
         return lib.mad_tpsa_ord(self._ptr, highest_non_zero_order)
@@ -137,6 +151,11 @@ class Tpsa(_TpsaBase[float, SupportsFloat]):
     def const_part(self) -> float:
         """Constant coefficient of the series."""
         return lib.mad_tpsa_geti(self._ptr, 0)
+
+    @property
+    def is_complex(self) -> bool:
+        """Return True if this series is complex-valued."""
+        return False
 
     def get(self, monomial: Iterable[int]) -> float:
         """Return the coefficient for ``monomial``."""
@@ -176,25 +195,25 @@ class Tpsa(_TpsaBase[float, SupportsFloat]):
 
         return coeffs
 
-    def homogeneous(self, order: int) -> Tpsa:
-        """Return only the homogeneous part of exactly `order`."""
-        order = self._validate_order(order, self.order)
-        result = self.descriptor.zero(order=order)
-        lib.mad_tpsa_getord(self._ptr, result._ptr, order)
+    def homogeneous(self, degree: int) -> Tpsa:
+        """Return only the homogeneous part of exactly `degree`."""
+        degree = self._validate_degree(degree, self.truncation_order)
+        result = self.descriptor.zero(order=degree)
+        lib.mad_tpsa_getord(self._ptr, result._ptr, degree)
         return result
 
-    def truncate(self, order: int) -> Tpsa:
-        """Return the TPSA truncated through `order`."""
-        order = self._validate_order(order, self.order)
-        result = self.descriptor.zero(order=order)
-        lib.mad_tpsa_cutord(self._ptr, result._ptr, order + 1)
+    def truncate(self, degree: int) -> Tpsa:
+        """Return the TPSA truncated through `degree`."""
+        degree = self._validate_degree(degree, self.truncation_order)
+        result = self.descriptor.zero(order=degree)
+        lib.mad_tpsa_cutord(self._ptr, result._ptr, degree + 1)
         return result
 
-    def clear_order(self, order: int) -> Tpsa:
-        """Return a copy with homogeneous order `order` removed."""
-        order = self._validate_order(order, self.order)
+    def clear_order(self, degree: int) -> Tpsa:
+        """Return a copy with homogeneous order `degree` removed."""
+        degree = self._validate_degree(degree, self.truncation_order)
         result = self.copy()
-        lib.mad_tpsa_clrord(result._ptr, order)
+        lib.mad_tpsa_clrord(result._ptr, degree)
         return result
 
     def is_zero(self) -> bool:
@@ -232,7 +251,7 @@ class Tpsa(_TpsaBase[float, SupportsFloat]):
 
     def copy(self) -> Tpsa:
         """Return an independent copy of this series."""
-        result = self.descriptor.zero(order=self.order)
+        result = self.descriptor.zero(order=self.truncation_order)
         lib.mad_tpsa_copy(self._ptr, result._ptr)
         return result
 
@@ -247,7 +266,7 @@ class Tpsa(_TpsaBase[float, SupportsFloat]):
             :meth:`_resolve_single_monomial` for accepted inputs.
         """
         variable_index = self._integration_index(variable)
-        result = self.descriptor.zero()
+        result = self.descriptor.zero(order=self.truncation_order)
         lib.mad_tpsa_integ(self._ptr, result._ptr, variable_index)
         return result
 
@@ -261,8 +280,7 @@ class Tpsa(_TpsaBase[float, SupportsFloat]):
             or a TPSA with exactly one non-constant coefficient equal to one. See
             :meth:`_resolve_single_monomial` for accepted inputs.
         """
-        result = self.descriptor.zero()
-
+        result = self.descriptor.zero(order=self.truncation_order)
         monomial = self._resolve_single_monomial(variable)
         monomial_arr = ffi.new('unsigned char[]', monomial)
         lib.mad_tpsa_derivm(self._ptr, result._ptr, len(monomial), monomial_arr)

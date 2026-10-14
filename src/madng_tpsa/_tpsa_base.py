@@ -3,6 +3,7 @@
 from __future__ import annotations
 
 import operator
+import warnings
 from abc import ABC, abstractmethod
 from numbers import Integral
 from typing import TYPE_CHECKING, Any, Generic, TypeVar
@@ -70,9 +71,39 @@ class _TpsaBase(ABC, Generic[_Coefficient, _InputCoefficient]):
         """Descriptor that defines the TPSA space."""
 
     @property
-    @abstractmethod
     def order(self) -> int:
+        """Backwards-compatible property for truncation_order (deprecated)."""
+        warnings.warn(
+            'The order property is deprecated, use truncation_order instead.',
+            FutureWarning,
+            stacklevel=2,
+        )
+        return self.truncation_order
+
+    @property
+    @abstractmethod
+    def truncation_order(self) -> int:
         """Maximum order stored by this series."""
+
+    @property
+    def max_nonzero_order(self) -> int:
+        """Backwards-compatible property for degree (deprecated)."""
+        warnings.warn(
+            'The max_nonzero_order property is deprecated, use degree instead.',
+            FutureWarning,
+            stacklevel=2,
+        )
+        return self.degree
+
+    @property
+    @abstractmethod
+    def degree(self) -> int:
+        """Highest order currently containing a non-zero coefficient."""
+
+    @property
+    @abstractmethod
+    def is_complex(self) -> bool:
+        """Return True if the series is complex."""
 
     @abstractmethod
     def get(self, monomial: Iterable[int]) -> _Coefficient:
@@ -119,15 +150,15 @@ class _TpsaBase(ABC, Generic[_Coefficient, _InputCoefficient]):
         return _raise_mad_error()
 
     @staticmethod
-    def _validate_order(order: object, max_order: int) -> int:
-        if not isinstance(order, Integral) or isinstance(order, bool):
-            message = 'order must be an integer'
+    def _validate_degree(degree: object, max_order: int) -> int:
+        if not isinstance(degree, Integral) or isinstance(degree, bool):
+            message = 'degree must be an integer'
             raise TypeError(message)
-        order = int(order)
-        if not 0 <= order <= max_order:
-            message = f'order must satisfy 0 <= order <= {max_order}'
+        degree = int(degree)
+        if not 0 <= degree <= max_order:
+            message = f'degree must satisfy 0 <= degree <= {max_order}'
             raise ValueError(message)
-        return order
+        return degree
 
     def coefficient(
         self,
@@ -159,8 +190,8 @@ class _TpsaBase(ABC, Generic[_Coefficient, _InputCoefficient]):
         """Raise if ``monomial`` is invalid for this descriptor or series order."""
         if len(monomial) != self.descriptor.monomial_length:
             raise ValueError(f'Monomial must have length {self.descriptor.monomial_length}')
-        if sum(monomial) > self.order:
-            message = f'Monomial order exceeds TPSA order {self.order}'
+        if sum(monomial) > self.truncation_order:
+            message = f'Monomial degree exceeds TPSA order {self.truncation_order}'
             raise ValueError(message)
         if not self.descriptor.is_valid_monomial(monomial):
             message = 'Monomial is not valid for this descriptor'
@@ -208,7 +239,7 @@ class _TpsaBase(ABC, Generic[_Coefficient, _InputCoefficient]):
             raise ValueError(f'Monomial must have length {length}')
 
         if sum(monomial_orders) <= 0:
-            message = 'Monomial must have a positive order'
+            message = 'Monomial must have a positive degree'
             raise ValueError(message)
 
         if not self.descriptor.is_valid_monomial(monomial_orders):
