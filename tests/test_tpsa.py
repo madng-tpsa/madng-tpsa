@@ -19,16 +19,25 @@ def test_var_is_an_identity_seed():
     assert t.descriptor is d
     assert t.truncation_order == d.order
     assert t.degree == 1
+    assert len(t) == 2
 
 
 def test_vars_unpack_all_identity_seeds():
     d = madng_tpsa.Descriptor(4, 2)
     x, px, y, py = d.vars()
+    assert len(x) == 1
+    assert len(px) == 1
+    assert len(y) == 1
+    assert len(py) == 1
 
     assert x.grad() == [1, 0, 0, 0]
     assert px.grad() == [0, 1, 0, 0]
     assert y.grad() == [0, 0, 1, 0]
     assert py.grad() == [0, 0, 0, 1]
+    assert len(x.grad()) == 4
+    assert len(px.grad()) == 4
+    assert len(y.grad()) == 4
+    assert len(py.grad()) == 4
 
 
 def test_var_order_uses_descriptor_order_by_default():
@@ -116,6 +125,7 @@ def test_arithmetic_carries_derivatives():
     assert f.degree == 2
     assert f.grad() == pytest.approx([2 * 0.5, 2.0])
     assert f.monomial_coeffs()[(2, 0)] == pytest.approx(1.0)
+    assert len(f) == 4
 
     # scalars mix on either side, and the reflected ops are not the mirrored ones
     assert (3.0 - x).const_part == pytest.approx(2.5)

@@ -25,6 +25,9 @@ def test_complex_variable_and_parameter_seeds():
     assert y.grad() == pytest.approx([0, 1])
     assert k.const_part == pytest.approx(3 - 4j)
     assert k.param_grad() == pytest.approx([1])
+    assert len(x) == 2
+    assert len(y) == 1
+    assert len(k) == 2
 
 
 def test_complex_coefficients_and_copy_are_independent():
@@ -50,6 +53,7 @@ def test_complex_series_coefficient_state_operations():
     assert t.degree == 0
 
     t.update_from_coeff_dict({(0, 0): 1 + 2j, (2, 0): 3 - 4j})
+    assert len(t) == 2
 
     assert t[(2, 0)] == pytest.approx(3 - 4j)
     assert not t.is_zero()

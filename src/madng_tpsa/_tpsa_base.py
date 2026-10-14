@@ -136,6 +136,9 @@ class _TpsaBase(ABC, Generic[_Coefficient, _InputCoefficient]):
     def __setitem__(self, monomial: Iterable[int], value: _InputCoefficient) -> None:
         self.set(monomial, value)
 
+    def __len__(self) -> int:
+        return len(self.monomial_coeffs())
+
     def __array_ufunc__(self, ufunc: Any, method: str, *inputs: Any, **kwargs: Any) -> Any:
         """Map supported NumPy ufunc calls to the matching TPSA operations."""
         if method != '__call__' or kwargs:
