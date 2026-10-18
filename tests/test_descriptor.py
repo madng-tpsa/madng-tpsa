@@ -15,7 +15,7 @@ def test_descriptor_is_reused():
     assert a is b  # GTPSA dedups equivalent descriptors
     assert a != madng_tpsa.Descriptor(6, 3)
     assert a != madng_tpsa.Descriptor(4, 2)
-    assert a in madng_tpsa.Descriptor._instances_by_ptr.values()
+    assert a._owner in madng_tpsa.Descriptor._owners_by_ptr.values()
 
 
 @pytest.mark.parametrize('nv, order', [(1, 1), (2, 3), (6, 4)])
@@ -129,9 +129,9 @@ def test_monomial_index_of_a_low_order_series_is_still_readable():
 
 def test_descriptor_instances_and_from_ptr():
     d = madng_tpsa.Descriptor(6, 4)
-    live = list(madng_tpsa.Descriptor._instances_by_ptr.values())
-    assert d in live
-    assert all(isinstance(x, madng_tpsa.Descriptor) for x in live)
+    live = list(madng_tpsa.Descriptor._owners_by_ptr.values())
+    assert d._owner in live
+    assert all(isinstance(x, madng_tpsa.descriptor._NativeDescriptor) for x in live)
     # the same C pointer always wraps to the same Python object
     assert madng_tpsa.Descriptor.from_ptr(d.ptr) is d
 
@@ -207,16 +207,6 @@ def test_descriptor_unknown_labels_raise_key_error():
         d.var('y')
     with pytest.raises(KeyError):
         d.param('q')
-
-
-def test_descriptor_reuses_existing_labels_and_warns_on_mismatch():
-    d = madng_tpsa.Descriptor(variables=['x', 'y'], order=2)
-
-    with pytest.warns(UserWarning, match='different variable labels'):
-        same = madng_tpsa.Descriptor(variables=['a', 'b'], order=2)
-
-    assert same is d
-    assert same.variables == ('x', 'y')
 
 
 def test_tpsa_keeps_descriptor_alive():
