@@ -472,11 +472,11 @@ class Descriptor:
         """Create a constant TPSA series on this descriptor."""
         if isinstance(value, SupportsComplex):
             t = self.complex_zero()
-            t.set_const_part(value)
+            t.const_part = value
             return t
 
         t = self.zero()
-        t.set_const_part(value)
+        t.const_part = value
         return t
 
     def zero(self, order: int | None = None) -> Tpsa:

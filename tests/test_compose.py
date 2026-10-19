@@ -107,7 +107,7 @@ def test_compose_mixed_real_and_complex() -> None:
     x, px = d.vars()
     left = TpsaTensor([x + 1, px])
     right = TpsaMap([x, px]).to_complex()
-    right[0].set_const_part(2 + 1j)
+    right[0].const_part = 2 + 1j
     result = left.compose(right)
     assert result.is_complex
     np.testing.assert_allclose(result.evaluate([3, 4]), [6 + 1j, 4])

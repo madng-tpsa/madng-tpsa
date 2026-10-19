@@ -34,11 +34,11 @@ def test_complex_variable_and_parameter_seeds():
 def test_complex_coefficients_and_copy_are_independent():
     d = madng_tpsa.Descriptor(2, 2)
     t = d.complex_zero()
-    t.set_const_part(1 + 2j)
+    t.const_part = 1 + 2j
     t[(1, 1)] = -3 + 4j
 
     copied = t.copy()
-    t.set_const_part(9j)
+    t.const_part = 9j
 
     assert copied.monomial_coeffs() == pytest.approx({(0, 0): 1 + 2j, (1, 1): -3 + 4j})
     assert t.coefficient((1, 1)) == pytest.approx(-3 + 4j)
@@ -143,7 +143,7 @@ def test_complex_raise_ambiguous_labelled_descriptors():
 def test_json_round_trip():
     d = madng_tpsa.Descriptor(2, 2)
     original = d.complex_zero()
-    original.set_const_part(1.5 + 0.2j)
+    original.const_part = 1.5 + 0.2j
     original.set((1, 0), 2.0 + 0j)
     original.set((0, 2), -3.0 + 1.3j)
 

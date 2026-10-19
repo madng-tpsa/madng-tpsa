@@ -17,8 +17,8 @@ if TYPE_CHECKING:
     from .formatting import FormatStyle
 
 import operator
-import warnings
 from numbers import Integral
+from warnings import warn
 
 import numpy as np
 
@@ -55,7 +55,7 @@ class Tpsa(_TpsaBase[float, SupportsFloat]):
     ) -> None:
         """Create a zero series on ``descriptor``."""
         if truncation_order is None and order is not None:
-            warnings.warn(
+            warn(
                 'The order property is deprecated, use truncation_order instead.',
                 FutureWarning,
                 stacklevel=2,
@@ -162,6 +162,11 @@ class Tpsa(_TpsaBase[float, SupportsFloat]):
         """Constant coefficient of the series."""
         return lib.mad_tpsa_geti(self._ptr, 0)
 
+    @const_part.setter
+    def const_part(self, value: SupportsFloat) -> None:
+        """Set the constant coefficient."""
+        lib.mad_tpsa_seti(self._ptr, 0, 0.0, float(value))
+
     def get(self, monomial: Iterable[int]) -> float:
         """Return the coefficient for ``monomial``."""
         monomial_orders = list(monomial)
@@ -170,7 +175,12 @@ class Tpsa(_TpsaBase[float, SupportsFloat]):
         return lib.mad_tpsa_getm(self._ptr, len(monomial_orders), monomial_arr)
 
     def set_const_part(self, value: SupportsFloat) -> None:
-        """Set the constant coefficient."""
+        """Set the constant coefficient (deprecated)."""
+        warn(
+            "The method 'set_const_part' is deprecated; use the setter for 'const_part' instead.",
+            FutureWarning,
+            stacklevel=2,
+        )
         lib.mad_tpsa_seti(self._ptr, 0, 0.0, float(value))
 
     def set(self, monomial: Iterable[int], value: SupportsFloat) -> None:

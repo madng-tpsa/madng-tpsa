@@ -162,9 +162,9 @@ def _protected_call(family: str, function: Any, *, is_complex: bool, args: Any) 
 #         if converted.imag != 0:
 #             err_mess = 'Cannot assign a complex constant to a real TPSA map'
 #             raise TypeError(err_mess)
-#         component.set_const_part(converted.real)
+#         component.const_part = converted.real
 #     else:
-#         component.set_const_part(converted)
+#         component.const_part = converted
 
 
 # def _set_series_coefficient(component: TpsaSeries, monomial, value: Scalar) -> None:

@@ -17,6 +17,9 @@ if TYPE_CHECKING:
     from .tpsa import Tpsa
 
 from collections.abc import Sequence
+from warnings import warn
+
+import numpy as np
 
 from ._cffi import ffi
 from ._typing import TpsaSeriesT
@@ -282,6 +285,19 @@ class TpsaMap(TpsaTensor[TpsaSeriesT]):
     def pointer_array_with_params(self) -> ffi.CData:
         """Return a full C array of pointers to the map's TPSAs, including parameters."""
         return ffi.new('void*[]', [t.ptr for t in (*self.flat, *self._params)])
+
+    def set_const_part(self, values: Sequence[float] | np.ndarray) -> None:
+        """Set the order-0 part (orbit) of each coordinate from a length-6 array (deprecated)."""
+        warn(
+            "The method 'set_const_part' is deprecated; use the setter for 'const_part' instead.",
+            FutureWarning,
+            stacklevel=2,
+        )
+        v = np.asarray(values, dtype=float).reshape(-1)
+        if v.size != 6:
+            raise ValueError(f'const_part must be length 6, got {v.size}')
+        for c, x in zip(self.coords, v, strict=True):
+            c.set_const_part(x)
 
     # def jacobian_operator(self) -> TpsaTensor[TpsaSeriesT]:
     #     """Return the full TPSA-valued Jacobian."""

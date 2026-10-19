@@ -30,7 +30,7 @@ def _components(d: Descriptor, n: int) -> list[Tpsa]:
     result: list[Tpsa] = []
     for i in range(n):
         t = d.zero()
-        t.set_const_part(float(i + 1))
+        t.const_part = float(i + 1)
         result.append(t)
     return result
 
@@ -231,7 +231,7 @@ def test_copy_of_partial_view_is_independent_and_compact() -> None:
     assert copied._offset == 0
     assert len(copied._flat) == 3
     assert copied[0] is not view[0]
-    copied.flat[0].set_const_part(42)
+    copied.flat[0].const_part = 42
     assert view[0].const_part != 42
 
 
@@ -245,7 +245,7 @@ def test_to_complex_returns_deep_copy_even_when_already_complex(*, already_compl
     assert promoted.is_complex
     assert all(isinstance(t, ComplexTpsa) for t in promoted.flat)
     assert all(a is not b for a, b in zip(tensor.flat, promoted.flat, strict=True))
-    promoted.flat[0].set_const_part(20 + 5j)
+    promoted.flat[0].const_part = 20 + 5j
     assert tensor[0].const_part != 20 + 5j
 
 
@@ -400,7 +400,7 @@ def test_evaluate_complex_tensor() -> None:
     d = _descriptor()
     x, px = d.vars()
     tensor = TpsaTensor([x + px, x * px]).to_complex()
-    tensor.flat[0].set_const_part(1 + 1j)
+    tensor.flat[0].const_part = 1 + 1j
     np.testing.assert_allclose(tensor.evaluate([2.0, 3.0]), [6 + 1j, 6])
 
 
@@ -468,7 +468,7 @@ def test_compose_rank_two_with_params_and_complex_substitution() -> None:
     k = d.param('tensor_k')
     outer = TpsaTensor([[x + k, px], [x * px, x * x]])
     inner = TpsaMap((x, px)).to_complex()
-    inner.flat[0].set_const_part(1 + 1j)
+    inner.flat[0].const_part = 1 + 1j
 
     result = outer.compose(inner)
     assert isinstance(result, TpsaTensor)

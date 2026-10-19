@@ -174,7 +174,7 @@ def test_copy_is_map_with_independent_components() -> None:
     assert copied.descriptor is d
     assert copied.coord_names == d.variables
     assert all(a is not b for a, b in zip(m.flat, copied.flat, strict=True))
-    copied.flat[0].set_const_part(12)
+    copied.flat[0].const_part = 12
     assert m.flat[0].const_part == 0
 
 
@@ -187,7 +187,7 @@ def test_to_complex_keeps_map_type_and_is_independent() -> None:
     assert c.is_complex
     assert c.coord_names == d.variables
     assert all(isinstance(t, ComplexTpsa) for t in c.flat)
-    c.flat[0].set_const_part(1 + 2j)
+    c.flat[0].const_part = 1 + 2j
     assert not m.is_complex
     np.testing.assert_allclose(c.evaluate((3, 4), parameters=(5,)), (4 + 2j, 4))
 

@@ -256,7 +256,7 @@ def test_copy_is_independent():
     d = madng_tpsa.Descriptor(1, 1)
     x = d.var(1, 1.0)
     c = x.copy()
-    x.set_const_part(9.0)
+    x.const_part = 9.0
     assert (c.const_part, x.const_part) == (1.0, 9.0)
 
 
@@ -278,7 +278,7 @@ def test_clear_sets_series_to_zero_in_place():
 def test_set_and_get_coefficients():
     d = madng_tpsa.Descriptor(2, 2)
     t = d.zero()
-    t.set_const_part(1.5)
+    t.const_part = 1.5
     t.set((1, 1), -2.0)
     t[(2, 0)] = 3.0
     assert t.const_part == 1.5
@@ -341,7 +341,7 @@ def test_to_dict_uses_monomial_coeffs():
 def test_from_dict_replaces_coefficients_and_round_trips():
     d = madng_tpsa.Descriptor(2, 2)
     original = d.zero()
-    original.set_const_part(1.5)
+    original.const_part = 1.5
     original.set((1, 0), 2.0)
     original.set((0, 2), -3.0)
 
@@ -358,7 +358,7 @@ def test_from_dict_replaces_coefficients_and_round_trips():
 def test_json_round_trip():
     d = madng_tpsa.Descriptor(2, 2)
     original = d.zero()
-    original.set_const_part(1.5)
+    original.const_part = 1.5
     original.set((1, 0), 2.0)
     original.set((0, 2), -3.0)
 

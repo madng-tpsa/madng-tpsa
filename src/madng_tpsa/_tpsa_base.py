@@ -263,6 +263,11 @@ class _TpsaBase(ABC, Generic[_Coefficient, _InputCoefficient]):
     def const_part(self) -> _Coefficient:
         """Return the constant coefficient."""
 
+    @const_part.setter
+    @abstractmethod
+    def const_part(self, value: _InputCoefficient) -> None:
+        """Return the constant coefficient."""
+
     @abstractmethod
     def set_const_part(self, value: _InputCoefficient) -> None:
         """Set the constant coefficient."""

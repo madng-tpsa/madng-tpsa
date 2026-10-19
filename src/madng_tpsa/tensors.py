@@ -422,7 +422,7 @@ class TpsaTensor(Generic[TpsaSeriesT]):
                 raise ValueError(err_mess)
             scalars = tuple(float(complex(v).real) for v in scalars)
         for tpsa, scalar in zip(self.flat, scalars, strict=True):
-            tpsa.set_const_part(scalar)
+            tpsa.const_part = scalar
 
     @property
     def is_complex(self) -> bool:
