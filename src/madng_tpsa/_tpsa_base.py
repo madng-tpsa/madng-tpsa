@@ -8,6 +8,8 @@ if TYPE_CHECKING:
     from collections.abc import Iterable, Mapping, Sequence
     from typing import Any, Self
 
+    from numpy.typing import DTypeLike
+
     from .tpsa import Tpsa
 
 import json
@@ -434,3 +436,19 @@ class _TpsaBase(ABC, Generic[_Coefficient, _InputCoefficient]):
         if not self._compatible(other):
             err_mess = 'TPSAs have incompatible descriptors or coordinate labels'
             raise ValueError(err_mess)
+
+    def __array__(
+        self,
+        dtype: DTypeLike | None = None,
+        copy: bool | None = None,  # noqa: FBT001
+    ) -> np.ndarray:
+        """Represent this TPSA as a scalar object in a NumPy array."""
+        if dtype is not None and np.dtype(dtype) != np.dtype(object):
+            err_mess = 'TPSAs require an object-dtype NumPy array'
+            raise TypeError(err_mess)
+        if copy is False:
+            err_mess = 'Cannot provide a zero-copy NumPy representation'
+            raise ValueError(err_mess)
+        result = np.empty((), dtype=object)
+        result[()] = self
+        return result
