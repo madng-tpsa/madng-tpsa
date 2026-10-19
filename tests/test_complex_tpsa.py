@@ -96,7 +96,9 @@ def test_from_tpsa_promotes_real_tpsas():
     assert combined.real().equals(real)
     assert combined.imag().equals(imag)
 
-    with pytest.raises(ValueError, match='Incompatible TPSA descriptors'):
+    with pytest.raises(
+        ValueError, match='TPSAs have incompatible descriptors or coordinate labels'
+    ):
         madng_tpsa.ComplexTpsa.from_tpsa(real, madng_tpsa.Descriptor(2, 2).var(1))
 
 
@@ -112,8 +114,30 @@ def test_complex_from_ptr_interns_and_infers_descriptor():
     assert owned.ptr == ptr
     assert owned.descriptor is d
 
-    with pytest.raises(ValueError, match='A descriptor must be provided'):
-        madng_tpsa.ComplexTpsa.from_ptr(ptr)
+    assert madng_tpsa.ComplexTpsa.from_ptr(t.ptr) is t
+    assert madng_tpsa.ComplexTpsa.from_ptr(owned.ptr) is owned
+
+    ptr = lib.mad_ctpsa_newd(d.ptr, d.order)
+    try:
+        with pytest.raises(ValueError, match='No live'):
+            madng_tpsa.ComplexTpsa.from_ptr(ptr)
+    finally:
+        lib.mad_ctpsa_del(ptr)
+
+
+def test_complex_raise_ambiguous_labelled_descriptors():
+    d1 = madng_tpsa.Descriptor(variables=('x',), order=2)
+    d2 = madng_tpsa.Descriptor(variables=('y',), order=2)
+
+    assert d1.ptr == d2.ptr
+    assert d1 is not d2
+
+    ptr = lib.mad_ctpsa_newd(d1.ptr, d1.order)
+    try:
+        with pytest.raises(ValueError, match='ambiguous|Ambiguous'):
+            madng_tpsa.ComplexTpsa.from_ptr(ptr, owns=True)
+    finally:
+        lib.mad_ctpsa_del(ptr)
 
 
 def test_json_round_trip():
@@ -298,7 +322,9 @@ def test_complex_operations_reject_incompatible_descriptors():
     x = madng_tpsa.Descriptor(1, 2).var(1, 0j)
     y = madng_tpsa.Descriptor(2, 2).var(1, 0j)
 
-    with pytest.raises(ValueError, match='Incompatible TPSA descriptors'):
+    with pytest.raises(
+        ValueError, match='TPSAs have incompatible descriptors or coordinate labels'
+    ):
         x + y
 
 
@@ -349,7 +375,9 @@ def test_tpsa_arithmetic_dunder_dispatches_are_exhaustive():
         d.zero().__rtruediv__(1)
     with pytest.raises(TypeError):
         float(cast('Any', t))
-    with pytest.raises(ValueError, match='Incompatible TPSA descriptors'):
+    with pytest.raises(
+        ValueError, match='TPSAs have incompatible descriptors or coordinate labels'
+    ):
         t.__pow__(madng_tpsa.Descriptor(1, 3).constant(2.0))
 
 

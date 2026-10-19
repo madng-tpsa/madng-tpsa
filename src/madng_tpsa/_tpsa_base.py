@@ -2,12 +2,19 @@
 
 from __future__ import annotations
 
+from typing import TYPE_CHECKING, Generic, TypeAlias, TypeVar, cast
+
+if TYPE_CHECKING:
+    from collections.abc import Iterable, Mapping, Sequence
+    from typing import Any, Self
+
+    from .tpsa import Tpsa
+
 import json
 import operator
 import warnings
 from abc import ABC, abstractmethod
 from numbers import Integral
-from typing import TYPE_CHECKING, Generic, TypeAlias, TypeVar
 
 import numpy as np
 import scipy.special
@@ -16,16 +23,48 @@ from ._cffi import ffi, lib
 from .descriptor import Descriptor
 from .functions import _raise_mad_error
 
-if TYPE_CHECKING:
-    from collections.abc import Iterable, Sequence
-    from typing import Any, Self
-
-    from .tpsa import Tpsa
-
-
 _Coefficient = TypeVar('_Coefficient')
 _InputCoefficient = TypeVar('_InputCoefficient')
 _JsonCoefficient: TypeAlias = float | list[float]
+
+
+def _match_labels(
+    old_labels: Sequence[str],
+    new_labels: Sequence[str],
+    rename: Mapping[str, str] | None = None,
+    *,
+    offset: int = 0,
+) -> list[int | None]:
+    """Map old indices to new indices, or None if absent.
+
+    if res = _match_labels(old, new) then old = [new[i] for i in res]
+    """
+    rename = dict(rename or {})
+    if len(set(old_labels)) != len(old_labels):
+        err_mess = 'Old labels are not unique'
+        raise ValueError(err_mess)
+    if len(set(new_labels)) != len(new_labels):
+        err_mess = 'New labels are not unique'
+        raise ValueError(err_mess)
+
+    unknown = rename.keys() - set(old_labels)
+    if unknown:
+        err_mess = f'Unknown source labels: {unknown}'
+        raise ValueError(err_mess)
+
+    lookup = {name: i + offset for i, name in enumerate(new_labels)}
+    for target in rename.values():
+        if target not in lookup:
+            err_mess = f'Unknown target label: {target}'
+            raise ValueError(err_mess)
+
+    positions = [lookup.get(rename.get(name, name)) for name in old_labels]
+    present = [p for p in positions if p is not None]
+    if len(set(present)) != len(present):
+        err_mess = 'Multiple labels map to the same target'
+        raise ValueError(err_mess)
+
+    return positions
 
 
 class _TpsaBase(ABC, Generic[_Coefficient, _InputCoefficient]):
@@ -67,6 +106,116 @@ class _TpsaBase(ABC, Generic[_Coefficient, _InputCoefficient]):
     def __init__(self, descriptor: Descriptor, truncation_order: int | None = None) -> None:
         """Initialize the TPSA object with a descriptor and an optional truncation order."""
 
+    def to_dict(self, tol: float = 1e-14) -> dict[str, Any]:
+        """Return a dictionary representation of the TPSA series."""
+        dct = {
+            '__class__': self.__class__.__name__,
+            'descriptor': self.descriptor.to_dict(),
+            'truncation_order': self.truncation_order,
+        }
+        for mon, coeff in self.monomial_coeffs(tol=tol).items():
+            dct[json.dumps(mon)] = self._to_json_friendly_coefficient(coeff)
+        return dct
+
+    @classmethod
+    def from_dict(cls, dct: dict[str, Any], descriptor: Descriptor | None = None) -> Self:
+        """Instantiate a Tpsa from a dictionary representation."""
+        class_name = dct.get('__class__')
+        if cls.__name__ != class_name:
+            err_mess = f'Wrong dict: expected class {cls.__name__}, got {class_name}'
+            raise ValueError(err_mess)
+        desc = dct.get('descriptor')
+        if desc is None:
+            if descriptor is None:
+                err_mess = 'Descriptor is missing in the dictionary. Please provide it '
+                err_mess += "explicitly with the argument 'Descriptor'."
+                raise ValueError(err_mess)
+        else:
+            desc = Descriptor.from_dict(desc)
+            if descriptor is None:
+                descriptor = desc
+            elif desc is not descriptor:
+                err_mess = 'Provided Descriptor does not agree with descriptor in dict.'
+                raise ValueError(err_mess)
+
+        truncation_order = dct.get('truncation_order')
+        if truncation_order is None:
+            err_mess = 'Truncation order is missing in the dictionary'
+            raise ValueError(err_mess)
+        instance = cls(descriptor=descriptor, truncation_order=truncation_order)
+        instance.clear()
+        coeff_dict: dict[tuple[int, ...], _InputCoefficient] = {}
+        for monomial_json, coefficient in dct.items():
+            if monomial_json in ('__class__', 'descriptor', 'truncation_order'):
+                continue
+            try:
+                monomial = json.loads(monomial_json)
+            except json.JSONDecodeError as e:
+                err_mess = f'Unknown key: {monomial_json}'
+                raise ValueError(err_mess) from e
+            if not descriptor.is_valid_monomial(monomial):
+                err_mess = f'Invalid monomial: {monomial}'
+                raise ValueError(err_mess)
+            monomial = tuple(monomial)
+            dim = descriptor.num_vars + descriptor.num_params
+            if not all(tt >= 0 for tt in monomial) or len(monomial) != dim:
+                err_mess = f'Invalid monomial: {monomial}'
+                raise ValueError(err_mess)
+            coeff_dict[monomial] = cls._from_json_friendly_coefficient(coefficient)
+        instance.update(coeff_dict)
+        return instance
+
+    def to_descriptor(
+        self,
+        descriptor: Descriptor,
+        *,
+        variable_map: Mapping[str, str] | None = None,
+        parameter_map: Mapping[str, str] | None = None,
+        truncate: bool = False,
+    ) -> Self:
+        """Convert this TPSA to a different descriptor.
+
+        If a monomial exceeds a destination order limit, it is discarded
+        if truncate=True; otherwise an error is raised. If a variable or
+        parameter is absent from the destination descriptor and the
+        polynomial depends on it, conversion raises a ValueError, even
+        when truncate=True.
+        """
+        old = self.descriptor
+        if descriptor is old and not variable_map and not parameter_map:
+            return self.copy()
+
+        positions = [
+            *_match_labels(old.variables, descriptor.variables, variable_map),
+            *_match_labels(
+                old.parameters, descriptor.parameters, parameter_map, offset=descriptor.num_vars
+            ),
+        ]
+
+        target_order = min(self.truncation_order, descriptor.order)
+        result = type(self)(descriptor, truncation_order=target_order)
+
+        for monomial, coefficient in self.monomial_coeffs(tol=0).items():
+            exponents = [0] * descriptor.monomial_length
+            for power, target in zip(monomial, positions, strict=True):
+                if target is None:
+                    if power:
+                        err_mess = 'Cannot remove a variable or parameter on which the '
+                        err_mess += 'TPSA depends'
+                        raise ValueError(err_mess)
+                else:
+                    exponents[target] = power
+
+            # Check allocated order and all descriptor restrictions.
+            if not descriptor.is_valid_monomial(exponents):
+                if truncate:
+                    continue
+                err_mess = f'New descriptor cannot represent {tuple(exponents)}'
+                raise ValueError(err_mess)
+            result.set(exponents, cast('_InputCoefficient', coefficient))
+
+        return result
+
     @property
     @abstractmethod
     def ptr(self) -> Any:
@@ -107,11 +256,6 @@ class _TpsaBase(ABC, Generic[_Coefficient, _InputCoefficient]):
     def degree(self) -> int:
         """Highest order currently containing a non-zero coefficient."""
 
-    @property
-    @abstractmethod
-    def is_complex(self) -> bool:
-        """Return True if the series is complex."""
-
     @abstractmethod
     def get(self, monomial: Iterable[int]) -> _Coefficient:
         """Return a monomial coefficient."""
@@ -119,6 +263,10 @@ class _TpsaBase(ABC, Generic[_Coefficient, _InputCoefficient]):
     @abstractmethod
     def set(self, monomial: Iterable[int], value: _InputCoefficient) -> None:
         """Set a monomial coefficient."""
+
+    @abstractmethod
+    def copy(self) -> Self:
+        """Return an independent copy of this TPSA."""
 
     @staticmethod
     @abstractmethod
@@ -195,51 +343,6 @@ class _TpsaBase(ABC, Generic[_Coefficient, _InputCoefficient]):
 
         message = 'Monomials must be one monomial or a two-dimensional batch'
         raise ValueError(message)
-
-    def to_dict(self, tol: float = 1e-14) -> dict[str, Any]:
-        """Return a dictionary representation of the TPSA series."""
-        dct = {
-            '__class__': self.__class__.__name__,
-            'descriptor': self.descriptor.to_dict(),
-            'truncation_order': self.truncation_order,
-        }
-        for mon, coeff in self.monomial_coeffs(tol=tol).items():
-            dct[json.dumps(mon)] = self._to_json_friendly_coefficient(coeff)
-        return dct
-
-    @classmethod
-    def from_dict(cls, dct: dict[str, Any]) -> Self:
-        """Instantiate a Tpsa from a dictionary representation."""
-        class_name = dct.get('__class__')
-        if cls.__name__ != class_name:
-            err_mess = f'Wrong dict: expected class {cls.__name__}, got {class_name}'
-            raise ValueError(err_mess)
-        descriptor = dct.get('descriptor')
-        if descriptor is None:
-            err_mess = 'Descriptor is missing in the dictionary'
-            raise ValueError(err_mess)
-        descriptor = Descriptor.from_dict(descriptor)
-        truncation_order = dct.get('truncation_order')
-        if truncation_order is None:
-            err_mess = 'Truncation order is missing in the dictionary'
-            raise ValueError(err_mess)
-        instance = cls(descriptor=descriptor, truncation_order=truncation_order)
-        instance.clear()
-        coeff_dict: dict[tuple[int, ...], _InputCoefficient] = {}
-        for monomial_json, coefficient in dct.items():
-            if monomial_json in ('__class__', 'descriptor', 'truncation_order'):
-                continue
-            try:
-                monomial = tuple(json.loads(monomial_json))
-            except json.JSONDecodeError as e:
-                raise ValueError(f'Unknown key: {monomial_json}') from e
-            dim = descriptor.num_vars + descriptor.num_params
-            if not all(tt >= 0 for tt in monomial) or len(monomial) != dim:
-                err_mess = f'Invalid monomial: {monomial}'
-                raise ValueError(err_mess)
-            coeff_dict[monomial] = cls._from_json_friendly_coefficient(coefficient)
-        instance.update(coeff_dict)
-        return instance
 
     def update(self, coeff_dict: dict[tuple[int, ...], _InputCoefficient]) -> None:
         """Update the TPSA series from a dictionary of monomial coefficients."""
@@ -321,3 +424,13 @@ class _TpsaBase(ABC, Generic[_Coefficient, _InputCoefficient]):
             raise NotImplementedError(message)
 
         return variable_index
+
+    def _compatible(self, other: _TpsaBase) -> bool:
+        return self.descriptor is other.descriptor and bool(
+            lib.madng_tpsa_check_tpsa_compatibility(self.ptr, other.ptr)
+        )
+
+    def _check_compatible(self, other: _TpsaBase) -> None:
+        if not self._compatible(other):
+            err_mess = 'TPSAs have incompatible descriptors or coordinate labels'
+            raise ValueError(err_mess)

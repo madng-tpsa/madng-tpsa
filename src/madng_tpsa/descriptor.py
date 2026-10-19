@@ -43,7 +43,16 @@ class _DescriptorAttrs(NamedTuple):
 class _NativeDescriptor:
     """Single Python owner of a shared MAD-NG descriptor allocation."""
 
-    __slots__ = ('ptr', 'address', 'instances', '__weakref__')
+    _tpsas: WeakValueDictionary[int, Tpsa]
+    _complex_tpsas: WeakValueDictionary[int, ComplexTpsa]
+    __slots__ = (
+        'ptr',
+        'address',
+        'instances',
+        'tpsas',
+        'complex_tpsas',
+        '__weakref__',
+    )
 
     def __init__(self, ptr: Any) -> None:
         self.ptr = ptr
@@ -51,6 +60,8 @@ class _NativeDescriptor:
         self.instances: WeakValueDictionary[
             tuple[type, tuple[str, ...], tuple[str, ...]], Descriptor
         ] = WeakValueDictionary()
+        self.tpsas: WeakValueDictionary[int, Tpsa] = WeakValueDictionary()
+        self.complex_tpsas: WeakValueDictionary[int, ComplexTpsa] = WeakValueDictionary()
 
     def __del__(self) -> None:
         ptr = getattr(self, 'ptr', None)
@@ -270,8 +281,8 @@ class Descriptor:
         descriptor._ptr = owner.ptr
         descriptor.variables = var_labels
         descriptor.parameters = param_labels
-        descriptor._tpsas = WeakValueDictionary()
-        descriptor._complex_tpsas = WeakValueDictionary()
+        descriptor._tpsas = owner.tpsas
+        descriptor._complex_tpsas = owner.complex_tpsas
         owner.instances[key] = descriptor
         return descriptor
 

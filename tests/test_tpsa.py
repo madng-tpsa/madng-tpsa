@@ -236,7 +236,9 @@ def test_binary_ops_reject_incompatible_descriptors():
     x = madng_tpsa.Descriptor(1, 2).var(1)
     y = madng_tpsa.Descriptor(2, 2).var(1)
 
-    with pytest.raises(ValueError, match='Incompatible TPSA descriptors'):
+    with pytest.raises(
+        ValueError, match='TPSAs have incompatible descriptors or coordinate labels'
+    ):
         x + y
 
 
@@ -415,7 +417,7 @@ def test_from_ptr_raises_for_unknown_pointer():
     del t1
     gc.collect()
 
-    with pytest.raises(ValueError, match='No live Tpsa found'):
+    with pytest.raises(ValueError, match='No live TPSA wrapper exists for this pointer'):
         madng_tpsa.Tpsa.from_ptr(ptr, d)
 
 
@@ -522,3 +524,77 @@ def test_grad_uses_full_monomials_with_parameters():
     value = 2 * x + 3 * px + 4 * k1 + 5 * k2
     assert value.grad() == pytest.approx([2.0, 3.0])
     assert value.param_grad() == pytest.approx([4.0, 5.0])
+
+
+def test_tpsa_preserves_labelled_descriptor():
+    dx = madng_tpsa.Descriptor(variables=('x', 'px'), order=4)
+    dy = madng_tpsa.Descriptor(variables=('y', 'py'), order=4)
+
+    assert dx.ptr == dy.ptr
+    assert dx is not dy
+
+    x = dx.var('x')
+    y = dy.var('y')
+
+    assert x.descriptor is dx
+    assert y.descriptor is dy
+    assert x.descriptor is not y.descriptor
+
+
+def test_same_native_descriptor_different_labels_incompatible():
+    dx = madng_tpsa.Descriptor(variables=('x', 'px'), order=4)
+    dy = madng_tpsa.Descriptor(variables=('y', 'py'), order=4)
+
+    x = dx.var('x')
+    y = dy.var('y')
+
+    assert x != y
+
+    with pytest.raises(ValueError):
+        _ = x + y
+
+
+def test_from_ptr_cannot_create_second_owner():
+    dx = madng_tpsa.Descriptor(variables=('x', 'px'), order=4)
+    dy = madng_tpsa.Descriptor(variables=('y', 'py'), order=4)
+
+    x = dx.var('x')
+
+    assert madng_tpsa.Tpsa.from_ptr(x.ptr, descriptor=dx) is x
+
+    with pytest.raises(ValueError):
+        madng_tpsa.Tpsa.from_ptr(
+            x.ptr,
+            descriptor=dy,
+            owns=True,
+        )
+
+
+def test_explicit_descriptor_conversion():
+    dx = madng_tpsa.Descriptor(variables=('x', 'px'), order=4)
+    dy = madng_tpsa.Descriptor(variables=('y', 'py'), order=4)
+
+    x = dx.var('x')
+
+    y = x.to_descriptor(
+        dy,
+        variable_map={'x': 'y', 'px': 'py'},
+    )
+
+    assert y.descriptor is dy
+    assert y.descriptor is not x.descriptor
+    assert y.get((1, 0)) == pytest.approx(1.0)
+
+
+def test_deserialisation_keeps_original_labels():
+    dx = madng_tpsa.Descriptor(variables=('x', 'px'), order=4)
+    dy = madng_tpsa.Descriptor(variables=('y', 'py'), order=4)
+
+    assert dx.ptr == dy.ptr
+
+    x = dx.var('x')
+    reconstructed = madng_tpsa.Tpsa.from_dict(x.to_dict(tol=0))
+
+    assert reconstructed.descriptor is dx
+    assert reconstructed is not x
+    assert reconstructed.equals(x)

@@ -7,25 +7,26 @@ truncated multivariate power series.
 
 from __future__ import annotations
 
-import operator
-import warnings
-from numbers import Integral
 from typing import TYPE_CHECKING, SupportsComplex, SupportsFloat, overload
-
-import numpy as np
-
-from . import _cffi
-from ._cffi import ffi, lib
-from ._tpsa_base import _JsonCoefficient, _TpsaBase
-from .errors import TpsaError
 
 if TYPE_CHECKING:
     from collections.abc import Iterable
     from typing import Any, Literal
 
     from .complex_tpsa import ComplexTpsa
-    from .descriptor import Descriptor
     from .formatting import FormatStyle
+
+import operator
+import warnings
+from numbers import Integral
+
+import numpy as np
+
+from . import _cffi
+from ._cffi import ffi, lib
+from ._tpsa_base import _JsonCoefficient, _TpsaBase
+from .descriptor import Descriptor
+from .errors import TpsaError
 
 
 class Tpsa(_TpsaBase[float, SupportsFloat]):
@@ -71,11 +72,12 @@ class Tpsa(_TpsaBase[float, SupportsFloat]):
     def from_ptr(
         cls, ptr: Any, descriptor: Descriptor | None = None, *, owns: bool = False
     ) -> Tpsa:
-        """Return the interned ``Tpsa`` for a raw C pointer.
+        """Retrieve an existing TPSA or adopt an unwrapped native allocation.
 
-        If a live ``Tpsa`` already wraps ``ptr`` it is returned directly, so
-        that at most one Python object exists per C allocation, preventing a
-        use-after-free if two owners existed for the same pointer.
+        An existing wrapper is returned regardless of the number of labelled
+        descriptors sharing its native descriptor.
+
+        For an unknown pointer, owns=True transfers ownership on success.
 
         Parameters
         ----------
@@ -90,41 +92,48 @@ class Tpsa(_TpsaBase[float, SupportsFloat]):
             the allocation and is handing ownership. The default ``False``
             treats an unknown pointer as a bug and will raise.
         """
+        if ptr == ffi.NULL:
+            err_mess = 'Cannot wrap a null TPSA pointer'
+            raise ValueError(err_mess)
         key = int(ffi.cast('uintptr_t', ptr))
+        native_ptr = lib.mad_tpsa_desc(ptr)
+        native_key = int(ffi.cast('uintptr_t', native_ptr))
+        owner = Descriptor._owners_by_ptr.get(native_key)
+        existing = None if owner is None else owner.tpsas.get(key)
 
-        if descriptor is not None:
-            existing = descriptor._tpsas.get(key)
-            if existing is not None:
-                return existing
-            if not owns:
-                message = (
-                    'No live Tpsa found for the given pointer. '
-                    'Pass owns=True to wrap a freshly allocated pointer.'
-                )
-                raise ValueError(message)
-        elif not owns:
-            message = 'A descriptor must be provided if owns is False.'
-            raise ValueError(message)
-        else:
-            from .descriptor import Descriptor
+        if existing is not None:
+            if descriptor is not None and existing.descriptor is not descriptor:
+                err_mess = 'TPSA is already wrapped with a different labelled descriptor'
+                raise ValueError(err_mess)
+            return existing
 
-            descriptor = Descriptor.from_ptr(lib.mad_tpsa_desc(ptr))
-            existing = descriptor._tpsas.get(key)
-            if existing is not None:
-                return existing
+        if not owns:
+            err_mess = 'No live TPSA wrapper exists for this pointer. '
+            err_mess += 'Use owns=True to adopt a newly allocated TPSA.'
+            raise ValueError(err_mess)
 
-        t = cls.__new__(cls)
-        t._descriptor = descriptor
-        t._ptr = ptr
-        descriptor._tpsas[key] = t
-        return t
+        # From here onwards, the native allocation has no Python owner.
+        if descriptor is None:
+            descriptor = Descriptor.from_ptr(native_ptr)
+        elif descriptor.ptr != native_ptr:
+            err_mess = 'Supplied descriptor does not match the native TPSA'
+            raise ValueError(err_mess)
+
+        result = cls.__new__(cls)
+        result._descriptor = descriptor
+        result._ptr = ptr
+        descriptor._owner.tpsas[key] = result
+        return result
 
     def __del__(self) -> None:
         # The underlying object, or the library might have already been released,
         # if not release the handle now.
-        if getattr(self, '_ptr', None) is not None and getattr(_cffi, 'lib', None) is not None:
-            _cffi.lib.mad_tpsa_del(self._ptr)
+        ptr = getattr(self, '_ptr', None)
+        if ptr is not None:
             self._ptr = None
+            native_lib = getattr(_cffi, 'lib', None)
+            if native_lib is not None:
+                native_lib.mad_tpsa_del(ptr)
 
     @property
     def ptr(self) -> Any:
@@ -152,11 +161,6 @@ class Tpsa(_TpsaBase[float, SupportsFloat]):
     def const_part(self) -> float:
         """Constant coefficient of the series."""
         return lib.mad_tpsa_geti(self._ptr, 0)
-
-    @property
-    def is_complex(self) -> bool:
-        """Return True if this series is complex-valued."""
-        return False
 
     def get(self, monomial: Iterable[int]) -> float:
         """Return the coefficient for ``monomial``."""
@@ -365,12 +369,6 @@ class Tpsa(_TpsaBase[float, SupportsFloat]):
             self._raise_mad_error()
         return first, second
 
-    def _check_compatible(self, other: Tpsa) -> None:
-        """Raise if ``other`` cannot be combined with this series."""
-        if not lib.madng_tpsa_check_tpsa_compatibility(self._ptr, other._ptr):
-            message = 'Incompatible TPSA descriptors'
-            raise ValueError(message)
-
     @staticmethod
     def _to_json_friendly_coefficient(value: float) -> float:
         """Convert a coefficient to a JSON-friendly format."""
@@ -386,7 +384,7 @@ class Tpsa(_TpsaBase[float, SupportsFloat]):
 
     def equals(self, other: Tpsa, tol: SupportsFloat = 0.0) -> bool:
         """Return whether this series and ``other`` have matching coefficients."""
-        if not lib.madng_tpsa_check_tpsa_compatibility(self._ptr, other._ptr):
+        if not self._compatible(other):
             return False
         return bool(lib.mad_tpsa_equ(self._ptr, other._ptr, float(tol)))
 
@@ -525,9 +523,7 @@ class Tpsa(_TpsaBase[float, SupportsFloat]):
 
     def __pow__(self, other: Tpsa | SupportsFloat | SupportsComplex) -> Tpsa | ComplexTpsa:
         if isinstance(other, Tpsa):
-            if not lib.madng_tpsa_check_tpsa_compatibility(self._ptr, other._ptr):
-                message = 'Incompatible TPSA descriptors'
-                raise ValueError(message)
+            self._check_compatible(other)
             result = self.descriptor.zero()
             lib.mad_tpsa_pow(self._ptr, other._ptr, result._ptr)
             return result

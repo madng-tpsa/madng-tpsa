@@ -7,23 +7,23 @@ TPSA API where operations are defined for complex series.
 
 from __future__ import annotations
 
+from typing import TYPE_CHECKING, SupportsComplex, SupportsFloat
+
+if TYPE_CHECKING:
+    from collections.abc import Iterable
+    from typing import Any, Literal
+
 import operator
 import warnings
 from numbers import Integral
-from typing import TYPE_CHECKING, SupportsComplex, SupportsFloat
 
 import numpy as np
 
 from . import _cffi
 from ._cffi import ffi, lib
 from ._tpsa_base import _JsonCoefficient, _TpsaBase
+from .descriptor import Descriptor
 from .tpsa import Tpsa
-
-if TYPE_CHECKING:
-    from collections.abc import Iterable
-    from typing import Any, Literal
-
-    from .descriptor import Descriptor
 
 
 class ComplexTpsa(_TpsaBase[complex, SupportsFloat | SupportsComplex]):
@@ -61,11 +61,12 @@ class ComplexTpsa(_TpsaBase[complex, SupportsFloat | SupportsComplex]):
     def from_ptr(
         cls, ptr: Any, descriptor: Descriptor | None = None, *, owns: bool = False
     ) -> ComplexTpsa:
-        """Return the interned ``ComplexTpsa`` for a raw C pointer.
+        """Retrieve an existing TPSA or adopt an unwrapped native allocation.
 
-        If a live ``ComplexTpsa`` already wraps ``ptr`` it is returned directly,
-        so that at most one Python object exists per C allocation, preventing a
-        use-after-free if two owners existed for the same pointer.
+        An existing wrapper is returned regardless of the number of labelled
+        descriptors sharing its native descriptor.
+
+        For an unknown pointer, owns=True transfers ownership on success.
 
         Parameters
         ----------
@@ -80,34 +81,38 @@ class ComplexTpsa(_TpsaBase[complex, SupportsFloat | SupportsComplex]):
             the allocation and is handing ownership. The default ``False``
             treats an unknown pointer as a bug and will raise.
         """
+        if ptr == ffi.NULL:
+            err_mess = 'Cannot wrap a null TPSA pointer'
+            raise ValueError(err_mess)
         key = int(ffi.cast('uintptr_t', ptr))
+        native_ptr = lib.mad_ctpsa_desc(ptr)
+        native_key = int(ffi.cast('uintptr_t', native_ptr))
+        owner = Descriptor._owners_by_ptr.get(native_key)
+        existing = None if owner is None else owner.complex_tpsas.get(key)
 
-        if descriptor is not None:
-            existing = descriptor._complex_tpsas.get(key)
-            if existing is not None:
-                return existing
-            if not owns:
-                message = (
-                    'No live ComplexTpsa found for the given pointer. '
-                    'Pass owns=True to wrap a freshly allocated pointer.'
-                )
-                raise ValueError(message)
-        elif not owns:
-            message = 'A descriptor must be provided if owns is False.'
-            raise ValueError(message)
-        else:
-            from .descriptor import Descriptor
+        if existing is not None:
+            if descriptor is not None and existing.descriptor is not descriptor:
+                err_mess = 'TPSA is already wrapped with a different labelled descriptor'
+                raise ValueError(err_mess)
+            return existing
 
-            descriptor = Descriptor.from_ptr(lib.mad_ctpsa_desc(ptr))
-            existing = descriptor._complex_tpsas.get(key)
-            if existing is not None:
-                return existing
+        if not owns:
+            err_mess = 'No live TPSA wrapper exists for this pointer. '
+            err_mess += 'Use owns=True to adopt a newly allocated TPSA.'
+            raise ValueError(err_mess)
 
-        t = cls.__new__(cls)
-        t._descriptor = descriptor
-        t._ptr = ptr
-        descriptor._complex_tpsas[key] = t
-        return t
+        # From here onwards, the native allocation has no Python owner.
+        if descriptor is None:
+            descriptor = Descriptor.from_ptr(native_ptr)
+        elif descriptor.ptr != native_ptr:
+            err_mess = 'Supplied descriptor does not match the native TPSA'
+            raise ValueError(err_mess)
+
+        result = cls.__new__(cls)
+        result._descriptor = descriptor
+        result._ptr = ptr
+        descriptor._owner.complex_tpsas[key] = result
+        return result
 
     @classmethod
     def from_tpsa(cls, real: Tpsa, imag: Tpsa | None = None) -> ComplexTpsa:
@@ -116,15 +121,20 @@ class ComplexTpsa(_TpsaBase[complex, SupportsFloat | SupportsComplex]):
             imag = real.descriptor.zero(order=real.truncation_order)
         else:
             real._check_compatible(imag)
-
-        result = cls(real.descriptor, truncation_order=real.truncation_order)
+        result_order = max(real.truncation_order, imag.truncation_order)
+        result = cls(real.descriptor, truncation_order=result_order)
         lib.mad_ctpsa_cplx(real.ptr, imag.ptr, result.ptr)
         return result
 
     def __del__(self) -> None:
-        if getattr(self, '_ptr', None) is not None and getattr(_cffi, 'lib', None) is not None:
-            _cffi.lib.mad_ctpsa_del(self._ptr)
+        # The underlying object, or the library might have already been released,
+        # if not release the handle now.
+        ptr = getattr(self, '_ptr', None)
+        if ptr is not None:
             self._ptr = None
+            native_lib = getattr(_cffi, 'lib', None)
+            if native_lib is not None:
+                native_lib.mad_ctpsa_del(ptr)
 
     @property
     def ptr(self) -> Any:
@@ -152,11 +162,6 @@ class ComplexTpsa(_TpsaBase[complex, SupportsFloat | SupportsComplex]):
     def const_part(self) -> complex:
         """Constant coefficient of the series."""
         return self._geti(0)
-
-    @property
-    def is_complex(self) -> bool:
-        """Return True if this series is complex-valued."""
-        return True
 
     def _geti(self, index: int) -> complex:
         value = ffi.new('double _Complex*')
@@ -354,9 +359,11 @@ class ComplexTpsa(_TpsaBase[complex, SupportsFloat | SupportsComplex]):
     def __eq__(self, other: object) -> bool:
         return isinstance(other, ComplexTpsa) and self.equals(other)
 
-    def equals(self, other: ComplexTpsa, tol: float = 0.0) -> bool:
+    def equals(self, other: ComplexTpsa, tol: SupportsFloat = 0.0) -> bool:
         """Return whether this and ``other`` have matching coefficients."""
-        return bool(self._compatible(other) and lib.mad_ctpsa_equ(self._ptr, other._ptr, tol))
+        if not self._compatible(other):
+            return False
+        return bool(lib.mad_ctpsa_equ(self._ptr, other._ptr, float(tol)))
 
     def _binary_op(self, other: ComplexTpsa | Tpsa, function_name: str) -> ComplexTpsa:
         self._check_compatible(other)
@@ -621,11 +628,3 @@ class ComplexTpsa(_TpsaBase[complex, SupportsFloat | SupportsComplex]):
         status = lib.madng_tpsa_protected_binary_call(function, left._ptr, right._ptr, result._ptr)
         if status:
             self._raise_mad_error()
-
-    def _compatible(self, other: ComplexTpsa | Tpsa) -> bool:
-        return bool(lib.madng_tpsa_check_tpsa_compatibility(self._ptr, other._ptr))
-
-    def _check_compatible(self, other: ComplexTpsa | Tpsa) -> None:
-        if not self._compatible(other):
-            message = 'Incompatible TPSA descriptors'
-            raise ValueError(message)

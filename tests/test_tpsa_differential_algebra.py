@@ -114,7 +114,9 @@ def test_resolve_single_monomial(receiver_factory):
         receiver._resolve_single_monomial(d.constant(1.0))
     with pytest.raises(ValueError, match='exactly one'):
         receiver._resolve_single_monomial(d.constant(1.0) + x)
-    with pytest.raises(ValueError, match='Incompatible TPSA descriptors'):
+    with pytest.raises(
+        ValueError, match='TPSAs have incompatible descriptors or coordinate labels'
+    ):
         receiver._resolve_single_monomial(madng_tpsa.Descriptor(1, 3).var(1))
 
 
