@@ -258,6 +258,27 @@ class _TpsaBase(ABC, Generic[_Coefficient, _InputCoefficient]):
     def degree(self) -> int:
         """Highest order currently containing a non-zero coefficient."""
 
+    @property
+    @abstractmethod
+    def const_part(self) -> _Coefficient:
+        """Return the constant coefficient."""
+
+    @abstractmethod
+    def set_const_part(self, value: _InputCoefficient) -> None:
+        """Set the constant coefficient."""
+
+    @abstractmethod
+    def homogeneous(self, degree: int) -> Self:
+        """Return the homogeneous part of the requested degree."""
+
+    @abstractmethod
+    def truncate(self, degree: int) -> Self:
+        """Return a truncated copy through the requested degree."""
+
+    @abstractmethod
+    def clear_order(self, degree: int) -> Self:
+        """Return a copy without coefficients of the requested degree."""
+
     @abstractmethod
     def get(self, monomial: Iterable[int]) -> _Coefficient:
         """Return a monomial coefficient."""
