@@ -462,7 +462,10 @@ class TpsaTensor(Generic[TpsaSeriesT]):
         return self._new_like([tpsa.clear_order(degree) for tpsa in self.flat])
 
     def evaluate(
-        self, coordinates: Sequence[Scalar], *, parameters: Sequence[Scalar] | None = None
+        self,
+        coordinates: Sequence[Scalar] | np.ndarray,
+        *,
+        parameters: Sequence[Scalar] | np.ndarray | None = None,
     ) -> np.ndarray:
         """Evaluate the map at numerical coordinates."""
         parameter_values: tuple[Scalar, ...] = (

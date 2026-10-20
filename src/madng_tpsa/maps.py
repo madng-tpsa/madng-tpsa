@@ -7,6 +7,7 @@ around such an array, and adds map operations as methods to it.
 
 from __future__ import annotations
 
+from types import MappingProxyType
 from typing import TYPE_CHECKING, SupportsComplex, SupportsFloat, cast, overload
 
 if TYPE_CHECKING:
@@ -277,160 +278,201 @@ class TpsaMap(TpsaTensor[TpsaSeriesT]):
         return tuple(self.flat)
 
     @property
-    def coordinates(self) -> dict[str, TpsaSeriesT]:
-        """Dict of oordinate names -> TPSAs of the map."""
-        return dict(zip(self._coord_names, self.flat, strict=True))
+    def coordinates(self) -> Mapping[str, TpsaSeriesT]:
+        """Read-only dict of coordinate names -> TPSAs of the map."""
+        return MappingProxyType(dict(zip(self._coord_names, self.flat, strict=True)))
 
     @property
     def pointer_array_with_params(self) -> ffi.CData:
         """Return a full C array of pointers to the map's TPSAs, including parameters."""
         return ffi.new('void*[]', [t.ptr for t in (*self.flat, *self._params)])
 
-    def set_const_part(self, values: Sequence[float] | np.ndarray) -> None:
-        """Set the order-0 part (orbit) of each coordinate from a length-6 array (deprecated)."""
+    def set_const_part(self, values: Sequence[Scalar] | np.ndarray) -> None:
+        """Set the map's constant vector (deprecated; use ``const_part``)."""
         warn(
             "The method 'set_const_part' is deprecated; use the setter for 'const_part' instead.",
             FutureWarning,
             stacklevel=2,
         )
-        v = np.asarray(values, dtype=float).reshape(-1)
-        if v.size != 6:
-            raise ValueError(f'const_part must be length 6, got {v.size}')
-        for c, x in zip(self.coords, v, strict=True):
-            c.set_const_part(x)
+        self.const_part = np.asarray(values).tolist()
 
-    # def jacobian_operator(self) -> TpsaTensor[TpsaSeriesT]:
-    #     """Return the full TPSA-valued Jacobian."""
-    #     return TpsaTensor(
-    #         [
-    #             coord.derivative(j)
-    #             for coord in self.coords
-    #             for j in range(1, self.num_vars + 1)
-    #         ],
-    #         shape=(len(self), self.num_vars),
-    #     )
+    def _coordinate_index(self, coord: str | int) -> int:
+        """Resolve a coordinate name or zero-based integer index."""
+        if isinstance(coord, str):
+            if coord in self.coord_names:
+                return self.coord_names.index(coord)
+        elif isinstance(coord, int) and not isinstance(coord, bool) and 0 <= coord < self.num_vars:
+            return coord
+        err_mess = f'Not a valid coordinate name or index: {coord}'
+        raise ValueError(err_mess)
 
-    # def jacobian(
-    #     self,
-    #     coordinates: Sequence[Scalar] | None = None,
-    #     *,
-    #     parameters: Sequence[Scalar] | None = None,
-    # ) -> np.ndarray:
-    #     """Return the Jacobian matrix of the map.
+    def _monomial_rows(
+        self, monomials: Sequence[int] | Sequence[Sequence[int]] | np.ndarray
+    ) -> np.ndarray:
+        """Validate one monomial or a two-dimensional batch of monomials."""
+        arr = np.asarray(monomials)
+        if arr.ndim not in (1, 2):
+            err_mess = 'Monomials must be a vector or a two-dimensional batch'
+            raise ValueError(err_mess)
+        if arr.shape[-1] != self.descriptor.monomial_length:
+            err_mess = f'Monomials must have length {self.descriptor.monomial_length}'
+            raise ValueError(err_mess)
+        if not np.issubdtype(arr.dtype, np.integer):
+            err_mess = 'Monomial exponents must be integers'
+            raise ValueError(err_mess)
+        rows = arr.reshape(1, -1) if arr.ndim == 1 else arr
+        for row in rows:
+            mono = tuple(int(v) for v in row)
+            if not self.descriptor.is_valid_monomial(mono):
+                err_mess = f'Invalid monomial: {mono}'
+                raise ValueError(err_mess)
+        return arr
 
-    #     Parameters
-    #     ----------
-    #     coordinates
-    #         Numerical coordinates at which to evaluate the Jacobian.
-    #     parameters
-    #         Numerical values for the descriptor parameters.
-    #     """
-    #     if coordinates is None and parameters is None:
-    #         return np.asarray([tpsa.grad() for tpsa in self])
-    #     if coordinates is None:
-    #         coordinates = coordinates or [0] * self.num_vars
-    #     if parameters is None:
-    #         parameters = parameters or [0] * self.num_params
-    #     columns = []
-    #     for variable in range(1, self.num_vars + 1):
-    #         this_map = TpsaMap(**{
-    #             coord: tpsa.derivative(variable) for coord, tpsa in self.items()
-    #         })
-    #         columns.append(this_map.evaluate(coordinates, parameters=parameters))
-    #     return np.column_stack(columns)
+    def coefficient(
+        self,
+        coord: str | int,
+        monomials: Sequence[int] | Sequence[Sequence[int]] | np.ndarray,
+    ) -> float | complex | np.ndarray:
+        """Return coefficient(s) from one output series by coordinate name or index."""
+        idx = self._coordinate_index(coord)
+        arr = self._monomial_rows(monomials)
+        return self.coords[idx].coefficient(arr)
 
-    # def param_jacobian(
-    #     self,
-    #     coordinates: Sequence[Scalar] | None = None,
-    #     *,
-    #     parameters: Sequence[Scalar] | None = None,
-    # ) -> np.ndarray:
-    #     """Return first-order derivatives with respect to descriptor parameters.
+    def set_coefficient(
+        self,
+        coord: str | int,
+        monomial: Sequence[int] | np.ndarray,
+        value: Scalar,
+    ) -> None:
+        """Set a coefficient of an output series, preserving its real/complex type."""
+        idx = self._coordinate_index(coord)
+        arr = self._monomial_rows(monomial)
+        if arr.ndim != 1:
+            err_mess = 'Exactly one monomial must be supplied'
+            raise ValueError(err_mess)
+        mono = tuple(int(v) for v in arr)
+        component = self.coords[idx]
+        if isinstance(component, Tpsa):
+            converted = complex(value)
+            if converted.imag != 0:
+                err_mess = 'Cannot assign a complex coefficient to a real TPSA map'
+                raise TypeError(err_mess)
+            component.set(mono, converted.real)
+        elif isinstance(component, ComplexTpsa):
+            component.set(mono, value)
+        else:
+            err_mess = f'Unsupported TPSA component type: {type(component).__name__}'
+            raise TypeError(err_mess)
 
-    #     Parameters
-    #     ----------
-    #     coordinates
-    #         Numerical coordinates at which to evaluate the parameter Jacobian.
-    #     parameters
-    #         Numerical values for the descriptor parameters.
-    #     """
-    #     if coordinates is None and parameters is None:
-    #         return np.asarray([tpsa.param_grad() for tpsa in self])
-    #     if coordinates is None:
-    #         coordinates = coordinates or [0] * self.num_vars
-    #     if parameters is None:
-    #         parameters = parameters or [0] * self.num_params
-    #     columns = []
-    #     for param_idx in range(1, self.num_params + 1):
-    #         this_map = TpsaMap(**{
-    #             coord: tpsa.derivative(self.num_vars + param_idx)
-    #             for coord, tpsa in self.items()
-    #         })
-    #         columns.append(this_map.evaluate(coordinates, parameters=parameters))
-    #     return np.column_stack(columns)
+    def jacobian_operator(
+        self, *, to_variables: bool = True, to_parameters: bool = False
+    ) -> TpsaTensor[TpsaSeriesT]:
+        """Return TPSA-valued partial derivatives over selected inputs."""
+        if not to_variables and not to_parameters:
+            err_mess = 'Select variables, parameters, or both for differentiation'
+            raise ValueError(err_mess)
+        start = 0 if to_variables else self.num_vars
+        end = self.num_vars + self.num_params if to_parameters else self.num_vars
+        width = end - start
+        if width == 0:
+            err_mess = 'The descriptor has no parameters to differentiate'
+            raise ValueError(err_mess)
+        derivatives: list[Tpsa | ComplexTpsa] = []
+        for component in self.coords:
+            if isinstance(component, (Tpsa, ComplexTpsa)):
+                derivatives.extend(component.derivative(j) for j in range(start + 1, end + 1))
+            else:
+                err_mess = f'Unsupported TPSA component type: {type(component).__name__}'
+                raise TypeError(err_mess)
+        return cast(
+            'TpsaTensor[TpsaSeriesT]',
+            TpsaTensor(derivatives, shape=(len(self), width)),
+        )
 
-    # def set_jacobian(self, jacobian) -> None:
-    #     """Set the first-order coefficients with respect to descriptor variables."""
-    #     jacobian = np.asarray(jacobian)
-    #     expected_shape = (len(self), self.num_vars)
-    #     if jacobian.shape != expected_shape:
-    #         message = f'Jacobian must have shape {expected_shape}, got {jacobian.shape}'
-    #         raise ValueError(message)
-    #     for component, row in zip(self.values(), jacobian, strict=True):
-    #         for variable, value in enumerate(row):
-    #             monomial = [0] * self.descriptor.monomial_length
-    #             monomial[variable] = 1
-    #             self.set_coefficient(component, monomial, value)
+    def jacobian(
+        self,
+        coordinates: Sequence[Scalar] | np.ndarray | None = None,
+        *,
+        parameters: Sequence[Scalar] | np.ndarray | None = None,
+    ) -> np.ndarray:
+        """Evaluate the Jacobian with respect to descriptor variables.
 
-    # def set_param_jacobian(self, jacobian) -> None:
-    #     """Set first-order coefficients with respect to descriptor parameters."""
-    #     jacobian = np.asarray(jacobian)
-    #     expected_shape = (len(self), self.num_params)
-    #     if jacobian.shape != expected_shape:
-    #         message = f'Parameter Jacobian must have shape {expected_shape}, got {jacobian.shape}'
-    #         raise ValueError(message)
-    #     for component, row in zip(self.values(), jacobian, strict=True):
-    #         for parameter, value in enumerate(row):
-    #             monomial = [0] * self.descriptor.monomial_length
-    #             monomial[self.num_vars + parameter] = 1
-    #             self.set_coefficient(component, monomial, value)
+        Parameters
+        ----------
+        coordinates
+            Numerical coordinates at which to evaluate the Jacobian. Default 0.
+        parameters
+            Numerical values for the descriptor parameters. Default 0.
+        """
+        if coordinates is None and parameters is None:
+            return np.asarray([tpsa.grad() for tpsa in self.coords])
+        if coordinates is None:
+            coordinates = [0.0] * self.num_vars
+        if parameters is None:
+            parameters = [0.0] * self.num_params
+        return self.jacobian_operator(to_variables=True, to_parameters=False).evaluate(
+            coordinates=coordinates, parameters=parameters
+        )
 
-    # def homogeneous(self, degree: int) -> TpsaMap[TpsaSeriesT]:
-    #     """Return the homogeneous part of the requested degree."""
-    #     result = TpsaMap(**{coord: tpsa.homogeneous(degree) for coord, tpsa in self.items()})
-    #     return cast('TpsaMap[TpsaSeriesT]', result)
+    def param_jacobian(
+        self,
+        coordinates: Sequence[Scalar] | np.ndarray | None = None,
+        *,
+        parameters: Sequence[Scalar] | np.ndarray | None = None,
+    ) -> np.ndarray:
+        """Evaluate the Jacobian with respect to descriptor parameters.
 
-    # def truncate(self, degree: int) -> TpsaMap[TpsaSeriesT]:
-    #     """Return the map truncated through the requested degree."""
-    #     result = TpsaMap(**{coord: tpsa.truncate(degree) for coord, tpsa in self.items()})
-    #     return cast('TpsaMap[TpsaSeriesT]', result)
+        Parameters
+        ----------
+        coordinates
+            Numerical coordinates at which to evaluate the parameter Jacobian. Default 0.
+        parameters
+            Numerical values for the descriptor parameters. Default 0.
+        """
+        if self.num_params == 0:
+            dtype = complex if self.is_complex else float
+            return np.empty((len(self), 0), dtype=dtype)
+        if coordinates is None and parameters is None:
+            return np.asarray([tpsa.param_grad() for tpsa in self.coords])
+        if coordinates is None:
+            coordinates = [0.0] * self.num_vars
+        if parameters is None:
+            parameters = [0.0] * self.num_params
+        return self.jacobian_operator(to_variables=False, to_parameters=True).evaluate(
+            coordinates=coordinates, parameters=parameters
+        )
 
-    # def clear_order(self, degree: int) -> TpsaMap[TpsaSeriesT]:
-    #     """Return a copy with one homogeneous degree removed."""
-    #     result = TpsaMap(**{coord: tpsa.clear_order(degree) for coord, tpsa in self.items()})
-    #     return cast('TpsaMap[TpsaSeriesT]', result)
+    def set_jacobian(self, jacobian: Sequence[Sequence[Scalar]] | np.ndarray) -> None:
+        """Replace all first-order coefficients for descriptor variables."""
+        matrix = np.asarray(jacobian)
+        expected_shape = (len(self), self.num_vars)
+        if matrix.shape != expected_shape:
+            err_mess = f'Jacobian must have shape {expected_shape}, got {matrix.shape}'
+            raise ValueError(err_mess)
+        if not self.is_complex and np.any(np.imag(matrix) != 0):
+            err_mess = 'Cannot assign complex coefficients to a real map'
+            raise TypeError(err_mess)
+        for row_idx, row in enumerate(matrix):
+            for variable, value in enumerate(row):
+                mono = [0] * self.descriptor.monomial_length
+                mono[variable] = 1
+                self.set_coefficient(row_idx, mono, value)
 
-    # @overload
-    # def compose(self: TpsaMap[Tpsa], other: TpsaMap[Tpsa]) -> TpsaMap[Tpsa]: ...
-    # @overload
-    # def compose(self: TpsaMap[Tpsa], other: TpsaMap[ComplexTpsa]) -> TpsaMap[ComplexTpsa]: ...
-    # @overload
-    # def compose(
-    #     self: TpsaMap[ComplexTpsa], other: TpsaMap[Tpsa] | TpsaMap[ComplexTpsa]
-    # ) -> TpsaMap[ComplexTpsa]: ...
-
-    # def compose(
-    #     self, other: TpsaMap[Tpsa] | TpsaMap[ComplexTpsa]
-    # ) -> TpsaMap[Tpsa] | TpsaMap[ComplexTpsa]:
-    #     """Return the composition ``self ∘ other``."""
-    #     if not isinstance(other, TpsaMap):
-    #         return NotImplemented
-    #     return TpsaMap(
-    #         compose(self.coords, other.coords),
-    #         coord_names=self.coord_names,
-    #     )
-
-    # __matmul__ = compose
+    def set_param_jacobian(self, jacobian: Sequence[Sequence[Scalar]] | np.ndarray) -> None:
+        """Replace all first-order coefficients for descriptor parameters."""
+        matrix = np.asarray(jacobian)
+        expected_shape = (len(self), self.num_params)
+        if matrix.shape != expected_shape:
+            err_mess = f'Parameter Jacobian must have shape {expected_shape}, got {matrix.shape}'
+            raise ValueError(err_mess)
+        if not self.is_complex and np.any(np.imag(matrix) != 0):
+            err_mess = 'Cannot assign complex coefficients to a real map'
+            raise TypeError(err_mess)
+        for row_idx, row in enumerate(matrix):
+            for parameter, value in enumerate(row):
+                mono = [0] * self.descriptor.monomial_length
+                mono[self.num_vars + parameter] = 1
+                self.set_coefficient(row_idx, mono, value)
 
     # def inverse(self) -> TpsaMap[TpsaSeriesT]:
     #     """Return the formal inverse of the map."""

@@ -340,6 +340,14 @@ class _TpsaBase(ABC, Generic[_Coefficient, _InputCoefficient]):
     def _check_compatible(self, other: Any) -> None:
         """Raise when ``other`` cannot be combined with this series."""
 
+    @abstractmethod
+    def grad(self) -> list[_Coefficient]:
+        """Return first-order coefficients for the descriptor variables."""
+
+    @abstractmethod
+    def param_grad(self) -> list[_Coefficient]:
+        """Return first-order coefficients for descriptor parameters."""
+
     @staticmethod
     def _raise_mad_error() -> None:
         # For backwards compatibility
