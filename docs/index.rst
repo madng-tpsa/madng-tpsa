@@ -11,10 +11,10 @@ The package has five main building blocks:
 * :class:`~madng_tpsa.tpsa.Tpsa` represents a real truncated power series.
 * :class:`~madng_tpsa.complex_tpsa.ComplexTpsa` represents the corresponding
   complex-coefficient series.
-* :class:`~madng_tpsa.tensors.TpsaTensor` stores TPSAs in arbitrary-rank
+* :class:`~madng_tpsa.tensor.TpsaTensor` stores TPSAs in arbitrary-rank
   row-major arrays and provides tensor-wide differentiation, evaluation, and
   composition.
-* :class:`~madng_tpsa.maps.TpsaMap` specialises a rank-one tensor into a
+* :class:`~madng_tpsa.map.TpsaMap` specialises a rank-one tensor into a
   full coordinate map with composition, inversion, Lie operations, Jacobians,
   and Hessians.
 

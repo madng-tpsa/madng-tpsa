@@ -497,6 +497,10 @@ class TpsaMap(TpsaTensor[TpsaSeriesT]):
         if np.any(self.const_part != 0):
             err_mess = 'Map inversion requires zero constant terms; recenter it first'
             raise ValueError(err_mess)
+        jac = self.jacobian()
+        if np.linalg.matrix_rank(jac) < self.num_vars:
+            err_mess = 'Cannot invert map: the linear Jacobian is singular'
+            raise ValueError(err_mess)
         if self.is_complex:
             result = [
                 self.descriptor.complex_zero(order=self.descriptor.order)
@@ -548,6 +552,13 @@ class TpsaMap(TpsaTensor[TpsaSeriesT]):
                 err_mess = 'Selection entries must be booleans or integers'
                 raise TypeError(err_mess)
         choices.extend([0] * self.num_params)
+        selected = np.flatnonzero(choices[: self.num_vars])
+        if len(selected):
+            jac = self.jacobian()
+            block = jac[np.ix_(selected, selected)]
+            if np.linalg.matrix_rank(block) < len(selected):
+                err_mess = 'Cannot partially invert map: selected Jacobian block is singular'
+                raise ValueError(err_mess)
 
         if self.is_complex:
             result = [
@@ -847,9 +858,33 @@ class TpsaMap(TpsaTensor[TpsaSeriesT]):
         return TpsaMap(result)
 
     def log_poisson(
-        self, initial_guess: TpsaMap[Tpsa] | TpsaMap[ComplexTpsa] | None = None
+        self,
+        initial_guess: TpsaMap[Tpsa] | TpsaMap[ComplexTpsa] | None = None,
+        *,
+        validate: bool = True,
+        atol: float = 1e-12,
+        rtol: float = 1e-10,
     ) -> TpsaMap[Tpsa] | TpsaMap[ComplexTpsa]:
-        """Return a vector field logarithm compatible with ``exp_poisson``."""
+        """Compute a native vector-field logarithm of this coordinate map.
+
+        When ``validate=True`` (default), re-exponentiate the field and
+        compare **every represented TPSA coefficient** against the input map.
+        A native operation returning successfully is not proof of convergence.
+
+        No symplecticity or Hamiltonian condition is required: a general
+        vector field may be the logarithm of a non-symplectic coordinate map.
+        ``initial_guess`` is a *vector-field* guess for the MAD-NG iteration,
+        not a physical reference map.
+
+        MAD-NG's logarithm is iterative and is most reliable for maps near
+        the identity. Even when validation passes, it proves a numerical
+        round trip at the retained TPSA order, not global logarithm existence
+        or uniqueness. Set ``validate=False`` to avoid re-exponentiation when
+        a higher-level normal-form algorithm checks reconstruction itself.
+        """
+        if not np.isfinite(atol) or not np.isfinite(rtol) or atol < 0 or rtol < 0:
+            err_mess = 'Validation tolerances must be finite and non-negative'
+            raise ValueError(err_mess)
         if initial_guess is not None and not isinstance(initial_guess, TpsaMap):
             err_mess = f'Map initial_guess must be a TpsaMap! Got {type(initial_guess)}'
             raise TypeError(err_mess)
@@ -884,7 +919,29 @@ class TpsaMap(TpsaTensor[TpsaSeriesT]):
         )
         if status:
             self.flat[0]._raise_mad_error()
-        return TpsaMap(result)
+        field = TpsaMap(result)
+        if validate:
+            # Compare against `left`, not self: a supplied initial guess can
+            # trigger descriptor alignment or real-to-complex promotion.
+            reconstructed = TpsaMap(left.descriptor).exp_poisson(field)
+            for name, expected_series, actual_series in zip(
+                left.coord_names, left.flat, reconstructed.flat, strict=True
+            ):
+                expected = expected_series.monomial_coeffs(tol=0)
+                actual = actual_series.monomial_coeffs(tol=0)
+                for monomial in expected.keys() | actual.keys():
+                    lhs = expected.get(monomial, 0)
+                    rhs = actual.get(monomial, 0)
+                    if not np.isclose(lhs, rhs, atol=atol, rtol=rtol):
+                        err_mess = (
+                            'Native log_poisson did not reconstruct the input map: '
+                            f'coordinate {name}, monomial {monomial}, '
+                            f'expected {lhs}, obtained {rhs}. '
+                            'The logarithm may not have converged or the map '
+                            'may lie outside the represented TPSA order.'
+                        )
+                        raise ValueError(err_mess)
+        return field
 
     def log_generator(
         self,
@@ -899,9 +956,8 @@ class TpsaMap(TpsaTensor[TpsaSeriesT]):
         When ``validate=True``, reject non-Hamiltonian logarithmic fields or
         generators not reconstructable at this descriptor's order.
         """
-        return -self.log_poisson(initial_guess).to_generator(
-            validate=validate, atol=atol, rtol=rtol
-        )
+        field = self.log_poisson(initial_guess, validate=validate, atol=atol, rtol=rtol)
+        return -field.to_generator(validate=validate, atol=atol, rtol=rtol)
 
     def pullback(self, function: Tpsa | ComplexTpsa) -> Tpsa | ComplexTpsa:
         """Return ``function ∘ self`` (ordinary, not inverse, pullback)."""

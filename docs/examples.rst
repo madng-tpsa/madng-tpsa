@@ -26,6 +26,9 @@ parameter derivatives and mixed partials.
 ``06_public_api_walkthrough.py`` surveys conversion, serialization, views,
 mathematical functions and additional public map/tensor operations.
 
+``07_log_poisson_validation.py`` demonstrates validated general vector-field
+logarithms, and distinguishes them from Hamiltonian generators.
+
 .. literalinclude:: ../examples/01_tpsa_basics.py
    :language: python
 
@@ -42,4 +45,7 @@ mathematical functions and additional public map/tensor operations.
    :language: python
 
 .. literalinclude:: ../examples/06_public_api_walkthrough.py
+   :language: python
+
+.. literalinclude:: ../examples/07_log_poisson_validation.py
    :language: python

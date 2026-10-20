@@ -48,7 +48,12 @@ Derivatives beyond the descriptor's representable order evaluate to zero.
 directions. Original axes are left unchanged. When both flags are enabled,
 variables precede parameters in each derivative axis. For performance and
 storage, the result has ``tensor.size * n**order`` component TPSAs, so high
-ranks can be expensive even when higher derivatives vanish.
+ranks can be expensive even when higher derivatives vanish. The default
+``max_components=1_000_000`` prevents unexpectedly allocating larger tensors;
+a call may opt out with ``max_components=None`` only when memory requirements
+have been assessed. A lower limit can be supplied for memory-sensitive work.
+The guard counts *TPSA objects*, not coefficient storage: even a smaller
+number of high-order series can use substantial memory.
 
 Storage and conversion
 ----------------------

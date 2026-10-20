@@ -69,6 +69,16 @@ def test_inverse_rejects_nonzero_constant_and_singular_linear_part() -> None:
         TpsaMap([q, d.zero()]).inverse()
 
 
+def test_inverse_rejects_singular_jacobian_with_nonzero_rows():
+    d = Descriptor(variables=('q', 'p'), order=4)
+    q, _ = d.vars()
+
+    mapping = TpsaMap([q, 2 * q])
+
+    with pytest.raises(ValueError, match='singular'):
+        mapping.inverse()
+
+
 def test_partial_inverse_of_selected_shear() -> None:
     d = _d()
     q, p = d.vars()
@@ -88,6 +98,16 @@ def test_partial_inverse_selection_validation() -> None:
         mapping.partial_inverse(cast('Any', [True, 0.5]))
     with pytest.raises(ValueError, match='zero constant'):
         TpsaMap([_d().var('alg_q') + 1, _d().var('alg_p')]).partial_inverse([1, 0])
+
+
+def test_partial_inverse_rejects_singular_jacobian_with_nonzero_rows():
+    d = Descriptor(variables=('q', 'p'), order=4)
+    q, p = d.vars()
+
+    mapping = TpsaMap([p, q])
+
+    with pytest.raises(ValueError, match='singular'):
+        mapping.partial_inverse(select=(True, False))
 
 
 def test_translation_acts_on_inputs_not_map_outputs() -> None:

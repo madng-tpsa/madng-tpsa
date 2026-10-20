@@ -563,6 +563,7 @@ class TpsaTensor(Generic[TpsaSeriesT]):
         *,
         to_variables: bool = True,
         to_parameters: bool = False,
+        max_components: int | None = 1_000_000,
     ) -> TpsaTensor[TpsaSeriesT]:
         """Append ``order`` derivative axes to the existing tensor shape.
 
@@ -592,6 +593,24 @@ class TpsaTensor(Generic[TpsaSeriesT]):
         ):
             err_mess = 'Selected derivative directions do not match descriptor lengths'
             raise ValueError(err_mess)
+
+        # The output contains `size * n**order` independently allocated TPSAs.
+        # Caching native differentiation does not reduce output storage.
+        if max_components is not None:
+            if isinstance(max_components, bool) or not isinstance(max_components, Integral):
+                err_mess = 'max_components must be a positive integer or None'
+                raise TypeError(err_mess)
+            if max_components <= 0:
+                err_mess = 'max_components must be positive'
+                raise ValueError(err_mess)
+            component_count = self.size * len(indices) ** int(order)
+            if component_count > max_components:
+                err_mess = (
+                    f'Derivative tensor requires {component_count} TPSA components, '
+                    f'exceeding the limit {max_components}. Use partial_derivative() '
+                    'or explicitly raise max_components if enough memory is available.'
+                )
+                raise ValueError(err_mess)
 
         # The original tensor axes are outermost; derivative axes are appended
         # in lexicographic row-major order, so every mixed partial is present.

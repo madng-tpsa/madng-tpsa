@@ -1,8 +1,8 @@
 TpsaMap
 =======
 
-:class:`~madng_tpsa.maps.TpsaMap` represents a full vector-valued TPSA map.
-It subclasses :class:`~madng_tpsa.tensors.TpsaTensor` with one component per
+:class:`~madng_tpsa.map.TpsaMap` represents a full vector-valued TPSA map.
+It subclasses :class:`~madng_tpsa.tensor.TpsaTensor` with one component per
 *descriptor variable*. All components share the same descriptor; mixed real
 and complex series are promoted to a complex map.
 
@@ -79,8 +79,8 @@ momenta. ``set_jacobian`` and ``set_param_jacobian`` replace only the relevant
 first-order coefficient blocks; there is intentionally no Hessian setter.
 
 The inherited generic methods
-:meth:`~madng_tpsa.tensors.TpsaTensor.partial_derivative` and
-:meth:`~madng_tpsa.tensors.TpsaTensor.derivative_tensor` cover arbitrary mixed
+:meth:`~madng_tpsa.tensor.TpsaTensor.partial_derivative` and
+:meth:`~madng_tpsa.tensor.TpsaTensor.derivative_tensor` cover arbitrary mixed
 partial derivatives and preserve parameter dependence. See :doc:`tpsa_tensor`
 and ``examples/05_tpsamap_derivatives.py``.
 
@@ -131,8 +131,8 @@ physical meaning. Descriptor parameters are not canonical coordinates.
 
 MAD-NG's native scalar-to-field convention is
 :math:`G=-J\nabla f`, implemented by
-:meth:`~madng_tpsa.maps.TpsaMap.from_generator`. For Hamiltonian fields,
-:meth:`~madng_tpsa.maps.TpsaMap.to_generator` reverses this conversion up to
+:meth:`~madng_tpsa.map.TpsaMap.from_generator`. For Hamiltonian fields,
+:meth:`~madng_tpsa.map.TpsaMap.to_generator` reverses this conversion up to
 an additive function of the descriptor parameters. With its default
 ``validate=True`` it rejects vector fields that cannot be reconstructed from
 a scalar generator at the available TPSA order.
@@ -154,8 +154,30 @@ with the raw ``from_generator`` output without this sign change.
 
 ``lie_bracket()`` acts on vector fields; ``exp_poisson()`` and
 ``log_poisson()`` act on the corresponding Lie operators. The native logarithm
-uses an iterative algorithm and is principally intended for suitable maps
-close to the identity. Truncation may prevent exact generator recovery.
+uses an iterative algorithm and is principally intended for maps close to the
+identity. A normal return from MAD-NG does **not** prove that it converged.
+
+By default, ``log_poisson(validate=True)`` checks the **full retained TPSA
+coefficient map** after re-exponentiating the returned vector field. The
+comparison uses ``atol=1e-12`` and ``rtol=1e-10`` by default, and raises
+``ValueError`` if the map cannot be reconstructed at those tolerances. The
+check does not require symplecticity or even a Hamiltonian vector field.
+
+.. code-block:: python
+
+   field = lie_map.log_poisson()  # Checks exp_poisson(field) == lie_map
+   unchecked = lie_map.log_poisson(validate=False)
+
+Use ``validate=False`` when a normal-form analysis deliberately performs its
+**own** higher-level map reconstruction or tolerance and order comparison.
+It avoids a potentially expensive extra exponential, but the caller then
+owns convergence assessment. We deliberately keep ``validate=True`` as the
+public API default, including in ``log_generator()``, which *also* checks
+Hamiltonian integrability. Passing an ``initial_guess`` supplies the native
+iteration with a vector-field guess, not a reference coordinate map.
+
+Truncation can prevent exact generator recovery; a successful numerical
+round trip is not a proof of existence or uniqueness of a global logarithm.
 
 A TPSA map known to order :math:`N` generally allows verification of its
 symplectic condition only through order :math:`N-1` because derivatives lower
@@ -171,6 +193,6 @@ an arbitrary subclass whose auxiliary state has no defined transformation.
 API reference
 -------------
 
-.. autoclass:: madng_tpsa.maps.TpsaMap
+.. autoclass:: madng_tpsa.map.TpsaMap
    :members:
    :inherited-members:
