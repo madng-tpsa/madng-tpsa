@@ -61,10 +61,10 @@ print()
 # grad(f) = [3.0, -1.0]
 
 print('Order information:')
-print('allocated order   =', f.truncation_order)
+print('allocated order    =', f.truncation_order)
 print('highest used order =', f.degree)
 print()
-# allocated order   = 4
+# allocated order    = 4
 # highest used order = 3
 
 print('Homogeneous order 2:')

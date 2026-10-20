@@ -67,7 +67,7 @@ def test_tensor_parameter_hessian_inherits_scalar_fix() -> None:
     _, p = d.vars()
     k = d.param('hpar_k')
     m = TpsaMap([5 * k**2, 2 * k**2 * p])
-    h = m.derivative_tensor(2, to_variables=False, to_parameters=True)
+    h = m.derivative_tensor(2, wrt='parameters')
     assert h.shape == (2, 1, 1)
     np.testing.assert_allclose(
         h.evaluate((2, 3), parameters=(4,)),

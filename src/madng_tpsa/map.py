@@ -12,7 +12,7 @@ from typing import TYPE_CHECKING, SupportsComplex, SupportsFloat, cast, overload
 
 if TYPE_CHECKING:
     from collections.abc import Mapping, Sequence
-    from typing import Self
+    from typing import Literal, Self
 
     from ._typing import MapSeriesT, Scalar, SelectionValue, TpsaSeries
     from .tpsa import Tpsa
@@ -360,127 +360,77 @@ class TpsaMap(TpsaTensor[TpsaSeriesT]):
             err_mess = f'Unsupported TPSA component type: {type(component).__name__}'
             raise TypeError(err_mess)
 
-    def jacobian_operator(
-        self, *, to_variables: bool = True, to_parameters: bool = False
-    ) -> TpsaTensor[TpsaSeriesT]:
-        """Return the rank-two TPSA-valued Jacobian over selected inputs."""
-        return self.derivative_tensor(1, to_variables=to_variables, to_parameters=to_parameters)
-
     def jacobian(
+        self, *, wrt: Literal['variables', 'parameters', 'all'] = 'variables'
+    ) -> TpsaTensor[TpsaSeriesT]:
+        """Return the rank-two TPSA-valued Jacobian over selected inputs.
+
+        The argument 'wrt' (with respect to) can be used to specify which
+        derivatives to include: variables', 'parameters', or 'all'.
+        """
+        return self.derivative_tensor(1, wrt=wrt)
+
+    def evaluate_jacobian(
         self,
         coordinates: Sequence[Scalar] | np.ndarray | None = None,
         *,
         parameters: Sequence[Scalar] | np.ndarray | None = None,
+        wrt: Literal['variables', 'parameters', 'all'] = 'variables',
     ) -> np.ndarray:
-        """Evaluate the Jacobian with respect to descriptor variables.
+        """Evaluate the map Jacobian at a numerical phase-space/parameter point.
 
-        Parameters
-        ----------
-        coordinates
-            Numerical coordinates at which to evaluate the Jacobian. Default 0.
-        parameters
-            Numerical values for the descriptor parameters. Default 0.
+        By default evaluate at the origin (all coordinates and parameters zero).
+        The result has shape ``(num_outputs, num_inputs)``. The argument 'wrt'
+        (with respect to) can be used to specify which derivatives to include in
+        num_inputs: variables', 'parameters', or 'all'.
         """
-        if coordinates is None and parameters is None:
-            return np.asarray([tpsa.grad() for tpsa in self.coords])
-        if coordinates is None:
-            coordinates = [0.0] * self.num_vars
-        if parameters is None:
-            parameters = [0.0] * self.num_params
-        return self.jacobian_operator(to_variables=True, to_parameters=False).evaluate(
-            coordinates=coordinates, parameters=parameters
-        )
-
-    def param_jacobian(
-        self,
-        coordinates: Sequence[Scalar] | np.ndarray | None = None,
-        *,
-        parameters: Sequence[Scalar] | np.ndarray | None = None,
-    ) -> np.ndarray:
-        """Evaluate the Jacobian with respect to descriptor parameters.
-
-        Parameters
-        ----------
-        coordinates
-            Numerical coordinates at which to evaluate the parameter Jacobian. Default 0.
-        parameters
-            Numerical values for the descriptor parameters. Default 0.
-        """
-        if self.num_params == 0:
+        if wrt == 'parameters' and self.num_params == 0:
             dtype = complex if self.is_complex else float
             return np.empty((len(self), 0), dtype=dtype)
         if coordinates is None and parameters is None:
-            return np.asarray([tpsa.param_grad() for tpsa in self.coords])
+            res = []
+            if wrt == 'variables' or wrt == 'all':
+                res += [tpsa.grad() for tpsa in self.coords]
+            if wrt == 'parameters' or wrt == 'all':
+                res += [tpsa.param_grad() for tpsa in self.coords]
+            return np.asarray(res)
         if coordinates is None:
             coordinates = [0.0] * self.num_vars
         if parameters is None:
             parameters = [0.0] * self.num_params
-        return self.jacobian_operator(to_variables=False, to_parameters=True).evaluate(
-            coordinates=coordinates, parameters=parameters
-        )
+        return self.jacobian(wrt=wrt).evaluate(coordinates=coordinates, parameters=parameters)
 
-    def set_jacobian(self, jacobian: Sequence[Sequence[Scalar]] | np.ndarray) -> None:
-        """Replace all first-order coefficients for descriptor variables."""
-        matrix = np.asarray(jacobian)
-        expected_shape = (len(self), self.num_vars)
-        if matrix.shape != expected_shape:
-            err_mess = f'Jacobian must have shape {expected_shape}, got {matrix.shape}'
-            raise ValueError(err_mess)
-        if not self.is_complex and np.any(np.imag(matrix) != 0):
-            err_mess = 'Cannot assign complex coefficients to a real map'
-            raise TypeError(err_mess)
-        for row_idx, row in enumerate(matrix):
-            for variable, value in enumerate(row):
-                mono = [0] * self.descriptor.monomial_length
-                mono[variable] = 1
-                self.set_coefficient(row_idx, mono, value)
-
-    def set_param_jacobian(self, jacobian: Sequence[Sequence[Scalar]] | np.ndarray) -> None:
-        """Replace all first-order coefficients for descriptor parameters."""
-        matrix = np.asarray(jacobian)
-        expected_shape = (len(self), self.num_params)
-        if matrix.shape != expected_shape:
-            err_mess = f'Parameter Jacobian must have shape {expected_shape}, got {matrix.shape}'
-            raise ValueError(err_mess)
-        if not self.is_complex and np.any(np.imag(matrix) != 0):
-            err_mess = 'Cannot assign complex coefficients to a real map'
-            raise TypeError(err_mess)
-        for row_idx, row in enumerate(matrix):
-            for parameter, value in enumerate(row):
-                mono = [0] * self.descriptor.monomial_length
-                mono[self.num_vars + parameter] = 1
-                self.set_coefficient(row_idx, mono, value)
-
-    def hessian_operator(
-        self, *, to_variables: bool = True, to_parameters: bool = False
+    def hessian(
+        self, *, wrt: Literal['variables', 'parameters', 'all'] = 'variables'
     ) -> TpsaTensor[TpsaSeriesT]:
         """Return the rank-three TPSA-valued Hessian over selected inputs.
 
         Entry ``[i, j, k]`` is the second derivative of output ``i`` with
         respect to inputs ``j`` and ``k`` (variables followed by parameters).
+        The argument 'wrt' (with respect to) can be used to specify which
+        derivatives to include: variables', 'parameters', or 'all'.
         """
-        return self.derivative_tensor(2, to_variables=to_variables, to_parameters=to_parameters)
+        return self.derivative_tensor(2, wrt=wrt)
 
-    def hessian(
+    def evaluate_hessian(
         self,
         coordinates: Sequence[Scalar] | np.ndarray | None = None,
         *,
         parameters: Sequence[Scalar] | np.ndarray | None = None,
-        to_variables: bool = True,
-        to_parameters: bool = False,
+        wrt: Literal['variables', 'parameters', 'all'] = 'variables',
     ) -> np.ndarray:
         """Evaluate the map Hessian at a numerical phase-space/parameter point.
 
         By default evaluate at the origin (all coordinates and parameters zero).
-        The result has shape ``(num_outputs, num_inputs, num_inputs)``. Each
-        input axis follows descriptor variable order and then parameter order
-        when ``to_parameters=True``. No setter is provided.
+        The result has shape ``(num_outputs, num_inputs, num_inputs)``. The
+        argument 'wrt' (with respect to) can be used to specify which
+        derivatives to include in num_inputs: variables', 'parameters', or 'all'.
         """
         if coordinates is None:
             coordinates = [0.0] * self.num_vars
-        return self.hessian_operator(
-            to_variables=to_variables, to_parameters=to_parameters
-        ).evaluate(coordinates, parameters=parameters)
+        if parameters is None:
+            parameters = [0.0] * self.num_params
+        return self.hessian(wrt=wrt).evaluate(coordinates=coordinates, parameters=parameters)
 
     def compose(self, other: TpsaMap[MapSeriesT]) -> TpsaMap[Tpsa] | TpsaMap[ComplexTpsa]:
         """Compose full coordinate maps, preserving the TpsaMap result type."""
@@ -497,7 +447,7 @@ class TpsaMap(TpsaTensor[TpsaSeriesT]):
         if np.any(self.const_part != 0):
             err_mess = 'Map inversion requires zero constant terms; recenter it first'
             raise ValueError(err_mess)
-        jac = self.jacobian()
+        jac = self.evaluate_jacobian()
         if np.linalg.matrix_rank(jac) < self.num_vars:
             err_mess = 'Cannot invert map: the linear Jacobian is singular'
             raise ValueError(err_mess)
@@ -554,7 +504,7 @@ class TpsaMap(TpsaTensor[TpsaSeriesT]):
         choices.extend([0] * self.num_params)
         selected = np.flatnonzero(choices[: self.num_vars])
         if len(selected):
-            jac = self.jacobian()
+            jac = self.evaluate_jacobian()
             block = jac[np.ix_(selected, selected)]
             if np.linalg.matrix_rank(block) < len(selected):
                 err_mess = 'Cannot partially invert map: selected Jacobian block is singular'

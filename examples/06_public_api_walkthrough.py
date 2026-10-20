@@ -19,7 +19,7 @@ assert d.is_valid_monomial((1, 0, 1))
 assert d.monomial_index((1, 0, 0)) >= 0
 assert Descriptor.from_dict(d.to_dict()) is d
 assert d.union(d) is d
-print('Variables:', d.var_labels, 'parameters:', d.param_labels)
+print('Variables:', d.variables, 'parameters:', d.parameters)
 print('Variable index:', d.var_or_param_index('q'))
 print('Parameter series:', d.params())
 print('Descriptor native pointer:', d.ptr)
@@ -171,9 +171,8 @@ print('Map named coordinates:', map_.coordinates, map_.coords)
 print('Map pointer array with parameter identities:', len(map_.pointer_array_with_params))
 print('Map coefficient:', map_.coefficient('q', (0, 2, 0)))
 print('Map constants:', map_.const_part)
-print('Jacobian:', map_.jacobian())
-print('Parameter Jacobian:', map_.param_jacobian())
-print('Hessian shape:', map_.hessian_operator(to_parameters=True).shape)
+print('Jacobian:', map_.evaluate_jacobian())
+print('Hessian shape:', map_.hessian(wrt='all').shape)
 print('Map arithmetic/norm:', (map_ - identity).shape, map_.norm())
 print(
     'Map copy, JSON, complex:',
@@ -190,13 +189,10 @@ print('Map composition:', (map_ @ identity).shape)
 d_extended = Descriptor(variables=('q', 'p', 'r'), parameters=('k',), order=5)
 assert map_.extend_descriptor(d_extended).shape == (3,)
 
-# First-order setters are deliberately separate from Hessians.
+# First-order setters
 modifiable = identity.copy()
-modifiable.set_jacobian([[1, 2], [0, 1]])
-modifiable.set_param_jacobian([[3], [4]])
 modifiable.set_coefficient('q', (2, 0, 0), 0.5)
 modifiable.const_part = [0.25, 0.0]
-np.testing.assert_allclose(modifiable.jacobian(), [[1, 2], [0, 1]])
 print('Mutated map:', modifiable)
 
 # Hamiltonian conversion and Lie conventions.

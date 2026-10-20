@@ -89,7 +89,7 @@ def test_derivative_tensor_appends_axes_independent_of_original_rank() -> None:
     t = _tensor()
     d1 = t.derivative_tensor(1)
     assert d1.shape == (2, 2, 2)
-    d2 = t.derivative_tensor(2, to_parameters=True)
+    d2 = t.derivative_tensor(2, wrt='all')
     assert d2.shape == (2, 2, 3, 3)
     at = d2.evaluate((2, 3), parameters=(4,))
     assert at[0, 0, 0, 0] == pytest.approx(8)  # d^2(q^2*k)/dq^2
@@ -97,20 +97,20 @@ def test_derivative_tensor_appends_axes_independent_of_original_rank() -> None:
     assert at[0, 0, 2, 0] == pytest.approx(4)
     assert at[1, 0, 1, 2] == pytest.approx(6)  # d^2(k*p^2)/dp dk
     assert at[1, 0, 2, 1] == pytest.approx(6)
-    assert t.derivative_tensor(2, to_variables=False, to_parameters=True).shape == (2, 2, 1, 1)
+    assert t.derivative_tensor(2, wrt='parameters').shape == (2, 2, 1, 1)
     assert t.derivative_tensor(2).shape == (2, 2, 2, 2)
     assert isinstance(d2, TpsaTensor)
 
 
 def test_hessian_wrapper_and_symmetry() -> None:
     m = _map()
-    h = m.hessian_operator()
+    h = m.hessian()
     assert h.shape == (2, 2, 2)
     assert isinstance(h, TpsaTensor)
     expected = [[[20, 2], [2, 0]], [[0, 10], [10, 4]]]
     np.testing.assert_allclose(h.evaluate((2, 3), parameters=(4,)), expected)
-    np.testing.assert_allclose(m.hessian((2, 3), parameters=(4,)), expected)
-    np.testing.assert_allclose(m.hessian(), [[[0, 2], [2, 0]], [[0, 0], [0, 0]]])
+    np.testing.assert_allclose(m.evaluate_hessian((2, 3), parameters=(4,)), expected)
+    np.testing.assert_allclose(m.evaluate_hessian(), [[[0, 2], [2, 0]], [[0, 0], [0, 0]]])
     assert h[0, 0, 1] == h[0, 1, 0]
     assert m.derivative_tensor(2).shape == h.shape
 
@@ -121,34 +121,32 @@ def test_full_parameter_hessian_and_parameter_only_selection() -> None:
         [[20, 2, 4], [2, 0, 3], [4, 3, 10]],
         [[0, 10, 3], [10, 4, 18], [3, 18, 12]],
     ]
-    h = m.hessian_operator(to_parameters=True)
+    h = m.hessian(wrt='all')
     assert h.shape == (2, 3, 3)
     np.testing.assert_allclose(h.evaluate((2, 3), parameters=(4,)), expected)
-    np.testing.assert_allclose(m.hessian((2, 3), parameters=(4,), to_parameters=True), expected)
-    only_params = m.derivative_tensor(2, to_variables=False, to_parameters=True)
+    np.testing.assert_allclose(m.evaluate_hessian((2, 3), parameters=(4,), wrt='all'), expected)
+    only_params = m.derivative_tensor(2, wrt='parameters')
     assert only_params.shape == (2, 1, 1)
     np.testing.assert_allclose(only_params.evaluate((2, 3), parameters=(4,)), [[[10]], [[12]]])
 
 
 def test_jacobian_operator_matches_numerical_jacobian_and_parameters() -> None:
     m = _map()
-    assert m.jacobian_operator().shape == (2, 2)
-    np.testing.assert_allclose(m.jacobian((2, 3), parameters=(4,)), [[34, 16], [25, 52]])
+    assert m.jacobian().shape == (2, 2)
+    np.testing.assert_allclose(m.evaluate_jacobian((2, 3), parameters=(4,)), [[34, 16], [25, 52]])
     np.testing.assert_allclose(
         m.derivative_tensor(1).evaluate((2, 3), parameters=(4,)),
         [[34, 16], [25, 52]],
     )
     np.testing.assert_allclose(
-        m.derivative_tensor(1, to_variables=False, to_parameters=True).evaluate(
-            (2, 3), parameters=(4,)
-        ),
+        m.derivative_tensor(1, wrt='parameters').evaluate((2, 3), parameters=(4,)),
         [[53], [54]],
     )
 
 
 def test_third_derivative_tensor_contains_all_permutations() -> None:
     m = _map()
-    third = m.derivative_tensor(3, to_parameters=True)
+    third = m.derivative_tensor(3, wrt='all')
     assert third.shape == (2, 3, 3, 3)
     data = third.evaluate((2, 3), parameters=(4,))
     assert data[0, 0, 0, 0] == pytest.approx(6)
@@ -164,7 +162,7 @@ def test_complex_derivatives_and_no_mutation() -> None:
     q, p = d.vars()
     k = d.param('ck')
     m = TpsaMap(((1 + 2j) * q**2 + (2 - 1j) * k * q * p, 1j * p**2 + k**2 * q))
-    h = m.derivative_tensor(2, to_parameters=True)
+    h = m.derivative_tensor(2, wrt='all')
     assert h.is_complex
     assert all(isinstance(x, ComplexTpsa) for x in h.flat)
     evaluated = h.evaluate((2, 3), parameters=(4,))
@@ -224,10 +222,6 @@ def test_derivative_tensor_rejects_invalid_order(order: int) -> None:
 
 
 def test_derivative_tensor_rejects_unselected_or_unavailable_axes() -> None:
-    with pytest.raises(ValueError, match='Select at least one'):
-        _map().derivative_tensor(2, to_variables=False, to_parameters=False)
     d = Descriptor(variables=('np_q', 'np_p'), order=3)
     with pytest.raises(ValueError, match='Select at least one'):
-        TpsaMap(d).derivative_tensor(1, to_variables=False, to_parameters=True)
-    with pytest.raises(TypeError, match='flags must be booleans'):
-        _map().derivative_tensor(1, to_variables=cast('Any', 1))
+        TpsaMap(d).derivative_tensor(1, wrt='parameters')

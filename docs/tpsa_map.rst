@@ -67,16 +67,12 @@ Evaluation, Jacobians, Hessians
 
    m = TpsaMap([q**2 + k*q + p, q*p + k], descriptor=d)
    m.evaluate((2., 3.), parameters=(4.,))
-   m.jacobian((2., 3.), parameters=(4.,))
-   m.param_jacobian((2., 3.), parameters=(4.,))
-   J = m.jacobian_operator()                      # Shape (2, 2), TPSA-valued
-   H = m.hessian_operator(to_parameters=True)    # Shape (2, 3, 3)
-   values = m.hessian((2., 3.), parameters=(4.,), to_parameters=True)
+   m.evaluate_jacobian((2., 3.), parameters=(4.,))
+   J = m.jacobian(wrt='variables')  # Shape (2, 2), TPSA-valued
+   H = m.hessian(wrt='all')         # Shape (2, 3, 3)
+   values = m.evaluate_hessian((2., 3.), parameters=(4.,), wrt='all')
 
-Each Jacobian is evaluated in the original descriptor coordinates. Parameter
-Jacobians differentiate with respect to external parameters, **not** canonical
-momenta. ``set_jacobian`` and ``set_param_jacobian`` replace only the relevant
-first-order coefficient blocks; there is intentionally no Hessian setter.
+Each Jacobian and Hessian is evaluated in the original descriptor coordinates.
 
 The inherited generic methods
 :meth:`~madng_tpsa.tensor.TpsaTensor.partial_derivative` and

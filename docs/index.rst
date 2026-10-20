@@ -48,7 +48,7 @@ Quick start
    map_ = TpsaMap(x=x + y + 0.2 * x**2, y=y - 0.3 * x)
 
    print(map_.const_part)
-   print(map_.jacobian())
+   print(map_.evaluate_jacobian())
 
 Composition follows mathematical ordering:
 

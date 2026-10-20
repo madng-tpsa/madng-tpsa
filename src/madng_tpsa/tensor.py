@@ -16,7 +16,7 @@ from ._typing import TpsaSeriesT
 
 if TYPE_CHECKING:
     from collections.abc import Iterator, Mapping
-    from typing import Any, Self
+    from typing import Any, Literal, Self
 
     from ._typing import DerivativeSpec, MapSeriesT, Nested, Scalar, TpsaSeries
     from .map import TpsaMap
@@ -561,16 +561,16 @@ class TpsaTensor(Generic[TpsaSeriesT]):
         self,
         order: int,
         *,
-        to_variables: bool = True,
-        to_parameters: bool = False,
+        wrt: Literal['variables', 'parameters', 'all'] = 'variables',
         max_components: int | None = 1_000_000,
     ) -> TpsaTensor[TpsaSeriesT]:
         """Append ``order`` derivative axes to the existing tensor shape.
 
         Each new axis enumerates selected descriptor directions: variables
-        first (when ``to_variables=True``), then parameters (when
-        ``to_parameters=True``). Every component contains the corresponding
-        repeated/mixed partial derivative, still represented as a TPSA.
+        first (when ``wrt='variables'`` or ``wrt='all'``), then parameters
+        (when ``wrt='parameters'`` or ``wrt='all'``). Every component
+        contains the corresponding repeated/mixed partial derivative, still
+        represented as a TPSA.
 
         A tensor of shape ``(a, b)`` differentiated twice with respect to
         ``n`` selected directions has shape ``(a, b, n, n)``.
@@ -578,9 +578,12 @@ class TpsaTensor(Generic[TpsaSeriesT]):
         if isinstance(order, bool) or not isinstance(order, Integral) or order < 1:
             err_mess = 'Derivative order must be a positive integer'
             raise ValueError(err_mess)
-        if not isinstance(to_variables, bool) or not isinstance(to_parameters, bool):
-            err_mess = 'Derivative direction flags must be booleans'
+        if wrt not in ['variables', 'parameters', 'all']:
+            err_mess = "Derivative direction argument 'wrt' has to be one of "
+            err_mess += "['variables', 'parameters', 'all']."
             raise TypeError(err_mess)
+        to_variables = wrt == 'variables' or wrt == 'all'
+        to_parameters = wrt == 'parameters' or wrt == 'all'
 
         indices = (tuple(range(self.num_vars)) if to_variables else ()) + (
             tuple(range(self.num_vars, self.num_vars + self.num_params)) if to_parameters else ()

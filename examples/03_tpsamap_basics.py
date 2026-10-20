@@ -43,7 +43,7 @@ print()
 # [0. 0.]
 
 print('Jacobian at the expansion point:')
-print(turn_map.jacobian())
+print(turn_map.evaluate_jacobian())
 print()
 # [[ 1.   1. ]
 #  [-0.3  1. ]]
@@ -55,7 +55,7 @@ print()
 # [0.0030002 0.0017002]
 
 print('Jacobian at', point)
-print(turn_map.jacobian(point))
+print(turn_map.evaluate_jacobian(point))
 print()
 # [[ 1.0004  1.    ]
 #  [-0.2998  1.0001]]

@@ -24,7 +24,7 @@ def test_mixed_parameter_derivative_tensor_is_symmetric_but_not_aliased() -> Non
     q, p = d.vars()
     k = d.param('review_k2')
     matrix = TpsaTensor([[q * k**2, p], [q**2 * k, p * k]])
-    hessian = matrix.derivative_tensor(2, to_parameters=True)
+    hessian = matrix.derivative_tensor(2, wrt='all')
     assert hessian.shape == (2, 2, 3, 3)
     values = hessian.evaluate((2, 3), parameters=(4,))
     assert values[0, 0, 0, 2] == 8
@@ -46,7 +46,7 @@ def test_tensor_partial_and_full_derivative_consistency() -> None:
     d = Descriptor(variables=('review_q3', 'review_p3'), order=5)
     q, p = d.vars()
     m = TpsaMap([q**3 + q * p**2, q * p**3])
-    hessian = m.hessian_operator()
+    hessian = m.hessian()
     selected = m.partial_derivative((1, 1))
     for i, component in enumerate(selected.coords):
         assert component == hessian[i, 0, 1]

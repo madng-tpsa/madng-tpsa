@@ -18,7 +18,7 @@ array shape; all polynomial components share one descriptor. A rank-one
 
    partial = tensor.partial_derivative((('q', 1), 'k'))
    assert partial.shape == (2, 2)
-   hessian = tensor.derivative_tensor(2, to_parameters=True)
+   hessian = tensor.derivative_tensor(2, wrt='all')
    assert hessian.shape == (2, 2, 3, 3)
 
 Mixed partial specification
@@ -43,7 +43,7 @@ one-based in descriptor variable/parameter order. Invalid names, lengths,
 negative orders, booleans, or unsupported specifications raise an exception.
 Derivatives beyond the descriptor's representable order evaluate to zero.
 
-``derivative_tensor(order, to_variables=True, to_parameters=False)`` appends
+``derivative_tensor(order, wrt='variables')`` appends
 ``order`` derivative axes, each of length equal to the number of selected
 directions. Original axes are left unchanged. When both flags are enabled,
 variables precede parameters in each derivative axis. For performance and
