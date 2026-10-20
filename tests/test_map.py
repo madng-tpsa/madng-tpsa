@@ -435,7 +435,7 @@ def test_jacobian_operator_rejects_empty_selection() -> None:
     mapping = TpsaMap(_descriptor(parameters=True))
     with pytest.raises(ValueError, match='Select'):
         mapping.jacobian_operator(to_variables=False, to_parameters=False)
-    with pytest.raises(ValueError, match='no parameters'):
+    with pytest.raises(ValueError, match='Select at least one existing variable or parameter'):
         TpsaMap(_descriptor()).jacobian_operator(to_variables=False, to_parameters=True)
 
 

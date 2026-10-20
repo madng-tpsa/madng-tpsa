@@ -321,8 +321,19 @@ class ComplexTpsa(_TpsaBase[complex, SupportsFloat | SupportsComplex]):
             or a TPSA with exactly one non-constant coefficient equal to one. See
             :meth:`_resolve_single_monomial` for accepted inputs.
         """
-        result = self.descriptor.complex_zero(order=self.truncation_order)
         monomial = self._resolve_single_monomial(variable)
+        if any(monomial[self.descriptor.num_vars :]):
+            # MAD-NG's multi-index derivative omits parameter multiplicities.
+            # Repeated first derivatives retain the correct factorial factors.
+            current: ComplexTpsa = self
+            for index, multiplicity in enumerate(monomial, start=1):
+                for _ in range(multiplicity):
+                    result = self.descriptor.complex_zero(order=self.truncation_order)
+                    lib.mad_ctpsa_deriv(current._ptr, result._ptr, index)
+                    current = result
+            return current
+
+        result = self.descriptor.complex_zero(order=self.truncation_order)
         monomial_arr = ffi.new('unsigned char[]', monomial)
         lib.mad_ctpsa_derivm(self._ptr, result._ptr, len(monomial), monomial_arr)
         return result

@@ -368,27 +368,8 @@ class TpsaMap(TpsaTensor[TpsaSeriesT]):
     def jacobian_operator(
         self, *, to_variables: bool = True, to_parameters: bool = False
     ) -> TpsaTensor[TpsaSeriesT]:
-        """Return TPSA-valued partial derivatives over selected inputs."""
-        if not to_variables and not to_parameters:
-            err_mess = 'Select variables, parameters, or both for differentiation'
-            raise ValueError(err_mess)
-        start = 0 if to_variables else self.num_vars
-        end = self.num_vars + self.num_params if to_parameters else self.num_vars
-        width = end - start
-        if width == 0:
-            err_mess = 'The descriptor has no parameters to differentiate'
-            raise ValueError(err_mess)
-        derivatives: list[Tpsa | ComplexTpsa] = []
-        for component in self.coords:
-            if isinstance(component, (Tpsa, ComplexTpsa)):
-                derivatives.extend(component.derivative(j) for j in range(start + 1, end + 1))
-            else:
-                err_mess = f'Unsupported TPSA component type: {type(component).__name__}'
-                raise TypeError(err_mess)
-        return cast(
-            'TpsaTensor[TpsaSeriesT]',
-            TpsaTensor(derivatives, shape=(len(self), width)),
-        )
+        """Return the rank-two TPSA-valued Jacobian over selected inputs."""
+        return self.derivative_tensor(1, to_variables=to_variables, to_parameters=to_parameters)
 
     def jacobian(
         self,
@@ -474,6 +455,37 @@ class TpsaMap(TpsaTensor[TpsaSeriesT]):
                 mono = [0] * self.descriptor.monomial_length
                 mono[self.num_vars + parameter] = 1
                 self.set_coefficient(row_idx, mono, value)
+
+    def hessian_operator(
+        self, *, to_variables: bool = True, to_parameters: bool = False
+    ) -> TpsaTensor[TpsaSeriesT]:
+        """Return the rank-three TPSA-valued Hessian over selected inputs.
+
+        Entry ``[i, j, k]`` is the second derivative of output ``i`` with
+        respect to inputs ``j`` and ``k`` (variables followed by parameters).
+        """
+        return self.derivative_tensor(2, to_variables=to_variables, to_parameters=to_parameters)
+
+    def hessian(
+        self,
+        coordinates: Sequence[Scalar] | np.ndarray | None = None,
+        *,
+        parameters: Sequence[Scalar] | np.ndarray | None = None,
+        to_variables: bool = True,
+        to_parameters: bool = False,
+    ) -> np.ndarray:
+        """Evaluate the map Hessian at a numerical phase-space/parameter point.
+
+        By default evaluate at the origin (all coordinates and parameters zero).
+        The result has shape ``(num_outputs, num_inputs, num_inputs)``. Each
+        input axis follows descriptor variable order and then parameter order
+        when ``to_parameters=True``. No setter is provided.
+        """
+        if coordinates is None:
+            coordinates = [0.0] * self.num_vars
+        return self.hessian_operator(
+            to_variables=to_variables, to_parameters=to_parameters
+        ).evaluate(coordinates, parameters=parameters)
 
     def compose(self, other: TpsaMap[MapSeriesT]) -> TpsaMap[Tpsa] | TpsaMap[ComplexTpsa]:
         """Compose full coordinate maps, preserving the TpsaMap result type."""
