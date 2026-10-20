@@ -70,7 +70,7 @@ components.
 
 ``const_part`` can be read or assigned using scalar broadcasting or a NumPy
 array matching ``shape``. ``homogeneous()``, ``truncate()`` and
-``clear_order()`` return new tensors. ``to_descriptor()`` converts component
+``clear_order()`` return new tensors. ``change_descriptor()`` converts component
 polynomials to a compatible descriptor.
 
 ``compose(map)`` substitutes the full coordinate map into every component,

@@ -167,7 +167,7 @@ class _TpsaBase(ABC, Generic[_Coefficient, _InputCoefficient]):
         instance.update(coeff_dict)
         return instance
 
-    def to_descriptor(
+    def change_descriptor(
         self,
         descriptor: Descriptor,
         *,

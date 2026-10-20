@@ -54,8 +54,8 @@ Conversion and inspection
 ``set_coefficient`` updates the selected component in place. ``const_part`` is
 a writable array-shaped property; ``set_const_part`` is deprecated.
 
-``to_descriptor`` converts a complete map to another compatible descriptor,
-including the output coordinate ordering; ``extend_to`` inserts identity
+``change_descriptor`` converts a complete map to another compatible descriptor,
+including the output coordinate ordering; ``extend_descriptor`` inserts identity
 components for newly introduced variables. Both use descriptor variable names,
 not merely the number of coordinates. ``homogeneous()``, ``truncate()`` and
 ``clear_order()`` operate on every component without modifying the original.

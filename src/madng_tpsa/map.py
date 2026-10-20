@@ -27,7 +27,7 @@ from ._cffi import ffi, lib
 from ._typing import TpsaSeriesT
 from .complex_tpsa import ComplexTpsa
 from .descriptor import Descriptor
-from .tensors import TpsaTensor
+from .tensor import TpsaTensor
 from .tpsa import Tpsa
 
 
@@ -174,7 +174,7 @@ class TpsaMap(TpsaTensor[TpsaSeriesT]):
             raise IndexError(err_mess)
         return result
 
-    def to_descriptor(
+    def change_descriptor(
         self,
         descriptor: Descriptor,
         *,
@@ -189,10 +189,10 @@ class TpsaMap(TpsaTensor[TpsaSeriesT]):
             descriptor.variables
         ):
             err_mess = 'Target variables must match the map outputs. '
-            err_mess += 'Use extend_to() to add new coordinates.'
+            err_mess += 'Use extend_descriptor() to add new coordinates.'
             raise ValueError(err_mess)
         converted = {
-            rename.get(name, name): component.to_descriptor(
+            rename.get(name, name): component.change_descriptor(
                 descriptor,
                 variable_map=variable_map,
                 parameter_map=parameter_map,
@@ -205,7 +205,7 @@ class TpsaMap(TpsaTensor[TpsaSeriesT]):
             descriptor=descriptor,
         )
 
-    def extend_to(self, descriptor: Descriptor, *, merge: bool = False) -> Self:
+    def extend_descriptor(self, descriptor: Descriptor, *, merge: bool = False) -> Self:
         """Extend a coordinate map, inserting identity components.
 
         If merge is False, target descriptor must contain every existing
@@ -223,7 +223,7 @@ class TpsaMap(TpsaTensor[TpsaSeriesT]):
             err_mess = 'Target descriptor must contain all original parameters'
             raise ValueError(err_mess)
         converted = {
-            name: component.to_descriptor(descriptor)
+            name: component.change_descriptor(descriptor)
             for name, component in self.coordinates.items()
         }
         values = [
@@ -246,16 +246,13 @@ class TpsaMap(TpsaTensor[TpsaSeriesT]):
 
     def __getattr__(self, name: str) -> TpsaSeriesT:
         try:
-            coord_names = object.__getattribute__(self, '_coord_names')
-        except AttributeError:
+            names = object.__getattribute__(self, '_coord_names')
+            index = names.index(name)
+            flat = object.__getattribute__(self, '_flat')
+            offset = object.__getattribute__(self, '_offset')
+        except (AttributeError, ValueError):
             raise AttributeError(name) from None
-        try:
-            index = coord_names.index(name)
-            # Full coordinate maps have zero tensor offsets; direct access
-            # avoids constructing a temporary dict for every attribute lookup.
-            return object.__getattribute__(self, '_flat')[index]
-        except (AttributeError, KeyError, ValueError):
-            raise AttributeError(name) from None
+        return flat[offset + index]
 
     def __repr__(self) -> str:
         components = []

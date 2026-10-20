@@ -491,18 +491,20 @@ class Descriptor:
 
         return ComplexTpsa(self, truncation_order=order)
 
-    def from_monomial_coeffs(
+    def polynomial(
         self,
         coeffs: Mapping[tuple[int, ...], SupportsFloat | SupportsComplex],
         *,
         order: int | None = None,
+        needs_complex: bool = False,
     ) -> Tpsa | ComplexTpsa:
         """Create a scalar TPSA from monomial coefficients on this descriptor.
 
-        This factory returns a Tpsa or ComplexTpsa, not a new Descriptor.
         Complex-valued coefficients select the complex TPSA representation.
         """
-        if any(isinstance(value, (complex, np.complexfloating)) for value in coeffs.values()):
+        if needs_complex or any(
+            isinstance(value, (complex, np.complexfloating)) for value in coeffs.values()
+        ):
             complex_result = self.complex_zero(order=order)
             for monomial, coefficient in coeffs.items():
                 complex_result.set(monomial, coefficient)
@@ -511,6 +513,21 @@ class Descriptor:
         for monomial, coefficient in coeffs.items():
             result.set(monomial, cast('SupportsFloat', coefficient))
         return result
+
+    def from_monomial_coeffs(
+        self,
+        coeffs: Mapping[tuple[int, ...], SupportsFloat | SupportsComplex],
+        *,
+        order: int | None = None,
+    ) -> Tpsa | ComplexTpsa:
+        """Create a scalar TPSA from monomial coefficients on this descriptor (deprecated)."""
+        warnings.warn(
+            'The from_monomial_coeffs method is deprecated and will be removed in a future '
+            'version. Use polynomial instead.',
+            FutureWarning,
+            stacklevel=2,
+        )
+        return self.polynomial(coeffs=coeffs, order=order)
 
     @overload
     def var(

@@ -322,28 +322,28 @@ def test_serialization_round_trip_of_partial_view() -> None:
         assert restored.monomial_coeffs(tol=0) == original.monomial_coeffs(tol=0)
 
 
-def test_tensor_to_descriptor_converts_each_component_and_copies() -> None:
+def test_tensor_change_descriptor_converts_each_component_and_copies() -> None:
     old = Descriptor(variables=('tensor_conv_x', 'tensor_conv_px'), order=4)
     new = Descriptor(variables=('tensor_conv_px', 'tensor_conv_x'), order=4)
     first = old.zero()
     first.set((2, 1), 5)
     tensor = TpsaTensor([first, old.zero()], shape=(1, 2))
-    converted = tensor.to_descriptor(new)
+    converted = tensor.change_descriptor(new)
     assert converted is not tensor
     assert converted.shape == (1, 2)
     assert converted.descriptor is new
     assert converted.flat[0].get((1, 2)) == 5
     assert first.get((2, 1)) == 5
-    same = tensor.to_descriptor(old)
+    same = tensor.change_descriptor(old)
     assert same is not tensor
     assert same[0, 0] is not first
 
 
-def test_to_descriptor_honours_explicit_remapping_with_same_descriptor() -> None:
+def test_change_descriptor_honours_explicit_remapping_with_same_descriptor() -> None:
     d = Descriptor(variables=('tensor_remap_x', 'tensor_remap_px'), order=4)
     t = d.var('tensor_remap_x')
     tensor = TpsaTensor([t])
-    swapped = tensor.to_descriptor(
+    swapped = tensor.change_descriptor(
         d,
         variable_map={
             'tensor_remap_x': 'tensor_remap_px',
@@ -434,13 +434,13 @@ def test_const_part_rejection_is_atomic() -> None:
     np.testing.assert_array_equal(t.const_part, before)
 
 
-def test_to_descriptor_of_view_creates_compact_independent_result() -> None:
+def test_change_descriptor_of_view_creates_compact_independent_result() -> None:
     old = _descriptor()
     new = Descriptor(variables=('tensor_px', 'tensor_x'), order=4)
     x, px = old.vars()
     t = TpsaTensor([x, px, 2 * x, 3 * px], shape=(2, 2))
     view = t[1]
-    converted = view.to_descriptor(new)
+    converted = view.change_descriptor(new)
 
     assert converted.shape == (2,)
     assert converted.descriptor is new

@@ -576,7 +576,7 @@ def test_explicit_descriptor_conversion():
 
     x = dx.var('x')
 
-    y = x.to_descriptor(
+    y = x.change_descriptor(
         dy,
         variable_map={'x': 'y', 'px': 'py'},
     )

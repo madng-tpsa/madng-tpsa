@@ -216,7 +216,7 @@ def test_parameter_identity_pointer_array_has_correct_entries() -> None:
     assert ptrs[d.num_vars] == ffi.cast('void*', m._params[0].ptr)
 
 
-def test_extend_to_new_variables_and_parameters_fills_identities() -> None:
+def test_extend_descriptor_new_variables_and_parameters_fills_identities() -> None:
     d = _descriptor(parameters=True)
     x, px = d.vars()
     source = TpsaMap([x + px, px])
@@ -226,7 +226,7 @@ def test_extend_to_new_variables_and_parameters_fills_identities() -> None:
         order=4,
         param_order=2,
     )
-    extended = source.extend_to(target)
+    extended = source.extend_descriptor(target)
 
     assert extended.descriptor is target
     assert extended.coord_names == target.variables
@@ -239,38 +239,38 @@ def test_extend_to_new_variables_and_parameters_fills_identities() -> None:
     assert source.shape == (2,)
 
 
-def test_extend_to_reorders_existing_variables_even_without_new_ones() -> None:
+def test_extend_descriptor_reorders_existing_variables_even_without_new_ones() -> None:
     old = Descriptor(variables=('order_map_x', 'order_map_px'), order=4)
     target = Descriptor(variables=('order_map_px', 'order_map_x'), order=4)
     x, px = old.vars()
     original = TpsaMap((x + 2 * px, px))
-    converted = original.extend_to(target)
+    converted = original.extend_descriptor(target)
 
     assert converted.descriptor is target
     assert converted.coord_names == target.variables
     np.testing.assert_allclose(converted.evaluate((4, 2)), (4, 10))
 
 
-def test_extend_to_rejects_target_missing_original_variable() -> None:
+def test_extend_descriptor_rejects_target_missing_original_variable() -> None:
     source = TpsaMap(_descriptor())
     target = Descriptor(variables=('maptest_x',), order=4)
     with pytest.raises(ValueError, match='variables'):
-        source.extend_to(target)
+        source.extend_descriptor(target)
 
 
-def test_extend_to_rejects_target_missing_original_parameter() -> None:
+def test_extend_descriptor_rejects_target_missing_original_parameter() -> None:
     source = TpsaMap(_descriptor(parameters=True))
     target = _descriptor()
     with pytest.raises(ValueError, match='parameters'):
-        source.extend_to(target)
+        source.extend_descriptor(target)
 
 
-def test_map_to_descriptor_reorders_output_components() -> None:
+def test_map_change_descriptor_reorders_output_components() -> None:
     old = Descriptor(variables=('convert_map_x', 'convert_map_px'), order=4)
     target = Descriptor(variables=('convert_map_px', 'convert_map_x'), order=4)
     x, px = old.vars()
     source = TpsaMap((x + 2 * px, 3 * px))
-    converted = source.to_descriptor(target)
+    converted = source.change_descriptor(target)
 
     assert isinstance(converted, TpsaMap)
     assert converted.descriptor is target

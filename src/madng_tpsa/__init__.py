@@ -19,9 +19,9 @@ from ._version import __version__
 from .complex_tpsa import ComplexTpsa
 from .descriptor import Descriptor
 from .errors import TpsaError
-from .maps import TpsaMap
+from .map import TpsaMap
 from .paths import core_library, include_dir
-from .tensors import TpsaTensor
+from .tensor import TpsaTensor
 from .tpsa import Tpsa
 
 __all__ = [

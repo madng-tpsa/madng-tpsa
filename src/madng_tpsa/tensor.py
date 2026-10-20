@@ -19,7 +19,7 @@ if TYPE_CHECKING:
     from typing import Any, Self
 
     from ._typing import DerivativeSpec, MapSeriesT, Nested, Scalar, TpsaSeries
-    from .maps import TpsaMap
+    from .map import TpsaMap
 
 from math import prod
 from operator import index
@@ -223,7 +223,7 @@ class TpsaTensor(Generic[TpsaSeriesT]):
         """Return an independent copy of the tensor."""
         return self._new_like([tpsa.copy() for tpsa in self.flat])
 
-    def to_descriptor(
+    def change_descriptor(
         self,
         descriptor: Descriptor,
         *,
@@ -234,7 +234,7 @@ class TpsaTensor(Generic[TpsaSeriesT]):
         """Convert the TpsaTensor to a new descriptor."""
         return self._new_like(
             [
-                tpsa.to_descriptor(
+                tpsa.change_descriptor(
                     descriptor,
                     variable_map=variable_map,
                     parameter_map=parameter_map,
@@ -686,7 +686,7 @@ class TpsaTensor(Generic[TpsaSeriesT]):
         The right operand can be a tensor/map or a scalar TPSA. Promotion
         must be applied to the converted operands that are actually returned.
         """
-        from .maps import TpsaMap
+        from .map import TpsaMap
 
         if not isinstance(left, (TpsaTensor, Tpsa, ComplexTpsa)) or not isinstance(
             right, (TpsaTensor, Tpsa, ComplexTpsa)
@@ -700,13 +700,13 @@ class TpsaTensor(Generic[TpsaSeriesT]):
 
         common = left.descriptor.union(right.descriptor)
         if extend_left and isinstance(left, TpsaMap):
-            res_left = left.extend_to(common) if common is not left.descriptor else left
+            res_left = left.extend_descriptor(common) if common is not left.descriptor else left
         else:
-            res_left = left.to_descriptor(common) if common is not left.descriptor else left
+            res_left = left.change_descriptor(common) if common is not left.descriptor else left
         if extend_right and isinstance(right, TpsaMap):
-            res_right = right.extend_to(common) if common is not right.descriptor else right
+            res_right = right.extend_descriptor(common) if common is not right.descriptor else right
         else:
-            res_right = right.to_descriptor(common) if common is not right.descriptor else right
+            res_right = right.change_descriptor(common) if common is not right.descriptor else right
 
         complex_needed = (
             isinstance(res_left, ComplexTpsa)
@@ -732,7 +732,7 @@ class TpsaTensor(Generic[TpsaSeriesT]):
         ``other`` must contain one component for every descriptor variable. Descriptor
         parameters are automatically appended as identity substitutions.
         """
-        from .maps import TpsaMap
+        from .map import TpsaMap
 
         if not isinstance(other, TpsaMap):
             err_mess = f'Can only compose with a TpsaMap! Got {type(other)}'

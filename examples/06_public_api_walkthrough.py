@@ -4,8 +4,6 @@ Each operation uses a small real or complex series and avoids relying on
 transient CFFI pointers beyond the lifetime of their owning TPSAs.
 """
 
-from warnings import catch_warnings, simplefilter
-
 import numpy as np
 
 from madng_tpsa import ComplexTpsa, Descriptor, TpsaMap, TpsaTensor
@@ -31,7 +29,7 @@ print('Descriptor formatting:', d.format_polynomial(q))
 print('Constant TPSA:', d.constant(2))
 print('Zero scalar factories:', d.zero(), d.complex_zero())
 print('Named variable factory:', d.var('q'))
-print('Factory polynomial:', d.from_monomial_coeffs({(1, 0, 0): 2.0}))
+print('Factory polynomial:', d.polynomial({(1, 0, 0): 2.0}))
 
 # Scalar TPSA inspection, order manipulations and numerical helpers.
 f = 2 + 0.1 * q + 0.05 * p
@@ -55,7 +53,7 @@ print('Modified copy:', modified_f)
 modified_f.clear()
 print('Cleared copy:', modified_f.is_zero())
 print('Scalar absolute value:', abs(f))
-print('Converted scalar:', f.to_descriptor(d))
+print('Converted scalar:', f.change_descriptor(d))
 
 # Supported mathematical functions. Choose a small argument with constant
 # part in the domains of real log/sqrt/asin/acos/atanh.
@@ -157,7 +155,7 @@ modifiable_tensor.const_part = 2.0
 print('Tensor view assignment:', modifiable_tensor.const_part)
 print('Tensor complex promotion:', tensor.to_complex().is_complex)
 print('Tensor serialization:', TpsaTensor.from_dict(tensor.to_dict()).shape)
-print('Tensor descriptor conversion:', tensor.to_descriptor(d).shape)
+print('Tensor descriptor conversion:', tensor.change_descriptor(d).shape)
 print('Tensor evaluation:', tensor.evaluate((1, 2), parameters=(3,)))
 print('Tensor derivative:', tensor.partial_derivative(('q', 'k')).shape)
 print('Tensor Hessian shape:', tensor.derivative_tensor(2).shape)
@@ -183,14 +181,14 @@ print(
     TpsaMap.from_dict(map_.to_dict()).shape,
     map_.to_complex().is_complex,
 )
-print('Map descriptor conversion:', map_.to_descriptor(d).shape)
+print('Map descriptor conversion:', map_.change_descriptor(d).shape)
 print('Map translation:', map_.translate((1, 0)).evaluate((2, 3), parameters=(4,)))
 print('Map pullback:', map_.pullback(q**2).get((0, 4, 0)))
 print('Map composition:', (map_ @ identity).shape)
 
 # Map extension adds a new identity output in descriptor order.
 d_extended = Descriptor(variables=('q', 'p', 'r'), parameters=('k',), order=5)
-assert map_.extend_to(d_extended).shape == (3,)
+assert map_.extend_descriptor(d_extended).shape == (3,)
 
 # First-order setters are deliberately separate from Hessians.
 modifiable = identity.copy()
@@ -200,22 +198,6 @@ modifiable.set_coefficient('q', (2, 0, 0), 0.5)
 modifiable.const_part = [0.25, 0.0]
 np.testing.assert_allclose(modifiable.jacobian(), [[1, 2], [0, 1]])
 print('Mutated map:', modifiable)
-
-# Deprecated spellings are retained for compatibility, not new code.
-with catch_warnings():
-    simplefilter('ignore', FutureWarning)
-    legacy_real = f.copy()
-    legacy_complex = z.copy()
-    legacy_map = identity.copy()
-    legacy_real.set_const_part(1.0)
-    legacy_complex.set_const_part(1 + 2j)
-    legacy_map.set_const_part([0.0, 0.0])
-print(
-    'Deprecated setter aliases:',
-    legacy_real.const_part,
-    legacy_complex.const_part,
-    legacy_map.const_part,
-)
 
 # Hamiltonian conversion and Lie conventions.
 generator = k * q**3 / 3
