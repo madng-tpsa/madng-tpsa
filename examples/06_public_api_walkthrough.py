@@ -1,4 +1,4 @@
-"""Survey of descriptor, TPSA tensor, and map APIs not covered in 01–05.
+"""Survey of descriptor, TPSA tensor, and map APIs not covered in 01-05.
 
 Each operation uses a small real or complex series and avoids relying on
 transient CFFI pointers beyond the lifetime of their owning TPSAs.
@@ -230,5 +230,6 @@ print('Generator round-trip:', recovered)
 print('Vector-field Lie bracket:', field.lie_bracket(field))
 print('Logarithmic field and scalar:', lie_map.log_poisson(), lie_map.log_generator())
 invertible = TpsaMap([q + p**2, p])
+invertible.const_part = 0
 print('Formal inverse:', invertible.inverse())
 print('Partial inverse:', invertible.partial_inverse((True, False)))

@@ -600,16 +600,27 @@ class TpsaTensor(Generic[TpsaSeriesT]):
             if not isinstance(component, (Tpsa, ComplexTpsa)):
                 err_mess = 'Tensor contains an unsupported TPSA component'
                 raise TypeError(err_mess)
+            # Symmetric derivative axes contain permutation-equivalent mixed
+            # partials. Differentiate each multi-index only once per component.
+            # Duplicate results must still be copied because TPSAs are mutable.
+            cache: dict[tuple[int, ...], Tpsa | ComplexTpsa] = {}
             for positions in product(indices, repeat=int(order)):
                 powers = [0] * self.descriptor.monomial_length
                 for j in positions:
                     powers[j] += 1
-                if self.descriptor.is_valid_monomial(powers):
-                    result.append(component.derivative(tuple(powers)))
+                key = tuple(powers)
+                cached = cache.get(key)
+                if cached is not None:
+                    result.append(cached.copy())
+                    continue
+                if self.descriptor.is_valid_monomial(key):
+                    derivative = component.derivative(key)
                 elif isinstance(component, ComplexTpsa):
-                    result.append(self.descriptor.complex_zero(order=component.truncation_order))
+                    derivative = self.descriptor.complex_zero(order=component.truncation_order)
                 else:
-                    result.append(self.descriptor.zero(order=component.truncation_order))
+                    derivative = self.descriptor.zero(order=component.truncation_order)
+                cache[key] = derivative
+                result.append(derivative)
 
         shape = self.shape + (len(indices),) * int(order)
         return cast('TpsaTensor[TpsaSeriesT]', TpsaTensor(result, shape=shape))

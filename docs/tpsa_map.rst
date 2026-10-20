@@ -1,207 +1,176 @@
 TpsaMap
 =======
 
-:class:`~madng_tpsa.maps.TpsaMap` is a lightweight vector-valued TPSA map. All
-components share one descriptor and, after construction, are either all real
-TPSAs or all complex TPSAs. Mixed input is promoted to a complex map.
+:class:`~madng_tpsa.maps.TpsaMap` represents a full vector-valued TPSA map.
+It subclasses :class:`~madng_tpsa.tensors.TpsaTensor` with one component per
+*descriptor variable*. All components share the same descriptor; mixed real
+and complex series are promoted to a complex map.
 
-Construction
-------------
-
-.. code-block:: python
-
-   descriptor = Descriptor(variables=['x', 'px'], order=4)
-   x, px = descriptor.vars()
-
-   map_ = TpsaMap({
-       'x': x + px + 0.2*x**2,
-       'px': px - 0.3*x,
-   })
-
-A map can contain fewer outputs than descriptor variables, but operations which
-perform a complete substitution require a full map.
-
-Identity and complex promotion
-------------------------------
-
-.. code-block:: python
-
-   identity = TpsaMap.identity(descriptor)
-   complex_identity = identity.to_complex()
-
-Coordinate names and variable labels
+Construction and coordinate ordering
 ------------------------------------
 
-``coord_names`` label map outputs. ``descriptor.var_labels`` label independent
-input variables. Algebra is positional; names do not reorder components.
-
-Inspection
-----------
-
 .. code-block:: python
 
-   map_[0]
-   map_['x']
-   map_.x
-   map_.const_part
-   map_.jacobian()
-   map_.param_jacobian()
-   map_.sensitivity('x', 'kqf')
-   map_.monomial_coeffs('x')
-   map_.coefficient('x', (2, 0))
+   from madng_tpsa import Descriptor, TpsaMap
 
-In-place setters
-----------------
+   d = Descriptor(variables=('q', 'p'), parameters=('k',), order=5)
+   q, p = d.vars()
+   k = d.param('k')
+   identity = TpsaMap(d)
+   shifted = TpsaMap([q + k, p], descriptor=d)
+   named = TpsaMap(p=p, q=q + k)  # reordered into descriptor variable order
+   offset = TpsaMap(d, q=0.1)     # first output is q + 0.1
 
-.. code-block:: python
+   assert named.coord_names == ('q', 'p')
+   assert named.q == q + k
+   assert named.p == p
 
-   map_.set_const_part([1.0, -2.0])
-   map_.set_jacobian([[1.0, 2.0], [3.0, 4.0]])
-   map_.set_param_jacobian([[0.1, 0.2], [0.3, 0.4]])
-   map_.set_coefficient('x', (2, 0), 0.25)
+Each map has exactly ``d.num_vars`` outputs, ordered according to
+``d.variables``. The sequence constructor is **positional**; the keyword
+constructor uses names and orders them by the descriptor. Unknown names are
+rejected. Scalar component values are *offsets from the corresponding identity
+coordinate*, not constant output polynomials. Missing keyword components retain
+the identity. The descriptor can be inferred from TPSA inputs, or supplied
+explicitly for scalar-only construction.
 
-Variable and parameter first-order blocks are independent.
+``map.coords`` returns the tuple of component TPSAs; ``map.coordinates`` is a
+read-only *mapping of names to mutable TPSA objects*. Use ``map.keys()``,
+``map.values()``, ``map.items()``, positional indexing (``map[0]``), or
+``map.q`` for access. The names do not establish canonical conjugacy.
 
-Evaluation
-----------
-
-.. code-block:: python
-
-   map_.evaluate([1e-3, 2e-3])
-   map_.evaluate([1e-3, 2e-3], parameters=[0.1, -0.2])
-   map_.jacobian([1e-3, 2e-3], parameters=[0.1, -0.2])
-
-Composition
------------
-
-``left @ right`` means ``left(right(z))``.
-
-.. code-block:: python
-
-   result = left @ right
-   result = left.compose(right)
-
-Descriptor parameters are appended automatically as identity substitutions.
-
-Scalar pullback
----------------
-
-For a scalar TPSA :math:`f` and a full map :math:`M`, the pullback is
-:math:`f\circ M`:
-
-.. code-block:: python
-
-   transformed = map_.pullback(f)
-
-or
-
-.. code-block:: python
-
-   from madng_tpsa import pullback
-   transformed = pullback(f, map_)
-
-This is especially useful in homological equations and normal-form work.
-
-Translation and inversion
+Conversion and inspection
 -------------------------
 
 .. code-block:: python
 
-   shifted = map_.translate([1.0, -2.0])
-   inverse = centred_map.inverse()
-   partial = centred_map.partial_inverse([True, False])
+   named.const_part                # NumPy array of output constants
+   named.coefficient('q', (1, 0, 1))
+   named.set_coefficient('q', (1, 0, 1), 2.0)
+   complex_map = named.to_complex()
+   copy = named.copy()
+   saved = named.to_dict()
+   restored = TpsaMap.from_dict(saved)
 
-The Python API requires a zero constant part before full or partial inversion.
-Re-centre an affine map first.
+``set_coefficient`` updates the selected component in place. ``const_part`` is
+a writable array-shaped property; ``set_const_part`` is deprecated.
 
-Order manipulation
-------------------
+``to_descriptor`` converts a complete map to another compatible descriptor,
+including the output coordinate ordering; ``extend_to`` inserts identity
+components for newly introduced variables. Both use descriptor variable names,
+not merely the number of coordinates. ``homogeneous()``, ``truncate()`` and
+``clear_order()`` operate on every component without modifying the original.
 
-.. code-block:: python
-
-   cubic = map_.homogeneous(3)
-   through_cubic = map_.truncate(3)
-   without_quadratic = map_.clear_order(2)
-
-Hamiltonian and Lie operations
+Evaluation, Jacobians, Hessians
 ------------------------------
 
-Hamiltonian operations assume descriptor variables are ordered in canonical
-pairs ``(q1, p1, q2, p2, ...)``. Variable names are not inspected to determine
-canonicality.
+.. code-block:: python
 
-``vector_to_field(f)`` mirrors MAD-NG ``vec2fld`` and returns
-:math:`G=-J\nabla f`. ``field_to_vector(G)`` performs the reverse conversion for
-a Hamiltonian field. The additive constant of a scalar generator cannot be
-recovered from its field and is fixed to zero.
+   m = TpsaMap([q**2 + k*q + p, q*p + k], descriptor=d)
+   m.evaluate((2., 3.), parameters=(4.,))
+   m.jacobian((2., 3.), parameters=(4.,))
+   m.param_jacobian((2., 3.), parameters=(4.,))
+   J = m.jacobian_operator()                      # Shape (2, 2), TPSA-valued
+   H = m.hessian_operator(to_parameters=True)    # Shape (2, 3, 3)
+   values = m.hessian((2., 3.), parameters=(4.,), to_parameters=True)
 
-Exponential Poisson maps
-~~~~~~~~~~~~~~~~~~~~~~~~
+Each Jacobian is evaluated in the original descriptor coordinates. Parameter
+Jacobians differentiate with respect to external parameters, **not** canonical
+momenta. ``set_jacobian`` and ``set_param_jacobian`` replace only the relevant
+first-order coefficient blocks; there is intentionally no Hessian setter.
+
+The inherited generic methods
+:meth:`~madng_tpsa.tensors.TpsaTensor.partial_derivative` and
+:meth:`~madng_tpsa.tensors.TpsaTensor.derivative_tensor` cover arbitrary mixed
+partial derivatives and preserve parameter dependence. See :doc:`tpsa_tensor`
+and ``examples/05_tpsamap_derivatives.py``.
+
+Composition, translation and pullback
+-------------------------------------
+
+``left @ right`` and ``left.compose(right)`` mean :math:`left\circ right`.
+Descriptor parameters are automatically carried through substitution unchanged:
+
+.. math::
+
+   f(q,p;k)\circ g(q,p;k) = f(g_q(q,p;k),g_p(q,p;k);k).
 
 .. code-block:: python
 
-   descriptor = Descriptor(variables=['q', 'p'], order=5)
-   q, p = descriptor.vars()
-   f = q**3 / 3
+   left = TpsaMap([q + k, p], descriptor=d)
+   right = TpsaMap([2*q, p], descriptor=d)
+   combined = left @ right          # (2*q + k, p)
+   translated = left.translate((1., 0.))  # left(q + 1, p; k)
+   observable = q**2 + p
+   transformed = right.pullback(observable)  # observable composed with right
 
-   lie_map = TpsaMap.identity(descriptor).exp_poisson(f)
+Translation shifts the **inputs** rather than adding to the outputs. Native
+MAD-NG translation is used for parameter-free descriptors; with parameters,
+composition with their identity substitutions preserves symbolic dependence.
 
-With the MAD-NG high-level convention this gives, through the retained order,
-:math:`q'=q` and :math:`p'=p-q^2`.
+Inversion
+---------
 
-Map logarithms
-~~~~~~~~~~~~~~
+.. code-block:: python
 
-``log_poisson()`` returns the logarithmic vector field.
-``log_generator()`` converts it to a scalar generator. The optional
-``initial_guess`` is an algorithmic initial guess for MAD-NG's logarithm
-iteration, not a physical reference map.
+   m = TpsaMap([q + p**2, p], descriptor=d)
+   m_inv = m.inverse()
+   partly_inverted = m.partial_inverse((True, False))
 
-Truncation and symplecticity
-----------------------------
+These use the native formal inverse around an expansion point with zero
+*constant coefficients*. The required linear block must be invertible. Note
+that zero numerical constant coefficients do not exclude parameter-dependent
+terms; parameters are treated symbolically. Inversion is not a general-purpose
+numerical solver at an arbitrary point.
 
-A map available through order :math:`N` can generally only be verified to be
-symplectic through order :math:`N-1`: taking derivatives lowers polynomial
-order, so the order-:math:`N` part of a Poisson bracket can depend on unknown
-order-:math:`N+1` map coefficients.
+Hamiltonian fields and Lie maps
+------------------------------
 
-Normal-form scope
------------------
+Hamiltonian operations assume an **even** number of descriptor variables,
+ordered in canonical pairs ``(q1, p1, q2, p2, ...)``. Names are not checked for
+physical meaning. Descriptor parameters are not canonical coordinates.
 
-``TpsaMap`` provides the generic algebraic building blocks for nonlinear
-normal-form calculations: composition, inversion, homogeneous extraction,
-pullback, real/complex promotion, coefficient access, Lie exponentials and
-logarithms, and parameter dependence.
+MAD-NG's native scalar-to-field convention is
+:math:`G=-J\nabla f`, implemented by
+:meth:`~madng_tpsa.maps.TpsaMap.from_generator`. For Hamiltonian fields,
+:meth:`~madng_tpsa.maps.TpsaMap.to_generator` reverses this conversion up to
+an additive function of the descriptor parameters. With its default
+``validate=True`` it rejects vector fields that cannot be reconstructed from
+a scalar generator at the available TPSA order.
 
-Eigenvector normalisation, resonance classification, homological-equation
-solving, action-angle interpretation, detuning extraction and RDT extraction
-belong in a higher-level normal-form layer.
+.. code-block:: python
+
+   f = k * q**3 / 3
+   field = TpsaMap.from_generator(f)
+   recovered = field.to_generator()     # f, with parameter-only terms removed
+   lie_map = TpsaMap(d).exp_poisson(f)
+   same_lie_map = TpsaMap(d).exp_poisson(-field)
+   logarithmic_field = lie_map.log_poisson()
+   logarithmic_scalar = lie_map.log_generator()
+
+The *minus sign* in ``exp_poisson(-field)`` is deliberate: scalar inputs follow
+MAD-NG's high-level exponential convention, whereas field inputs are passed
+to the native exponential directly. A scalar field is not interchangeable
+with the raw ``from_generator`` output without this sign change.
+
+``lie_bracket()`` acts on vector fields; ``exp_poisson()`` and
+``log_poisson()`` act on the corresponding Lie operators. The native logarithm
+uses an iterative algorithm and is principally intended for suitable maps
+close to the identity. Truncation may prevent exact generator recovery.
+
+A TPSA map known to order :math:`N` generally allows verification of its
+symplectic condition only through order :math:`N-1` because derivatives lower
+polynomial order. ``TpsaMap`` supplies the algebraic primitives for normal-form
+work, not eigenvector normalisation, resonance classification or RDT extraction.
 
 Subclass behaviour
 ------------------
 
-Generic map operations return plain :class:`TpsaMap` objects. Arbitrary
-subclasses may carry external state whose transformation under map algebra is
-undefined.
+Generic map operations may produce a base ``TpsaMap`` instead of preserving
+an arbitrary subclass whose auxiliary state has no defined transformation.
 
 API reference
 -------------
 
 .. autoclass:: madng_tpsa.maps.TpsaMap
    :members:
-
-Functional map API
-------------------
-
-.. autofunction:: madng_tpsa.maps.compose
-.. autofunction:: madng_tpsa.maps.pullback
-.. autofunction:: madng_tpsa.maps.inverse
-.. autofunction:: madng_tpsa.maps.partial_inverse
-.. autofunction:: madng_tpsa.maps.evaluate
-.. autofunction:: madng_tpsa.maps.translate
-.. autofunction:: madng_tpsa.maps.vector_to_field
-.. autofunction:: madng_tpsa.maps.field_to_vector
-.. autofunction:: madng_tpsa.maps.lie_bracket
-.. autofunction:: madng_tpsa.maps.exp_poisson
-.. autofunction:: madng_tpsa.maps.log_poisson
-.. autofunction:: madng_tpsa.maps.log_generator
+   :inherited-members:

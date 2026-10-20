@@ -16,7 +16,7 @@ and truncation orders.
    descriptor = Descriptor(
        variables=['x', 'px'],
        order=4,
-       params=['k1', 'k2'],
+       parameters=['k1', 'k2'],
        param_order=2,
    )
 
@@ -43,6 +43,7 @@ Coefficients
 
 .. code-block:: python
 
+   f = 2 + x*px + k1*x + k2
    f.const_part
    f[(1, 1, 0, 0)]
    f.coefficient((1, 1, 0, 0))
@@ -77,7 +78,7 @@ Order operations
    through_cubic = f.truncate(3)
    without_quadratic = f.clear_order(2)
 
-``order`` is the allocated order; ``max_nonzero_order`` is the highest order
+``truncation_order`` is the allocated order; ``degree`` is the highest order
 currently populated by a non-zero coefficient.
 
 Poisson brackets

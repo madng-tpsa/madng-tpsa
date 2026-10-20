@@ -13,10 +13,10 @@ keeps the native allocation alive until the last labelled view is released.
 
 from __future__ import annotations
 
-from typing import TYPE_CHECKING, NamedTuple, SupportsComplex, overload
+from typing import TYPE_CHECKING, NamedTuple, SupportsComplex, cast, overload
 
 if TYPE_CHECKING:
-    from collections.abc import Iterable, Sequence
+    from collections.abc import Iterable, Mapping, Sequence
     from typing import Any, ClassVar, SupportsFloat
 
     from .complex_tpsa import ComplexTpsa
@@ -491,12 +491,25 @@ class Descriptor:
 
         return ComplexTpsa(self, truncation_order=order)
 
-    def from_monomial_coeffs(self, coeffs, *, order=None):
-        """Construct a TPSA from {monomial: coefficient}."""
-        is_complex = any(np.iscomplexobj(c) for c in coeffs.values())
-        result = self.complex_zero(order=order) if is_complex else self.zero(order=order)
+    def from_monomial_coeffs(
+        self,
+        coeffs: Mapping[tuple[int, ...], SupportsFloat | SupportsComplex],
+        *,
+        order: int | None = None,
+    ) -> Tpsa | ComplexTpsa:
+        """Create a scalar TPSA from monomial coefficients on this descriptor.
+
+        This factory returns a Tpsa or ComplexTpsa, not a new Descriptor.
+        Complex-valued coefficients select the complex TPSA representation.
+        """
+        if any(isinstance(value, (complex, np.complexfloating)) for value in coeffs.values()):
+            complex_result = self.complex_zero(order=order)
+            for monomial, coefficient in coeffs.items():
+                complex_result.set(monomial, coefficient)
+            return complex_result
+        result = self.zero(order=order)
         for monomial, coefficient in coeffs.items():
-            result.set(monomial, coefficient)
+            result.set(monomial, cast('SupportsFloat', coefficient))
         return result
 
     @overload

@@ -250,13 +250,11 @@ class TpsaMap(TpsaTensor[TpsaSeriesT]):
         except AttributeError:
             raise AttributeError(name) from None
         try:
-            flat = object.__getattribute__(self, 'flat')
-        except AttributeError:
-            raise AttributeError(name) from None
-        try:
-            dct = dict(zip(coord_names, flat, strict=True))
-            return dct[name]
-        except KeyError:
+            index = coord_names.index(name)
+            # Full coordinate maps have zero tensor offsets; direct access
+            # avoids constructing a temporary dict for every attribute lookup.
+            return object.__getattribute__(self, '_flat')[index]
+        except (AttributeError, KeyError, ValueError):
             raise AttributeError(name) from None
 
     def __repr__(self) -> str:
@@ -567,7 +565,6 @@ class TpsaMap(TpsaTensor[TpsaSeriesT]):
                 self.descriptor.zero(order=self.descriptor.order) for _ in range(self.num_vars)
             ]
             target_params = list(self.descriptor.params())
-            output = (*result, *target_params)
             protected_func = lib.madng_tpsa_protected_map_partial_inverse_call
             func = lib.mad_tpsa_pminv
         output = (*result, *target_params)

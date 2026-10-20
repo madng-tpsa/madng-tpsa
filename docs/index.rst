@@ -4,16 +4,19 @@ madng-tpsa
 ``madng-tpsa`` provides Python bindings to the Generalised Truncated Power
 Series Algebra (GTPSA) engine used by MAD-NG.
 
-The package has four main building blocks:
+The package has five main building blocks:
 
 * :class:`~madng_tpsa.descriptor.Descriptor` defines the algebraic space:
   variables, optional parameters, and truncation orders.
 * :class:`~madng_tpsa.tpsa.Tpsa` represents a real truncated power series.
 * :class:`~madng_tpsa.complex_tpsa.ComplexTpsa` represents the corresponding
   complex-coefficient series.
-* :class:`~madng_tpsa.maps.TpsaMap` groups several series into a vector-valued
-  Taylor map and provides composition, inversion, Lie-map operations, and other
-  map algebra.
+* :class:`~madng_tpsa.tensors.TpsaTensor` stores TPSAs in arbitrary-rank
+  row-major arrays and provides tensor-wide differentiation, evaluation, and
+  composition.
+* :class:`~madng_tpsa.maps.TpsaMap` specialises a rank-one tensor into a
+  full coordinate map with composition, inversion, Lie operations, Jacobians,
+  and Hessians.
 
 A TPSA stores Taylor coefficients. For a multi-index :math:`\alpha`,
 
@@ -42,10 +45,7 @@ Quick start
    print(f.grad())
    print(f.monomial_coeffs())
 
-   map_ = TpsaMap({
-       'x': x + y + 0.2 * x**2,
-       'y': y - 0.3 * x,
-   })
+   map_ = TpsaMap(x=x + y + 0.2 * x**2, y=y - 0.3 * x)
 
    print(map_.const_part)
    print(map_.jacobian())

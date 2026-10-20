@@ -20,6 +20,12 @@ coefficient manipulation.
 ``04_tpsamap_composition_and_lie.py`` covers composition, inversion,
 parameter-dependent maps and Lie operations.
 
+``05_tpsamap_derivatives.py`` covers map and tensor Jacobians, Hessians,
+parameter derivatives and mixed partials.
+
+``06_public_api_walkthrough.py`` surveys conversion, serialization, views,
+mathematical functions and additional public map/tensor operations.
+
 .. literalinclude:: ../examples/01_tpsa_basics.py
    :language: python
 
@@ -30,4 +36,10 @@ parameter-dependent maps and Lie operations.
    :language: python
 
 .. literalinclude:: ../examples/04_tpsamap_composition_and_lie.py
+   :language: python
+
+.. literalinclude:: ../examples/05_tpsamap_derivatives.py
+   :language: python
+
+.. literalinclude:: ../examples/06_public_api_walkthrough.py
    :language: python
