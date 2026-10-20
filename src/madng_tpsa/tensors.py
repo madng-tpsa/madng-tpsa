@@ -8,7 +8,7 @@ Python container around such an array, and adds map operations as methods to it.
 from __future__ import annotations
 
 from collections.abc import Sequence
-from typing import TYPE_CHECKING, Generic, cast
+from typing import TYPE_CHECKING, Generic, SupportsComplex, SupportsFloat, cast
 
 from ._typing import TpsaSeriesT
 
@@ -16,7 +16,7 @@ if TYPE_CHECKING:
     from collections.abc import Iterator, Mapping
     from typing import Any, Self
 
-    from ._typing import Nested, Scalar, TpsaSeries
+    from ._typing import MapSeriesT, Nested, Scalar, TpsaSeries
     from .maps import TpsaMap
 
 from math import prod
@@ -28,7 +28,6 @@ import numpy as np
 from ._cffi import ffi, lib
 from .complex_tpsa import ComplexTpsa
 from .descriptor import Descriptor
-from .functions import _protected_call
 from .tpsa import Tpsa
 
 
@@ -439,8 +438,8 @@ class TpsaTensor(Generic[TpsaSeriesT]):
             elif isinstance(tpsa, Tpsa):
                 values.append(ComplexTpsa.from_tpsa(tpsa))
             else:
-                message = f'Unsupported TPSA type: {type(tpsa).__name__}'
-                raise TypeError(message)
+                err_mess = f'Unsupported TPSA type: {type(tpsa).__name__}'
+                raise TypeError(err_mess)
 
         # _new_like preserves the container subclass, but the
         # component type changes from TpsaSeriesT to ComplexTpsa.
@@ -497,26 +496,72 @@ class TpsaTensor(Generic[TpsaSeriesT]):
         batch_size = self.num_vars
         for start in range(0, self.size, batch_size):
             count = min(batch_size, self.size - start)
-            _protected_call(
-                'map_eval',
-                lib.mad_ctpsa_eval if self.is_complex else lib.mad_tpsa_eval,
-                is_complex=self.is_complex,
-                args=(
-                    count,
-                    pointers[start : start + count],
-                    len(point),
-                    in_array,
-                    ffi.addressof(out_array, start),
-                ),
+            args = (
+                count,
+                pointers[start : start + count],
+                len(point),
+                in_array,
+                ffi.addressof(out_array, start),
             )
+            if self.is_complex:
+                status = lib.madng_ctpsa_protected_map_eval_call(lib.mad_ctpsa_eval, *args)
+            else:
+                status = lib.madng_tpsa_protected_map_eval_call(lib.mad_tpsa_eval, *args)
+            if status:
+                self.flat[0]._raise_mad_error()
 
         if self.is_complex:
             return np.asarray([complex(vv) for vv in out_array]).reshape(self.shape)
         return np.asarray([float(vv) for vv in out_array]).reshape(self.shape)
 
-    def compose(
-        self, other: TpsaMap[Tpsa] | TpsaMap[ComplexTpsa]
-    ) -> TpsaTensor[Tpsa] | TpsaTensor[ComplexTpsa]:
+    @staticmethod
+    def _align_descriptors(left, right, *, extend_left=False, extend_right=False):
+        """Reconcile descriptors and promote both operands to complex if needed.
+
+        The right operand can be a tensor/map or a scalar TPSA. Promotion
+        must be applied to the converted operands that are actually returned.
+        """
+        from .maps import TpsaMap
+
+        if not isinstance(left, (TpsaTensor, Tpsa, ComplexTpsa)) or not isinstance(
+            right, (TpsaTensor, Tpsa, ComplexTpsa)
+        ):
+            return left, right, False
+        # Only allow extension on parameters,not on variables
+        if set(left.descriptor.variables) != set(right.descriptor.variables):
+            err_mess = 'Maps have different variable sets. '
+            err_mess += 'Extend them explicitly to a common descriptor first.'
+            raise ValueError(err_mess)
+
+        common = left.descriptor.union(right.descriptor)
+        if extend_left and isinstance(left, TpsaMap):
+            res_left = left.extend_to(common) if common is not left.descriptor else left
+        else:
+            res_left = left.to_descriptor(common) if common is not left.descriptor else left
+        if extend_right and isinstance(right, TpsaMap):
+            res_right = right.extend_to(common) if common is not right.descriptor else right
+        else:
+            res_right = right.to_descriptor(common) if common is not right.descriptor else right
+
+        complex_needed = (
+            isinstance(res_left, ComplexTpsa)
+            or isinstance(res_right, ComplexTpsa)
+            or (isinstance(res_left, TpsaTensor) and res_left.is_complex)
+            or (isinstance(res_right, TpsaTensor) and res_right.is_complex)
+        )
+        if complex_needed:
+            if isinstance(res_left, Tpsa):
+                res_left = ComplexTpsa.from_tpsa(res_left)
+            elif isinstance(res_left, TpsaTensor) and not res_left.is_complex:
+                res_left = res_left.to_complex()
+            if isinstance(res_right, Tpsa):
+                res_right = ComplexTpsa.from_tpsa(res_right)
+            elif isinstance(res_right, TpsaTensor) and not res_right.is_complex:
+                res_right = res_right.to_complex()
+
+        return res_left, res_right, complex_needed
+
+    def compose(self, other: TpsaMap[MapSeriesT]) -> TpsaTensor[Tpsa] | TpsaTensor[ComplexTpsa]:
         """Return the composition ``self ∘ other``.
 
         ``other`` must contain one component for every descriptor variable. Descriptor
@@ -530,43 +575,118 @@ class TpsaTensor(Generic[TpsaSeriesT]):
         if other.size != self.num_vars:
             err_mess = f'Expected a map with {self.num_vars} components, got {other.size}'
             raise ValueError(err_mess)
-        if set(self.descriptor.variables) != set(other.descriptor.variables):
-            err_mess = 'Maps have different variable sets. '
-            err_mess += 'Extend them explicitly to a common descriptor first.'
-            raise ValueError(err_mess)
 
-        common = self.descriptor.union(other.descriptor)
-        left = self.to_descriptor(common) if common is not self.descriptor else self
-        right = other.extend_to(common) if common is not other.descriptor else other
-
-        is_complex = left.is_complex or right.is_complex
-        if is_complex:
-            if not left.is_complex:
-                left = left.to_complex()
-            if not right.is_complex:
-                right = right.to_complex()
+        left, right, complex_needed = self._align_descriptors(
+            self, other, extend_left=False, extend_right=True
+        )
 
         result = []
         for _ in range(left.size):
-            if is_complex:
-                result.append(left.descriptor.complex_zero(order=common.order))
+            if left.is_complex:
+                result.append(left.descriptor.complex_zero(order=left.descriptor.order))
             else:
-                result.append(left.descriptor.zero(order=common.order))
+                result.append(left.descriptor.zero(order=left.descriptor.order))
         pointer_array = ffi.new('void*[]', [value.ptr for value in result])
 
-        _protected_call(
-            'map_binary',
-            lib.mad_ctpsa_compose if is_complex else lib.mad_tpsa_compose,
-            is_complex=is_complex,
-            args=(
-                -left.size,  # Negative size tells MAD-NG to not enforce length equal to num_vars
-                left.pointer_array,
-                right.size + len(right._params),
-                right.pointer_array_with_params,  # Include identity maps for parameters
-                pointer_array,
-            ),
+        args = (
+            -left.size,
+            left.pointer_array,
+            right.size + len(right._params),
+            right.pointer_array_with_params,
+            pointer_array,
         )
+        if complex_needed:
+            status = lib.madng_ctpsa_protected_map_binary_call(lib.mad_ctpsa_compose, *args)
+        else:
+            status = lib.madng_tpsa_protected_map_binary_call(lib.mad_tpsa_compose, *args)
+        if status:
+            left.flat[0]._raise_mad_error()
         # Real/complex promotion is dynamic, so the generic result needs a cast.
         return cast('TpsaTensor[Tpsa] | TpsaTensor[ComplexTpsa]', left._new_like(result))
 
     __matmul__ = compose
+
+    def __neg__(self) -> Self:
+        """Negate every component and preserve the container type."""
+        values = [-cast('TpsaSeries', tpsa) for tpsa in self.flat]
+        return self._new_like(cast('Sequence[TpsaSeriesT]', values))
+
+    def __add__(
+        self, other: Scalar | TpsaSeries | TpsaTensor[Tpsa] | TpsaTensor[ComplexTpsa]
+    ) -> TpsaTensor[Tpsa] | TpsaTensor[ComplexTpsa]:
+        """Add corresponding vector components (not composition)."""
+        if isinstance(other, (SupportsFloat, SupportsComplex, Tpsa, ComplexTpsa)):
+            components = cast('Sequence[Any]', self.flat)
+            return cast(
+                'TpsaTensor[Tpsa] | TpsaTensor[ComplexTpsa]',
+                self._new_like([tpsa + other for tpsa in components]),
+            )
+
+        if not isinstance(other, TpsaTensor) or other.shape != self.shape:
+            err_mess = 'Can only sum scalars, TPSAs, or TpsaTensors with the same shape'
+            raise ValueError(err_mess)
+
+        left, right, _ = self._align_descriptors(self, other, extend_left=True, extend_right=True)
+        return left._new_like([a + b for a, b in zip(left.flat, right.flat, strict=True)])
+
+    __radd__ = __add__
+
+    def __sub__(
+        self, other: Scalar | TpsaSeries | TpsaTensor[Tpsa] | TpsaTensor[ComplexTpsa]
+    ) -> TpsaTensor[Tpsa] | TpsaTensor[ComplexTpsa]:
+        """Subtract corresponding vector components (not composition)."""
+        if isinstance(other, (SupportsFloat, SupportsComplex, Tpsa, ComplexTpsa)):
+            components = cast('Sequence[Any]', self.flat)
+            return cast(
+                'TpsaTensor[Tpsa] | TpsaTensor[ComplexTpsa]',
+                self._new_like([tpsa - other for tpsa in components]),
+            )
+
+        if not isinstance(other, TpsaTensor) or other.shape != self.shape:
+            err_mess = 'Can only subtract scalars, TPSAs, or TpsaTensors with the same shape'
+            raise ValueError(err_mess)
+
+        left, right, _ = self._align_descriptors(self, other, extend_left=True, extend_right=True)
+        return left._new_like([a - b for a, b in zip(left.flat, right.flat, strict=True)])
+
+    def __rsub__(
+        self, other: Scalar | TpsaSeries | TpsaTensor[Tpsa] | TpsaTensor[ComplexTpsa]
+    ) -> TpsaTensor[Tpsa] | TpsaTensor[ComplexTpsa]:
+        """Subtract corresponding vector components (not composition)."""
+        if isinstance(other, (SupportsFloat, SupportsComplex, Tpsa, ComplexTpsa)):
+            components = cast('Sequence[Any]', self.flat)
+            return cast(
+                'TpsaTensor[Tpsa] | TpsaTensor[ComplexTpsa]',
+                self._new_like([other - tpsa for tpsa in components]),
+            )
+
+        if not isinstance(other, TpsaTensor) or other.shape != self.shape:
+            err_mess = 'Can only subtract scalars, TPSAs, or TpsaTensors with the same shape'
+            raise ValueError(err_mess)
+
+        left, right, _ = self._align_descriptors(self, other, extend_left=True, extend_right=True)
+        return left._new_like([b - a for a, b in zip(left.flat, right.flat, strict=True)])
+
+    def __mul__(self, other: Scalar | TpsaSeries) -> TpsaTensor[Tpsa] | TpsaTensor[ComplexTpsa]:
+        """Multiply all vector components by a scalar or a TPSA."""
+        if isinstance(other, (SupportsFloat, SupportsComplex, Tpsa, ComplexTpsa)):
+            components = cast('Sequence[Any]', self.flat)
+            return cast(
+                'TpsaTensor[Tpsa] | TpsaTensor[ComplexTpsa]',
+                self._new_like([tpsa * other for tpsa in components]),
+            )
+        err_mess = 'Can only multiply scalars and TPSAs.'
+        raise ValueError(err_mess)
+
+    __rmul__ = __mul__
+
+    def __truediv__(self, other: Scalar | TpsaSeries) -> TpsaTensor[Tpsa] | TpsaTensor[ComplexTpsa]:
+        """Divide all vector components by a scalar."""
+        if isinstance(other, (SupportsFloat, SupportsComplex)):
+            components = cast('Sequence[Any]', self.flat)
+            return cast(
+                'TpsaTensor[Tpsa] | TpsaTensor[ComplexTpsa]',
+                self._new_like([tpsa / other for tpsa in components]),
+            )
+        err_mess = 'Can only divide by scalars.'
+        raise ValueError(err_mess)

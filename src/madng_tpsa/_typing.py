@@ -2,11 +2,11 @@
 
 from __future__ import annotations
 
-from typing import TYPE_CHECKING, TypeVar
+from typing import TYPE_CHECKING, TypeAlias, TypeVar
 
 if TYPE_CHECKING:
     from collections.abc import Sequence
-    from typing import Any, SupportsComplex, SupportsFloat, TypeAlias
+    from typing import Any, SupportsComplex, SupportsFloat
 
     import numpy as np
 
@@ -21,7 +21,11 @@ if TYPE_CHECKING:
     T = TypeVar('T')
     Nested: TypeAlias = 'Sequence[T | Nested[T]]'
 
-# Need the declared type variable at runtime for generic functions.
+# Need the following declared type variables at runtime.
+
 # Bind to a shared base class, not a union: ty can resolve common members
 # through this single interface. The forward reference avoids runtime imports.
 TpsaSeriesT = TypeVar('TpsaSeriesT', bound='_TpsaBase[Any, Any]')
+
+# An independent type variable for maps passed as operands.
+MapSeriesT = TypeVar('MapSeriesT', bound='_TpsaBase[Any, Any]')

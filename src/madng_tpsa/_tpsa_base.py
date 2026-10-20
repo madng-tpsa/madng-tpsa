@@ -23,7 +23,7 @@ import scipy.special
 
 from ._cffi import ffi, lib
 from .descriptor import Descriptor
-from .functions import _raise_mad_error
+from .errors import TpsaError
 
 _Coefficient = TypeVar('_Coefficient')
 _InputCoefficient = TypeVar('_InputCoefficient')
@@ -350,8 +350,11 @@ class _TpsaBase(ABC, Generic[_Coefficient, _InputCoefficient]):
 
     @staticmethod
     def _raise_mad_error() -> None:
-        # For backwards compatibility
-        return _raise_mad_error()
+        location = ffi.string(lib.madng_tpsa_last_error_location()).decode()
+        message = ffi.string(lib.madng_tpsa_last_error_message()).decode()
+        if location:
+            raise TpsaError(f'GTPSA error in {location}: {message}')
+        raise TpsaError(f'GTPSA error: {message}')
 
     @staticmethod
     def _validate_degree(degree: object, max_order: int) -> int:

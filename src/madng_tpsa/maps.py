@@ -14,15 +14,16 @@ if TYPE_CHECKING:
     from collections.abc import Mapping, Sequence
     from typing import Self
 
-    from ._typing import Scalar, TpsaSeries
+    from ._typing import MapSeriesT, Scalar, SelectionValue, TpsaSeries
     from .tpsa import Tpsa
 
 from collections.abc import Sequence
+from numbers import Integral
 from warnings import warn
 
 import numpy as np
 
-from ._cffi import ffi
+from ._cffi import ffi, lib
 from ._typing import TpsaSeriesT
 from .complex_tpsa import ComplexTpsa
 from .descriptor import Descriptor
@@ -90,8 +91,8 @@ class TpsaMap(TpsaTensor[TpsaSeriesT]):
             components = None
         if components is not None:
             if coordinates:
-                err_message = 'Cannot mix positional components with named coordinates'
-                raise TypeError(err_message)
+                err_mess = 'Cannot mix positional components with named coordinates'
+                raise TypeError(err_mess)
             if not isinstance(components, Sequence):
                 err_mess = 'Components must be a sequence or a Descriptor'
                 raise TypeError(err_mess)
@@ -169,8 +170,8 @@ class TpsaMap(TpsaTensor[TpsaSeriesT]):
         """Return the TPSA at the specified map coordinate."""
         result = super().__getitem__(key)
         if not isinstance(result, (Tpsa, ComplexTpsa)):
-            message = 'TpsaMap requires a complete coordinate index'
-            raise IndexError(message)
+            err_mess = 'TpsaMap requires a complete coordinate index'
+            raise IndexError(err_mess)
         return result
 
     def to_descriptor(
@@ -474,238 +475,440 @@ class TpsaMap(TpsaTensor[TpsaSeriesT]):
                 mono[self.num_vars + parameter] = 1
                 self.set_coefficient(row_idx, mono, value)
 
-    # def inverse(self) -> TpsaMap[TpsaSeriesT]:
-    #     """Return the formal inverse of the map."""
-    #     if np.any(self.const_part != 0):
-    #         err_mess = (
-    #             'Map inversion requires a zero constant part; '
-    #             'translate/recentre the map before inversion'
-    #         )
-    #         raise ValueError(err_mess)
-    #     result = TpsaMap(
-    #         inverse(self.coords),
-    #         coord_names=self.coord_names,
-    #     )
-    #     return cast('TpsaMap[TpsaSeriesT]', result)
+    def compose(self, other: TpsaMap[MapSeriesT]) -> TpsaMap[Tpsa] | TpsaMap[ComplexTpsa]:
+        """Compose full coordinate maps, preserving the TpsaMap result type."""
+        return cast('TpsaMap[Tpsa] | TpsaMap[ComplexTpsa]', super().compose(other))
 
-    # def partial_inverse(self, select: Sequence[SelectionValue]) -> TpsaMap[TpsaSeriesT]:
-    #     """Return a partial inverse of the map."""
-    #     if np.any(self.const_part != 0):
-    #         err_mess = (
-    #             'Map inversion requires a zero constant part; '
-    #             'translate/recentre the map before inversion'
-    #         )
-    #         raise ValueError(err_mess)
-    #     result = TpsaMap(
-    #         partial_inverse(self.coords, select),
-    #         coord_names=self.coord_names,
-    #     )
-    #     return cast('TpsaMap[TpsaSeriesT]', result)
+    __matmul__ = compose
 
-    # @overload
-    # def translate(self: TpsaMap[Tpsa], offsets: Sequence[SupportsFloat]) -> TpsaMap[Tpsa]: ...
-    # @overload
-    # def translate(
-    #     self: TpsaMap[Tpsa], offsets: Sequence[SupportsComplex]
-    # ) -> TpsaMap[ComplexTpsa]: ...
-    # @overload
-    # def translate(
-    #     self: TpsaMap[ComplexTpsa], offsets: Sequence[Scalar]
-    # ) -> TpsaMap[ComplexTpsa]: ...
+    def inverse(self) -> TpsaMap[TpsaSeriesT]:
+        """Return the formal inverse map about a zero-constant expansion point.
 
-    # def translate(self, offsets: Sequence[Scalar]) -> TpsaMap[Tpsa] | TpsaMap[ComplexTpsa]:
-    #     """Translate the map arguments."""
-    #     return TpsaMap(
-    #         translate(self.coords, offsets),
-    #         coord_names=self.coord_names,
-    #     )
+        Descriptor parameters are retained as identity substitutions.
+        The linear map must be invertible.
+        """
+        if np.any(self.const_part != 0):
+            err_mess = 'Map inversion requires zero constant terms; recenter it first'
+            raise ValueError(err_mess)
+        if self.is_complex:
+            result = [
+                self.descriptor.complex_zero(order=self.descriptor.order)
+                for _ in range(self.num_vars)
+            ]
+            target_params = [ComplexTpsa.from_tpsa(t) for t in self.descriptor.params()]
+            protected_func = lib.madng_ctpsa_protected_map_inverse_call
+            func = lib.mad_ctpsa_minv
+        else:
+            result = [
+                self.descriptor.zero(order=self.descriptor.order) for _ in range(self.num_vars)
+            ]
+            target_params = list(self.descriptor.params())
+            protected_func = lib.madng_tpsa_protected_map_inverse_call
+            func = lib.mad_tpsa_minv
+        output = (*result, *target_params)
+        status = protected_func(
+            func,
+            self.num_vars + self.num_params,
+            self.pointer_array_with_params,
+            self.num_vars,
+            ffi.new('void*[]', [t.ptr for t in output]),
+        )
+        if status:
+            self.flat[0]._raise_mad_error()
+        return cast('TpsaMap[TpsaSeriesT]', type(self)(result))
 
-    # @overload
-    # def lie_bracket(self: TpsaMap[Tpsa], other: TpsaMap[Tpsa]) -> TpsaMap[Tpsa]: ...
-    # @overload
-    # def lie_bracket(self: TpsaMap[Tpsa], other: TpsaMap[ComplexTpsa]) -> TpsaMap[ComplexTpsa]: ...
-    # @overload
-    # def lie_bracket(
-    #     self: TpsaMap[ComplexTpsa], other: TpsaMap[Tpsa] | TpsaMap[ComplexTpsa]
-    # ) -> TpsaMap[ComplexTpsa]: ...
+    def partial_inverse(self, select: Sequence[SelectionValue]) -> TpsaMap[TpsaSeriesT]:
+        """Invert selected variables, leaving other variables and parameters intact.
 
-    # def lie_bracket(
-    #     self, other: TpsaMap[Tpsa] | TpsaMap[ComplexTpsa]
-    # ) -> TpsaMap[Tpsa] | TpsaMap[ComplexTpsa]:
-    #     """Return the Lie bracket with another vector field."""
-    #     if not isinstance(other, TpsaMap):
-    #         return NotImplemented
-    #     return TpsaMap(
-    #         lie_bracket(self.coords, other.coords),
-    #         coord_names=self.coord_names,
-    #     )
+        ``select`` contains one boolean or zero/one integer per variable.
+        """
+        if np.any(self.const_part != 0):
+            err_mess = 'Partial inversion requires zero constant terms; recenter it first'
+            raise ValueError(err_mess)
+        if len(select) != self.num_vars:
+            err_mess = f'Expected {self.num_vars} selection entries, got {len(select)}'
+            raise ValueError(err_mess)
+        choices: list[int] = []
+        for value in select:
+            if isinstance(value, (bool, np.bool_)):
+                choices.append(int(value))
+            elif isinstance(value, Integral):
+                if int(value) not in (0, 1):
+                    err_mess = 'Selection entries must be 0 or 1'
+                    raise ValueError(err_mess)
+                choices.append(int(value))
+            else:
+                err_mess = 'Selection entries must be booleans or integers'
+                raise TypeError(err_mess)
+        choices.extend([0] * self.num_params)
 
-    # @overload
-    # def exp_poisson(self: TpsaMap[Tpsa], generator: Tpsa) -> TpsaMap[Tpsa]: ...
-    # @overload
-    # def exp_poisson(self: TpsaMap[Tpsa], generator: ComplexTpsa) -> TpsaMap[ComplexTpsa]: ...
-    # @overload
-    # def exp_poisson(
-    #     self: TpsaMap[ComplexTpsa], generator: TpsaSeries
-    # ) -> TpsaMap[ComplexTpsa]: ...
-    # @overload
-    # def exp_poisson(self: TpsaMap[Tpsa], generator: TpsaMap[Tpsa]) -> TpsaMap[Tpsa]: ...
-    # @overload
-    # def exp_poisson(
-    #     self: TpsaMap[Tpsa], generator: TpsaMap[ComplexTpsa]
-    # ) -> TpsaMap[ComplexTpsa]: ...
-    # @overload
-    # def exp_poisson(
-    #     self: TpsaMap[ComplexTpsa], generator: TpsaMap[Tpsa] | TpsaMap[ComplexTpsa]
-    # ) -> TpsaMap[ComplexTpsa]: ...
+        if self.is_complex:
+            result = [
+                self.descriptor.complex_zero(order=self.descriptor.order)
+                for _ in range(self.num_vars)
+            ]
+            target_params = [ComplexTpsa.from_tpsa(t) for t in self.descriptor.params()]
+            protected_func = lib.madng_ctpsa_protected_map_partial_inverse_call
+            func = lib.mad_ctpsa_pminv
+        else:
+            result = [
+                self.descriptor.zero(order=self.descriptor.order) for _ in range(self.num_vars)
+            ]
+            target_params = list(self.descriptor.params())
+            output = (*result, *target_params)
+            protected_func = lib.madng_tpsa_protected_map_partial_inverse_call
+            func = lib.mad_tpsa_pminv
+        output = (*result, *target_params)
+        status = protected_func(
+            func,
+            self.num_vars + self.num_params,
+            self.pointer_array_with_params,
+            self.num_vars,
+            ffi.new('void*[]', [t.ptr for t in output]),
+            ffi.new('int[]', choices),
+        )
+        if status:
+            self.flat[0]._raise_mad_error()
+        return cast('TpsaMap[TpsaSeriesT]', type(self)(result))
 
-    # def exp_poisson(
-    #     self,
-    #     generator: TpsaSeries | TpsaMap[Tpsa] | TpsaMap[ComplexTpsa],
-    # ) -> TpsaMap[Tpsa] | TpsaMap[ComplexTpsa]:
-    #     """Return the action of the Lie exponential generated by ``generator``.
+    def translate(
+        self, offsets: Sequence[Scalar] | np.ndarray
+    ) -> TpsaMap[Tpsa] | TpsaMap[ComplexTpsa]:
+        """Return the input-translated map ``M(z + offsets, k)``.
 
-    #     In mathematical notation, ``map.exp_poisson(f)`` returns
-    #         exp(:f:) map
-    #     following the same argument ordering as MAD-NG ``damap:exppb(f)``.
-    #     """
-    #     generator_arg: TpsaSeries | Sequence[TpsaSeries]
-    #     generator_arg = generator.coords if isinstance(generator, TpsaMap) else generator
-    #     return TpsaMap(
-    #         exp_poisson(self.coords, generator_arg),
-    #         coord_names=self.coord_names,
-    #     )
+        ``offsets`` has one entry per phase-space variable, in descriptor
+        order. Descriptor parameters ``k`` remain unchanged. Real maps are
+        promoted to complex when any offset has an imaginary part; the
+        original map is never modified.
 
-    # @overload
-    # def log_poisson(self: TpsaMap[Tpsa], initial_guess: None = None) -> TpsaMap[Tpsa]: ...
-    # @overload
-    # def log_poisson(self: TpsaMap[Tpsa], initial_guess: TpsaMap[Tpsa]) -> TpsaMap[Tpsa]: ...
-    # @overload
-    # def log_poisson(
-    #     self: TpsaMap[Tpsa], initial_guess: TpsaMap[ComplexTpsa]
-    # ) -> TpsaMap[ComplexTpsa]: ...
-    # @overload
-    # def log_poisson(
-    #     self: TpsaMap[ComplexTpsa],
-    #     initial_guess: TpsaMap[Tpsa] | TpsaMap[ComplexTpsa] | None = None,
-    # ) -> TpsaMap[ComplexTpsa]: ...
+        For parameter-free descriptors, invoke MAD-NG's native ``translate``.
+        Its implementation seeds each substitution with ``setvar``, which
+        accepts *only* phase-space variable indices. When descriptor parameters
+        are present, use native map composition with their identity TPSAs
+        instead; appending zero offsets to the native function is invalid.
 
-    # def log_poisson(
-    #     self, initial_guess: TpsaMap[Tpsa] | TpsaMap[ComplexTpsa] | None = None
-    # ) -> TpsaMap[Tpsa] | TpsaMap[ComplexTpsa]:
-    #     """Return the logarithmic Hamiltonian vector field."""
-    #     initial_coords = None if initial_guess is None else initial_guess.coords
-    #     return TpsaMap(
-    #         log_poisson(self.coords, initial_coords),
-    #         coord_names=self.coord_names,
-    #     )
+        This shifts the map's *arguments*, not its output:
+        ``M(z + offsets, k)``, rather than ``M(z, k) + offsets``.
+        """
+        offsets = tuple(offsets)
+        if len(offsets) != self.num_vars:
+            err_mess = f'Expected {self.num_vars} offsets, got {len(offsets)}'
+            raise ValueError(err_mess)
+        if any(not isinstance(value, (SupportsFloat, SupportsComplex)) for value in offsets):
+            err_mess = 'Offsets must be real or complex scalars'
+            raise TypeError(err_mess)
 
-    # @overload
-    # def log_generator(self: TpsaMap[Tpsa], initial_guess: None = None) -> Tpsa: ...
-    # @overload
-    # def log_generator(self: TpsaMap[Tpsa], initial_guess: TpsaMap[Tpsa]) -> Tpsa: ...
-    # @overload
-    # def log_generator(
-    #     self: TpsaMap[Tpsa], initial_guess: TpsaMap[ComplexTpsa]
-    # ) -> ComplexTpsa: ...
-    # @overload
-    # def log_generator(
-    #     self: TpsaMap[ComplexTpsa],
-    #     initial_guess: TpsaMap[Tpsa] | TpsaMap[ComplexTpsa] | None = None,
-    # ) -> ComplexTpsa: ...
+        complex_needed = self.is_complex or any(complex(value).imag != 0 for value in offsets)
 
-    # def log_generator(
-    #     self, initial_guess: TpsaMap[Tpsa] | TpsaMap[ComplexTpsa] | None = None
-    # ) -> TpsaSeries:
-    #     """Return the scalar logarithmic generator."""
-    #     initial_coords = None if initial_guess is None else initial_guess.coords
-    #     return log_generator(self.coords, initial_coords)
+        # Native translate constructs substitutions with mad_*tpsa_setvar.
+        # Parameter indices are not legal inputs to setvar, so use the same
+        # protected native composition as TpsaTensor.compose for these maps.
+        if self.num_params:
+            substitutions = [
+                self.descriptor.var(
+                    index,
+                    complex(value) if complex_needed else complex(value).real,
+                )
+                for index, value in enumerate(offsets, start=1)
+            ]
+            return self.compose(TpsaMap(substitutions))
 
-    # @overload
-    # def pullback(self: TpsaMap[Tpsa], function: Tpsa) -> Tpsa: ...
-    # @overload
-    # def pullback(self: TpsaMap[Tpsa], function: ComplexTpsa) -> ComplexTpsa: ...
-    # @overload
-    # def pullback(self: TpsaMap[ComplexTpsa], function: TpsaSeries) -> ComplexTpsa: ...
+        source = self.to_complex() if complex_needed and not self.is_complex else self
+        if complex_needed:
+            result = [
+                source.descriptor.complex_zero(order=source.descriptor.order)
+                for _ in range(source.num_vars)
+            ]
+            translations = ffi.new('double _Complex[]', [complex(v) for v in offsets])
+            protected_func = lib.madng_ctpsa_protected_map_translate_call
+            func = lib.mad_ctpsa_translate
+        else:
+            result = [
+                source.descriptor.zero(order=source.descriptor.order)
+                for _ in range(source.num_vars)
+            ]
+            translations = ffi.new('double[]', [complex(v).real for v in offsets])
+            protected_func = lib.madng_tpsa_protected_map_translate_call
+            func = lib.mad_tpsa_translate
+        status = protected_func(
+            func,
+            source.num_vars,
+            source.pointer_array,
+            len(offsets),
+            translations,
+            ffi.new('void*[]', [t.ptr for t in result]),
+        )
+        if status:
+            source.flat[0]._raise_mad_error()
+        return TpsaMap(result)
 
-    # def pullback(self, function: TpsaSeries) -> TpsaSeries:
-    #     """Return ``function ∘ self``."""
-    #     map_ = cast(
-    #         'TpsaMap[Tpsa] | TpsaMap[ComplexTpsa]',
-    #         self,
-    #     )
-    #     return _pullback_impl(function, map_)
+    @classmethod
+    def from_generator(cls, generator: Tpsa | ComplexTpsa) -> TpsaMap[Tpsa] | TpsaMap[ComplexTpsa]:
+        """Construct the native Hamiltonian field ``-J grad(generator)``.
 
-    # def norm(self) -> float:
-    #     """Return the MAD-NG map norm."""
-    #     return norm(self.coords)
+        A scalar ``f`` in ``exp_poisson(f)`` uses the *negative* of this field.
+        """
+        if not isinstance(generator, (Tpsa, ComplexTpsa)):
+            err_mess = 'Generator must be a Tpsa or ComplexTpsa'
+            raise TypeError(err_mess)
+        descriptor = generator.descriptor
+        if descriptor.num_vars % 2:
+            err_mess = 'Hamiltonian fields require an even number of variables'
+            raise ValueError(err_mess)
+        if isinstance(generator, ComplexTpsa):
+            output = [
+                descriptor.complex_zero(order=descriptor.order) for _ in range(descriptor.num_vars)
+            ]
+            protected_func = lib.madng_ctpsa_protected_scalar_to_map_call
+            func = lib.mad_ctpsa_vec2fld
+        else:
+            output = [descriptor.zero(order=descriptor.order) for _ in range(descriptor.num_vars)]
+            protected_func = lib.madng_tpsa_protected_scalar_to_map_call
+            func = lib.mad_tpsa_vec2fld
+        status = protected_func(
+            func,
+            descriptor.num_vars,
+            generator.ptr,
+            ffi.new('void*[]', [t.ptr for t in output]),
+        )
+        if status:
+            generator._raise_mad_error()
+        return cast('TpsaMap[Tpsa] | TpsaMap[ComplexTpsa]', cls(output))
 
-    # def __neg__(self) -> TpsaMap[TpsaSeriesT]:
-    #     result = TpsaMap(
-    #         [-value for value in self.coords],
-    #         coord_names=self.coord_names,
-    #     )
-    #     return cast('TpsaMap[TpsaSeriesT]', result)
+    def to_generator(
+        self, *, validate: bool = True, atol: float = 1e-12, rtol: float = 1e-10
+    ) -> Tpsa | ComplexTpsa:
+        """Recover a scalar generator from a Hamiltonian vector field.
 
-    # @overload
-    # def __add__(self: TpsaMap[Tpsa], other: TpsaMap[Tpsa]) -> TpsaMap[Tpsa]: ...
-    # @overload
-    # def __add__(self: TpsaMap[Tpsa], other: TpsaMap[ComplexTpsa]) -> TpsaMap[ComplexTpsa]: ...
-    # @overload
-    # def __add__(
-    #     self: TpsaMap[ComplexTpsa], other: TpsaMap[Tpsa] | TpsaMap[ComplexTpsa]
-    # ) -> TpsaMap[ComplexTpsa]: ...
+        Use MAD-NG's native ``fld2vec`` to invert ``from_generator``:
+        the map is interpreted as ``F = -J grad(f)``, with canonical
+        variable ordering ``(q1, p1, q2, p2, ...)``. The recovered generator
+        has its phase-space-independent integration term ``C(parameters)``
+        fixed to zero.
 
-    # def __add__(
-    #     self, other: TpsaMap[Tpsa] | TpsaMap[ComplexTpsa]
-    # ) -> TpsaMap[Tpsa] | TpsaMap[ComplexTpsa]:
-    #     if not isinstance(other, TpsaMap):
-    #         return NotImplemented
-    #     left, right = _coerce_pair(self.coords, other.coords)
-    #     if len(left) != len(right):
-    #         message = 'Maps must have the same number of components'
-    #         raise ValueError(message)
-    #     return TpsaMap(
-    #         [a + b for a, b in zip(left, right, strict=True)],
-    #         coord_names=self.coord_names,
-    #     )
+        With ``validate=True`` (default), reconstruct the field from the
+        candidate generator and compare *all* represented coefficients.
+        Raise ``ValueError`` if the field is non-Hamiltonian, or if a
+        generator needs an order not representable by this descriptor.
+        Use ``validate=False`` only for deliberate projections/truncations.
+        """
+        if self.num_vars % 2:
+            err_mess = 'Hamiltonian fields require an even number of variables'
+            raise ValueError(err_mess)
+        if atol < 0 or rtol < 0:
+            err_mess = 'atol and rtol must be non-negative'
+            raise ValueError(err_mess)
+        if self.is_complex:
+            result = self.descriptor.complex_zero(order=self.descriptor.order)
+            protected_func = lib.madng_ctpsa_protected_map_to_scalar_call
+            func = lib.mad_ctpsa_fld2vec
+        else:
+            result = self.descriptor.zero(order=self.descriptor.order)
+            protected_func = lib.madng_tpsa_protected_map_to_scalar_call
+            func = lib.mad_tpsa_fld2vec
+        status = protected_func(
+            func,
+            self.num_vars,
+            self.pointer_array,
+            result.ptr,
+        )
+        if status:
+            self.flat[0]._raise_mad_error()
 
-    # @overload
-    # def __sub__(self: TpsaMap[Tpsa], other: TpsaMap[Tpsa]) -> TpsaMap[Tpsa]: ...
-    # @overload
-    # def __sub__(self: TpsaMap[Tpsa], other: TpsaMap[ComplexTpsa]) -> TpsaMap[ComplexTpsa]: ...
-    # @overload
-    # def __sub__(
-    #     self: TpsaMap[ComplexTpsa], other: TpsaMap[Tpsa] | TpsaMap[ComplexTpsa]
-    # ) -> TpsaMap[ComplexTpsa]: ...
+        if self.num_params:
+            # Native fld2vec divides each coefficient by its phase-space degree.
+            # Parameter-only slots can therefore become NaN (0/0), even though
+            # the undetermined integration term C(parameters) must be zero.
+            # Rebuild a clean series: assigning zero in place is insufficient,
+            # since native setm computes 0 * NaN + 0, which remains NaN.
+            if isinstance(result, ComplexTpsa):
+                clean = self.descriptor.complex_zero(order=result.truncation_order)
+                clean.update(
+                    {
+                        monomial: coefficient
+                        for monomial, coefficient in result.monomial_coeffs(tol=0).items()
+                        if any(monomial[: self.num_vars])
+                    }
+                )
+            else:
+                clean = self.descriptor.zero(order=result.truncation_order)
+                clean.update(
+                    {
+                        monomial: coefficient
+                        for monomial, coefficient in result.monomial_coeffs(tol=0).items()
+                        if any(monomial[: self.num_vars])
+                    }
+                )
+            result = clean
 
-    # def __sub__(
-    #     self, other: TpsaMap[Tpsa] | TpsaMap[ComplexTpsa]
-    # ) -> TpsaMap[Tpsa] | TpsaMap[ComplexTpsa]:
-    #     if not isinstance(other, TpsaMap):
-    #         return NotImplemented
-    #     left, right = _coerce_pair(self.coords, other.coords)
-    #     if len(left) != len(right):
-    #         message = 'Maps must have the same number of components'
-    #         raise ValueError(message)
-    #     return TpsaMap(
-    #         [a - b for a, b in zip(left, right, strict=True)],
-    #         coord_names=self.coord_names,
-    #     )
+        if validate:
+            rebuilt = type(self).from_generator(result)
+            for name, original, reconstructed in zip(
+                self.coord_names, self.flat, rebuilt.flat, strict=True
+            ):
+                expected = original.monomial_coeffs(tol=0)
+                actual = reconstructed.monomial_coeffs(tol=0)
+                for monomial in expected.keys() | actual.keys():
+                    lhs = expected.get(monomial, 0.0)
+                    rhs = actual.get(monomial, 0.0)
+                    if not np.isclose(lhs, rhs, atol=atol, rtol=rtol):
+                        err_mess = (
+                            f'Field is not representable as a Hamiltonian generator '
+                            f'at the descriptor truncation order: coordinate {name}, '
+                            f'monomial {monomial}, original {lhs}, reconstructed {rhs}. '
+                            'The field may be non-integrable or require higher order.'
+                        )
+                        raise ValueError(err_mess)
+        return result
 
-    # @overload
-    # def __mul__(self: TpsaMap[Tpsa], scalar: SupportsFloat) -> TpsaMap[Tpsa]: ...
-    # @overload
-    # def __mul__(self: TpsaMap[Tpsa], scalar: SupportsComplex) -> TpsaMap[ComplexTpsa]: ...
-    # @overload
-    # def __mul__(self: TpsaMap[ComplexTpsa], scalar: Scalar) -> TpsaMap[ComplexTpsa]: ...
+    def lie_bracket(self, other: TpsaMap[MapSeriesT]) -> TpsaMap[Tpsa] | TpsaMap[ComplexTpsa]:
+        """Return the native Lie bracket of two vector fields."""
+        if not isinstance(other, TpsaMap):
+            err_mess = f'Can only take Lie bracket with another TpsaMap! Got {type(other)}'
+            raise TypeError(err_mess)
+        left, right, complex_needed = self._align_descriptors(
+            self, other, extend_left=True, extend_right=True
+        )
 
-    # def __mul__(self, scalar: Scalar) -> TpsaMap[Tpsa] | TpsaMap[ComplexTpsa]:
-    #     if not isinstance(scalar, (SupportsFloat, SupportsComplex)):
-    #         return NotImplemented
-    #     return TpsaMap(
-    #         [scalar * value for value in self.coords],
-    #         coord_names=self.coord_names,
-    #     )
+        if complex_needed:
+            result = [
+                left.descriptor.complex_zero(order=left.descriptor.order)
+                for _ in range(left.num_vars)
+            ]
+            protected_func = lib.madng_ctpsa_protected_map_pair_call
+            func = lib.mad_ctpsa_liebra
+        else:
+            result = [
+                left.descriptor.zero(order=left.descriptor.order) for _ in range(left.num_vars)
+            ]
+            protected_func = lib.madng_tpsa_protected_map_pair_call
+            func = lib.mad_tpsa_liebra
+        status = protected_func(
+            func,
+            left.num_vars,
+            left.pointer_array,
+            right.pointer_array,
+            ffi.new('void*[]', [t.ptr for t in result]),
+        )
+        if status:
+            self.flat[0]._raise_mad_error()
+        return TpsaMap(result)
 
-    # __rmul__ = __mul__
+    def exp_poisson(
+        self, generator: Tpsa | ComplexTpsa | TpsaMap[Tpsa] | TpsaMap[ComplexTpsa]
+    ) -> TpsaMap[Tpsa] | TpsaMap[ComplexTpsa]:
+        """Apply the native Lie exponential to this map.
+
+        Scalar generators use MAD-NG's convention: native field ``-vec2fld(f)``.
+        Vector-field generators are passed to the native exponential directly.
+        """
+        if isinstance(generator, (Tpsa, ComplexTpsa)):
+            left, right, complex_needed = self._align_descriptors(
+                self, generator, extend_left=True, extend_right=False
+            )
+            right = -TpsaMap.from_generator(right)
+        elif isinstance(generator, TpsaMap):
+            left, right, complex_needed = self._align_descriptors(
+                self, generator, extend_left=True, extend_right=True
+            )
+        else:
+            err_mess = 'Generator must be a scalar TPSA or TpsaMap field'
+            raise TypeError(err_mess)
+
+        if complex_needed:
+            result = [
+                left.descriptor.complex_zero(order=left.descriptor.order)
+                for _ in range(left.num_vars)
+            ]
+            protected_call = lib.madng_ctpsa_protected_map_binary_call
+            func = lib.mad_ctpsa_exppb
+        else:
+            result = [
+                left.descriptor.zero(order=left.descriptor.order) for _ in range(left.num_vars)
+            ]
+            protected_call = lib.madng_tpsa_protected_map_binary_call
+            func = lib.mad_tpsa_exppb
+        status = protected_call(
+            func,
+            left.num_vars,
+            right.pointer_array,
+            left.num_vars,
+            left.pointer_array,
+            ffi.new('void*[]', [t.ptr for t in result]),
+        )
+        if status:
+            self.flat[0]._raise_mad_error()
+        return TpsaMap(result)
+
+    def log_poisson(
+        self, initial_guess: TpsaMap[Tpsa] | TpsaMap[ComplexTpsa] | None = None
+    ) -> TpsaMap[Tpsa] | TpsaMap[ComplexTpsa]:
+        """Return a vector field logarithm compatible with ``exp_poisson``."""
+        if initial_guess is not None and not isinstance(initial_guess, TpsaMap):
+            err_mess = f'Map initial_guess must be a TpsaMap! Got {type(initial_guess)}'
+            raise TypeError(err_mess)
+        if initial_guess is not None:
+            left, right, complex_needed = self._align_descriptors(
+                self, initial_guess, extend_left=True, extend_right=True
+            )
+        else:
+            left = self
+            right = initial_guess
+            complex_needed = left.is_complex
+
+        if complex_needed:
+            result = [
+                left.descriptor.complex_zero(order=left.descriptor.order)
+                for _ in range(self.num_vars)
+            ]
+            protected_func = lib.madng_ctpsa_protected_map_pair_call
+            func = lib.mad_ctpsa_logpb
+        else:
+            result = [
+                left.descriptor.zero(order=left.descriptor.order) for _ in range(self.num_vars)
+            ]
+            protected_func = lib.madng_tpsa_protected_map_pair_call
+            func = lib.mad_tpsa_logpb
+        status = protected_func(
+            func,
+            left.num_vars,
+            left.pointer_array,
+            ffi.NULL if right is None else right.pointer_array,
+            ffi.new('void*[]', [t.ptr for t in result]),
+        )
+        if status:
+            self.flat[0]._raise_mad_error()
+        return TpsaMap(result)
+
+    def log_generator(
+        self,
+        initial_guess: TpsaMap[Tpsa] | TpsaMap[ComplexTpsa] | None = None,
+        *,
+        validate: bool = True,
+        atol: float = 1e-12,
+        rtol: float = 1e-10,
+    ) -> Tpsa | ComplexTpsa:
+        """Return the scalar logarithmic generator using MAD-NG's sign.
+
+        When ``validate=True``, reject non-Hamiltonian logarithmic fields or
+        generators not reconstructable at this descriptor's order.
+        """
+        return -self.log_poisson(initial_guess).to_generator(
+            validate=validate, atol=atol, rtol=rtol
+        )
+
+    def pullback(self, function: Tpsa | ComplexTpsa) -> Tpsa | ComplexTpsa:
+        """Return ``function ∘ self`` (ordinary, not inverse, pullback)."""
+        if not isinstance(function, (Tpsa, ComplexTpsa)):
+            err_mess = 'Pullback requires a scalar TPSA'
+            raise TypeError(err_mess)
+        left, right, _ = self._align_descriptors(
+            self, function, extend_left=True, extend_right=False
+        )
+        return TpsaTensor([right]).compose(left).flat[0]
+
+    def norm(self) -> float:
+        """Return the native map norm (sum of component coefficient norms)."""
+        if self.is_complex:
+            return float(lib.mad_ctpsa_mnrm(self.num_vars, self.pointer_array))
+        return float(lib.mad_tpsa_mnrm(self.num_vars, self.pointer_array))

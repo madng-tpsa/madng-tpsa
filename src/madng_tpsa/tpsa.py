@@ -323,7 +323,7 @@ class Tpsa(_TpsaBase[float, SupportsFloat]):
         return result
 
     def __repr__(self):
-        return f'Tpsa({self.to_dict()!r})'
+        return f'Tpsa({self.monomial_coeffs()!r})'
 
     def format(self, style: FormatStyle = 'code') -> object:
         """Format this series as code, LaTeX math, or a rich table.
