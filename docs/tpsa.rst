@@ -44,11 +44,30 @@ Coefficients
 .. code-block:: python
 
    f = 2 + x*px + k1*x + k2
-   f.const_part
-   f[(1, 1, 0, 0)]
-   f.coefficient((1, 1, 0, 0))
-   f.monomial_coeffs()
-   f.to_dict()
+   print(f)
+   # Tpsa({(0, 0, 0, 0): 2.0, (0, 1, 0, 0): 1.5, (0, 0, 1, 0): 1.5,
+   #       (0, 0, 0, 1): 1.0, (1, 1, 0, 0): 1.0, (1, 0, 1, 0): 1.0})
+   print(f.const_part)  # 2.0
+   print(f[(1, 1, 0, 0)])  # 1.0
+   print(f.coefficient((1, 1, 0, 0)))  # 1.0
+   print(f.monomial_coeffs())
+   # {(0, 0, 0, 0): 2.0, (0, 1, 0, 0): 1.5, (0, 0, 1, 0): 1.5,
+   #  (0, 0, 0, 1): 1.0, (1, 1, 0, 0): 1.0, (1, 0, 1, 0): 1.0}
+   print(f.to_dict())
+   # {'__class__': 'Tpsa',
+   #  'descriptor': {'__class__': 'Descriptor',
+   #   'variables': ('x', 'px'),
+   #   'parameters': ('k1', 'k2'),
+   #   'order': 4,
+   #   'param_order': 2,
+   #   'max_orders': None},
+   #  'truncation_order': 4,
+   #  '[0, 0, 0, 0]': 2.0,
+   #  '[0, 1, 0, 0]': 1.5,
+   #  '[0, 0, 1, 0]': 1.5,
+   #  '[0, 0, 0, 1]': 1.0,
+   #  '[1, 1, 0, 0]': 1.0,
+   #  '[1, 0, 1, 0]': 1.0}
 
 Stored numbers are Taylor coefficients, not raw higher derivatives.
 
@@ -60,10 +79,12 @@ Differentiation and parameter derivatives
 
 .. code-block:: python
 
-   dfdx = f.derivative('x')
-   dfdk1 = f.derivative('k1')
-   variable_gradient = f.grad()
-   parameter_gradient = f.param_grad()
+   print(f.derivative('x'))
+   # Tpsa({(0, 1, 0, 0): 1.0, (0, 0, 1, 0): 1.0})
+   print(f.derivative('k1'))
+   # Tpsa({(0, 0, 0, 0): 1.5, (1, 0, 0, 0): 1.0})
+   print(f.grad())  # [0.0, 1.5]
+   print(f.param_grad())  # [1.5, 1.0]
 
 ``grad()`` and ``param_grad()`` are first-order coefficients at the expansion
 point. They are not replacements for ``derivative(...)`` when the full
@@ -74,9 +95,13 @@ Order operations
 
 .. code-block:: python
 
-   cubic = f.homogeneous(3)
-   through_cubic = f.truncate(3)
-   without_quadratic = f.clear_order(2)
+   print(f.homogeneous(3))  # Tpsa({})
+   print(f.truncate(3))
+   # Tpsa({(0, 0, 0, 0): 2.0, (0, 1, 0, 0): 1.5, (0, 0, 1, 0): 1.5,
+   #       (0, 0, 0, 1): 1.0, (1, 1, 0, 0): 1.0, (1, 0, 1, 0): 1.0})
+   print(f.clear_order(2))
+   # Tpsa({(0, 0, 0, 0): 2.0, (0, 1, 0, 0): 1.5, (0, 0, 1, 0): 1.5,
+   #       (0, 0, 0, 1): 1.0})
 
 ``truncation_order`` is the allocated order; ``degree`` is the highest order
 currently populated by a non-zero coefficient.

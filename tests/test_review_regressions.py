@@ -9,9 +9,9 @@ def test_named_map_components_follow_descriptor_order() -> None:
     d = Descriptor(variables=('review_q', 'review_p'), order=4)
     q, p = d.vars()
     mapping = TpsaMap(review_p=p + q, review_q=q + p**2)
-    assert mapping.coord_names == ('review_q', 'review_p')
-    assert mapping.coords[0] == q + p**2
-    assert mapping.coords[1] == p + q
+    assert mapping.component_names == ('review_q', 'review_p')
+    assert mapping.components[0] == q + p**2
+    assert mapping.components[1] == p + q
 
 
 def test_mixed_parameter_derivative_tensor_is_symmetric_but_not_aliased() -> None:
@@ -48,5 +48,5 @@ def test_tensor_partial_and_full_derivative_consistency() -> None:
     m = TpsaMap([q**3 + q * p**2, q * p**3])
     hessian = m.hessian()
     selected = m.partial_derivative((1, 1))
-    for i, component in enumerate(selected.coords):
+    for i, component in enumerate(selected.components):
         assert component == hessian[i, 0, 1]

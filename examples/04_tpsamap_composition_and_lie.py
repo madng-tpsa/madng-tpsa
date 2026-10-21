@@ -33,8 +33,8 @@ print()
 # TpsaMap(q=Tpsa({(1, 0, 0): 1.0, (0, 1, 0): 1.0}), p=Tpsa({(0, 1, 0): 1.0}))
 
 # Composition convention:
-# left @ right == left(right(z))
-one_step = drift @ kick
+# left << right == left(right(z))
+one_step = drift << kick
 
 print('Drift after kick:')
 print(one_step)
@@ -56,7 +56,7 @@ print()
 # TpsaMap(q=Tpsa({(1, 0, 0): 1.0, (0, 1, 0): -1.0}), p=...)
 
 print('Compose map with its inverse:')
-identity_check = one_step @ inverse
+identity_check = one_step << inverse
 print(identity_check)
 print()
 # TpsaMap(q=Tpsa({(1, 0, 0): 1.0}), p=Tpsa({(0, 1, 0): 1.0}))

@@ -1,7 +1,7 @@
 TpsaTensor
 ==========
 
-:class:`~madng_tpsa.tensors.TpsaTensor` is an arbitrary-rank, row-major
+:class:`~madng_tpsa.tensor.TpsaTensor` is an arbitrary-rank, row-major
 container of real or complex TPSA components. A tensor's axes describe its
 array shape; all polynomial components share one descriptor. A rank-one
 ``TpsaMap`` is a specialised subclass for full coordinate maps.
@@ -21,8 +21,8 @@ array shape; all polynomial components share one descriptor. A rank-one
    hessian = tensor.derivative_tensor(2, wrt='all')
    assert hessian.shape == (2, 2, 3, 3)
 
-Mixed partial specification
----------------------------
+Derivatives
+-----------
 
 ``partial_derivative(spec)`` preserves the input tensor's shape and class.
 Directions can be specified using names, one-based integer indices, a
@@ -45,15 +45,18 @@ Derivatives beyond the descriptor's representable order evaluate to zero.
 
 ``derivative_tensor(order, wrt='variables')`` appends
 ``order`` derivative axes, each of length equal to the number of selected
-directions. Original axes are left unchanged. When both flags are enabled,
-variables precede parameters in each derivative axis. For performance and
-storage, the result has ``tensor.size * n**order`` component TPSAs, so high
-ranks can be expensive even when higher derivatives vanish. The default
-``max_components=1_000_000`` prevents unexpectedly allocating larger tensors;
-a call may opt out with ``max_components=None`` only when memory requirements
-have been assessed. A lower limit can be supplied for memory-sensitive work.
-The guard counts *TPSA objects*, not coefficient storage: even a smaller
-number of high-order series can use substantial memory.
+directions (specified with ``wrt``, which is  ``'variables'``,
+``'parameters'``, or ``'all'``). Original axes are left unchanged. When
+``wrt='all'``, variables precede parameters in each derivative axis.
+
+For performance and storage, the result has ``tensor.size * n**order``
+component TPSAs, so high ranks can be expensive even when higher derivatives
+vanish. The default ``max_components=1_000_000`` prevents unexpectedly
+allocating larger tensors; a call may opt out with ``max_components=None``
+only when memory requirements have been assessed. A lower limit can be
+supplied for memory-sensitive work. The guard counts *TPSA objects*, not
+coefficient storage: even a smaller number of high-order series can use
+substantial memory.
 
 Storage and conversion
 ----------------------
@@ -80,12 +83,45 @@ polynomials to a compatible descriptor.
 
 ``compose(map)`` substitutes the full coordinate map into every component,
 retaining original tensor shape. Descriptor parameters are carried through as
-identity substitutions. ``@`` is shorthand for this composition, not a tensor
-contraction. Tensor ``+``, ``-``, scalar ``*`` and scalar ``/`` are
+identity substitutions. The operator ``<<`` represents regular composition
+(one can imagine it as the opening of the map's round brackets), while the
+operator ``>>`` represents Dragt-style notation. The following are possible,
+for ``T`` a tensor of general rank, ``M`` a map, and ``f`` a scalar function:
+
+.. code-block:: python
+
+   T << M  #    T(M)
+   f << M  #    f(M)  (pullback defined on M)
+   N << M  #    N(M)
+
+   M >> T  #    T(M)
+   M >> f  #    f(M)  (pullback defined on M)
+   M >> N  #    N(M)
+
+Tensor ``+``, ``-``, scalar ``*`` and scalar ``/`` are
 componentwise operations.
+
+
+Strided views and tensor contractions
+-------------------------------------
+
+Basic slicing, negative steps, ``None``, ellipsis, ``transpose()``,
+``swapaxes()`` and ``.T`` produce shared-storage views without copying TPSAs.
+The ``flat`` property enumerates a view in logical row-major order, even
+when its backing storage is noncontiguous. Native kernels receive a packed
+pointer array for noncontiguous views. Cache entries are invalidated when
+components are replaced. ``x in tensor`` tests *object identity*, not
+polynomial equality.
+
+Use ``@`` for rank-one/rank-two matrix multiplication, ``inner()`` for
+last-axis contraction, ``trace()`` for a diagonal sum, ``tensordot()`` to
+select paired axes and ``einsum('ij,jk->ik', A, B)`` for explicit-index
+contractions. ``einsum`` accepts only explicit ASCII single-letter subscripts
+(no ellipsis or batched broadcasting in this implementation).
+A complete contraction returns a scalar TPSA instead of a rank-zero tensor.
 
 API reference
 -------------
 
-.. autoclass:: madng_tpsa.tensors.TpsaTensor
+.. autoclass:: madng_tpsa.tensor.TpsaTensor
    :members:

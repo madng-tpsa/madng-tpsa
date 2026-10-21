@@ -34,10 +34,10 @@ def test_identity_constructor_and_descriptor_order() -> None:
     assert m.shape == (2,)
     assert m.rank == 1
     assert m.descriptor is d
-    assert m.coord_names == d.variables
+    assert m.component_names == d.variables
     np.testing.assert_allclose(m.evaluate((3.0, 5.0), parameters=(7.0,)), (3.0, 5.0))
-    assert m.coordinates['maptest_x'] is m.flat[0]
-    assert m.coordinates['maptest_px'] is m.flat[1]
+    assert m.named_components['maptest_x'] is m.flat[0]
+    assert m.named_components['maptest_px'] is m.flat[1]
 
 
 def test_positional_tpsas_and_mixed_offsets() -> None:
@@ -63,7 +63,7 @@ def test_named_components_infer_descriptor_and_preserve_other_identity() -> None
     m = TpsaMap(maptest_x=x * x)
 
     assert m.descriptor is d
-    assert m.coord_names == d.variables
+    assert m.component_names == d.variables
     np.testing.assert_allclose(m.evaluate((3, 5)), (9, 5))
     assert m.maptest_x is m.flat[0]
     assert m.maptest_px is m.flat[1]
@@ -146,11 +146,11 @@ def test_mapping_accessors_track_component_replacement() -> None:
     replacement = d.var('maptest_x') * 2
     m[0] = replacement
 
-    assert m.coord_names == d.variables
-    assert tuple(m.keys()) == d.variables
-    assert tuple(m.values()) == m.flat
-    assert dict(m.items())['maptest_x'] is replacement
-    assert m.coordinates['maptest_x'] is replacement
+    assert m.component_names == d.variables
+    assert tuple(m.named_components.keys()) == d.variables
+    assert tuple(m.named_components.values()) == m.flat
+    assert dict(m.named_components.items())['maptest_x'] is replacement
+    assert m.named_components['maptest_x'] is replacement
     assert m.maptest_x is replacement
     assert m[0] is replacement
     assert m.pointer_array[0] == ffi.cast('void*', replacement.ptr)
@@ -172,7 +172,7 @@ def test_copy_is_map_with_independent_components() -> None:
     assert isinstance(copied, TpsaMap)
     assert copied is not m
     assert copied.descriptor is d
-    assert copied.coord_names == d.variables
+    assert copied.component_names == d.variables
     assert all(a is not b for a, b in zip(m.flat, copied.flat, strict=True))
     copied.flat[0].const_part = 12
     assert m.flat[0].const_part == 0
@@ -185,7 +185,7 @@ def test_to_complex_keeps_map_type_and_is_independent() -> None:
 
     assert isinstance(c, TpsaMap)
     assert c.is_complex
-    assert c.coord_names == d.variables
+    assert c.component_names == d.variables
     assert all(isinstance(t, ComplexTpsa) for t in c.flat)
     c.flat[0].const_part = 1 + 2j
     assert not m.is_complex
@@ -200,7 +200,7 @@ def test_serialise_round_trip_preserves_coordinates_and_parameter() -> None:
 
     assert isinstance(recreated, TpsaMap)
     assert recreated.descriptor is d
-    assert recreated.coord_names == d.variables
+    assert recreated.component_names == d.variables
     np.testing.assert_allclose(recreated.evaluate((3, 4), parameters=(5,)), (8, 4))
     assert all(a is not b for a, b in zip(m.flat, recreated.flat, strict=True))
 
@@ -229,7 +229,7 @@ def test_extend_descriptor_new_variables_and_parameters_fills_identities() -> No
     extended = source.extend_descriptor(target)
 
     assert extended.descriptor is target
-    assert extended.coord_names == target.variables
+    assert extended.component_names == target.variables
     assert extended.shape == (3,)
     np.testing.assert_allclose(
         extended.evaluate((7, 3, 2), parameters=(5, 6)),
@@ -247,7 +247,7 @@ def test_extend_descriptor_reorders_existing_variables_even_without_new_ones() -
     converted = original.extend_descriptor(target)
 
     assert converted.descriptor is target
-    assert converted.coord_names == target.variables
+    assert converted.component_names == target.variables
     np.testing.assert_allclose(converted.evaluate((4, 2)), (4, 10))
 
 
@@ -274,7 +274,7 @@ def test_map_change_descriptor_reorders_output_components() -> None:
 
     assert isinstance(converted, TpsaMap)
     assert converted.descriptor is target
-    assert converted.coord_names == target.variables
+    assert converted.component_names == target.variables
     np.testing.assert_allclose(converted.evaluate((4, 2)), (12, 10))
 
 
@@ -287,7 +287,7 @@ def test_compose_two_maps_returns_a_map_with_correct_labels() -> None:
     composed = outer.compose(inner)
 
     assert isinstance(composed, TpsaMap)
-    assert composed.coord_names == d.variables
+    assert composed.component_names == d.variables
     np.testing.assert_allclose(composed.evaluate((3, 4), parameters=(1,)), (7, 5))
 
 
@@ -324,9 +324,9 @@ def test_descriptor_order_does_not_change_due_to_read_access() -> None:
     d = _descriptor()
     m = TpsaMap(d)
     assert m.descriptor is d
-    _ = m.coordinates
-    _ = tuple(m.items())
-    _ = tuple(m.values())
+    _ = m.named_components
+    _ = tuple(m.named_components.items())
+    _ = tuple(m.named_components.values())
     assert m.descriptor is d
 
 
@@ -363,14 +363,14 @@ def _nonlinear_map_with_parameter() -> TpsaMap:
 def test_coordinates_read_only_and_snapshot_semantics() -> None:
     d = _descriptor()
     mapping = TpsaMap(d)
-    original = mapping.coordinates
+    original = mapping.named_components
     with pytest.raises(TypeError):
         cast('Any', original)['maptest_x'] = d.zero()
     replacement = d.var('maptest_x') * 3
     mapping[0] = replacement
     assert original['maptest_x'] is not replacement
-    assert mapping.coordinates['maptest_x'] is replacement
-    assert mapping.coordinates['maptest_x'].descriptor is d
+    assert mapping.named_components['maptest_x'] is replacement
+    assert mapping.named_components['maptest_x'].descriptor is d
 
 
 def test_map_coefficient_lookup_by_name_index_and_batch() -> None:

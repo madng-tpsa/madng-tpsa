@@ -39,7 +39,7 @@ def test_partial_derivative_preserves_map_type_shape_and_values() -> None:
     result = m.partial_derivative((('der_q', 2), 'der_k'))
     assert isinstance(result, TpsaMap)
     assert result.shape == m.shape
-    assert result.coord_names == m.coord_names
+    assert result.component_names == m.component_names
     np.testing.assert_allclose(result.evaluate((2, 3), parameters=(4,)), [2, 0])
     np.testing.assert_allclose(
         m.partial_derivative((2, 0, 1)).evaluate((2, 3), parameters=(4,)),

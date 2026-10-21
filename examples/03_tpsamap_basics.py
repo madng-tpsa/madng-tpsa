@@ -25,7 +25,7 @@ print()
 # )
 
 print('Coordinate names:')
-print(turn_map.coord_names)
+print(turn_map.component_names)
 print()
 # ('x', 'px')
 

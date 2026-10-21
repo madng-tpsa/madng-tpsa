@@ -41,20 +41,28 @@ Quick start
    x, y = descriptor.vars()
 
    f = 2 + 3 * x - y + 4 * x * y + x**3
-   print(f.const_part)
-   print(f.grad())
-   print(f.monomial_coeffs())
+   print(f.const_part)  # 2.0
+   print(f.grad())  # [3.0, -1.0]
+   print(f.monomial_coeffs())  # {(0, 0): 2.0, (1, 0): 3.0, (0, 1): -1.0, (1, 1): 4.0, (3, 0): 1.0}
 
    map_ = TpsaMap(x=x + y + 0.2 * x**2, y=y - 0.3 * x)
 
-   print(map_.const_part)
+   print(map_.const_part)  # [0. 0.]
    print(map_.evaluate_jacobian())
+   # [[ 1.   1. ]
+   #  [-0.3  1. ]]
 
 Composition follows mathematical ordering:
 
 .. code-block:: text
 
-   left @ right == left(right(z))
+   left << right == left(right(z))
+
+Alternative, Dragt notation can be used:
+
+.. code-block:: text
+
+   right >> left == left << right == left(right(z))
 
 Hamiltonian and Lie operations assume descriptor variables are ordered in
 canonical pairs,
@@ -64,7 +72,7 @@ canonical pairs,
    (q_1,p_1,q_2,p_2,\ldots).
 
 Descriptor parameters are treated as external symbolic parameters, not as
-phase-space coordinates. They can appear in TPSA coefficients and can be
+phase-space named_components. They can appear in TPSA coefficients and can be
 differentiated with respect to, but they are carried unchanged through map
 composition and are not included in canonical Poisson-bracket pairs.
 
@@ -78,8 +86,10 @@ a descriptor variable together with its conjugate variable.
    :caption: User guide
    :hidden:
 
+   descriptor
    tpsa
    complex_tpsa
+   tpsa_tensor
    tpsa_map
    examples
 

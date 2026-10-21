@@ -165,9 +165,8 @@ print('Tensor arithmetic:', (tensor + tensor).shape, (tensor * 2).shape)
 # Map construction in named/positional forms and parameter sensitivity.
 identity = TpsaMap(d)
 map_ = TpsaMap(p=p + k, q=q + p**2)
-print('Named map order:', map_.coord_names, list(map_.keys()))
-print('Map component keys/values:', len(map_.items()), len(map_.values()))
-print('Map named coordinates:', map_.coordinates, map_.coords)
+print('Named map order:', map_.component_names)
+print('Map named coordinates:', map_.named_components, map_.components)
 print('Map pointer array with parameter identities:', len(map_.pointer_array_with_params))
 print('Map coefficient:', map_.coefficient('q', (0, 2, 0)))
 print('Map constants:', map_.const_part)
@@ -183,7 +182,7 @@ print(
 print('Map descriptor conversion:', map_.change_descriptor(d).shape)
 print('Map translation:', map_.translate((1, 0)).evaluate((2, 3), parameters=(4,)))
 print('Map pullback:', map_.pullback(q**2).get((0, 4, 0)))
-print('Map composition:', (map_ @ identity).shape)
+print('Map composition:', (map_ @ identity))
 
 # Map extension adds a new identity output in descriptor order.
 d_extended = Descriptor(variables=('q', 'p', 'r'), parameters=('k',), order=5)

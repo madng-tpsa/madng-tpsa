@@ -21,7 +21,7 @@ Construction and coordinate ordering
    named = TpsaMap(p=p, q=q + k)  # reordered into descriptor variable order
    offset = TpsaMap(d, q=0.1)     # first output is q + 0.1
 
-   assert named.coord_names == ('q', 'p')
+   assert named.component_names == ('q', 'p')
    assert named.q == q + k
    assert named.p == p
 
@@ -33,10 +33,11 @@ coordinate*, not constant output polynomials. Missing keyword components retain
 the identity. The descriptor can be inferred from TPSA inputs, or supplied
 explicitly for scalar-only construction.
 
-``map.coords`` returns the tuple of component TPSAs; ``map.coordinates`` is a
-read-only *mapping of names to mutable TPSA objects*. Use ``map.keys()``,
-``map.values()``, ``map.items()``, positional indexing (``map[0]``), or
-``map.q`` for access. The names do not establish canonical conjugacy.
+``map.components`` returns the tuple of component TPSAs; ``map.component_names``
+returns the tuple of coordinates;``map.named_components`` is a read-only
+*mapping of names to mutable TPSA objects*. Use positional indexing
+(``map[0]``) or ``map.q`` for access. The names do not establish canonical
+conjugacy.
 
 Conversion and inspection
 -------------------------
@@ -57,22 +58,24 @@ a writable array-shaped property; ``set_const_part`` is deprecated.
 ``change_descriptor`` converts a complete map to another compatible descriptor,
 including the output coordinate ordering; ``extend_descriptor`` inserts identity
 components for newly introduced variables. Both use descriptor variable names,
-not merely the number of coordinates. ``homogeneous()``, ``truncate()`` and
+not merely the number of named_components. ``homogeneous()``, ``truncate()`` and
 ``clear_order()`` operate on every component without modifying the original.
 
 Evaluation, Jacobians, Hessians
-------------------------------
+-------------------------------
 
 .. code-block:: python
 
    m = TpsaMap([q**2 + k*q + p, q*p + k], descriptor=d)
-   m.evaluate((2., 3.), parameters=(4.,))
+   m.evaluate((2., 3.), parameters=(4.,))  # array([15., 10.])
    m.evaluate_jacobian((2., 3.), parameters=(4.,))
+   # array([[8., 1.],
+   #        [3., 2.]])
    J = m.jacobian(wrt='variables')  # Shape (2, 2), TPSA-valued
-   H = m.hessian(wrt='all')         # Shape (2, 3, 3)
+   H = m.hessian(wrt='all')         # Shape (2, 3, 3), TPSA-valued
    values = m.evaluate_hessian((2., 3.), parameters=(4.,), wrt='all')
 
-Each Jacobian and Hessian is evaluated in the original descriptor coordinates.
+Each Jacobian and Hessian is evaluated in the original descriptor named_components.
 
 The inherited generic methods
 :meth:`~madng_tpsa.tensor.TpsaTensor.partial_derivative` and
@@ -83,7 +86,7 @@ and ``examples/05_tpsamap_derivatives.py``.
 Composition, translation and pullback
 -------------------------------------
 
-``left @ right`` and ``left.compose(right)`` mean :math:`left\circ right`.
+``left << right`` and ``left.compose(right)`` mean :math:`left\circ right`.
 Descriptor parameters are automatically carried through substitution unchanged:
 
 .. math::
@@ -94,7 +97,7 @@ Descriptor parameters are automatically carried through substitution unchanged:
 
    left = TpsaMap([q + k, p], descriptor=d)
    right = TpsaMap([2*q, p], descriptor=d)
-   combined = left @ right          # (2*q + k, p)
+   combined = left << right          # (2*q + k, p)
    translated = left.translate((1., 0.))  # left(q + 1, p; k)
    observable = q**2 + p
    transformed = right.pullback(observable)  # observable composed with right
@@ -119,14 +122,14 @@ terms; parameters are treated symbolically. Inversion is not a general-purpose
 numerical solver at an arbitrary point.
 
 Hamiltonian fields and Lie maps
-------------------------------
+-------------------------------
 
 Hamiltonian operations assume an **even** number of descriptor variables,
 ordered in canonical pairs ``(q1, p1, q2, p2, ...)``. Names are not checked for
-physical meaning. Descriptor parameters are not canonical coordinates.
+physical meaning. Descriptor parameters are not canonical named_components.
 
 MAD-NG's native scalar-to-field convention is
-:math:`G=-J\nabla f`, implemented by
+:math:`G=-S\nabla f`, implemented by
 :meth:`~madng_tpsa.map.TpsaMap.from_generator`. For Hamiltonian fields,
 :meth:`~madng_tpsa.map.TpsaMap.to_generator` reverses this conversion up to
 an additive function of the descriptor parameters. With its default
@@ -164,7 +167,7 @@ check does not require symplecticity or even a Hamiltonian vector field.
    field = lie_map.log_poisson()  # Checks exp_poisson(field) == lie_map
    unchecked = lie_map.log_poisson(validate=False)
 
-Use ``validate=False`` when a normal-form analysis deliberately performs its
+Use ``validate=False`` to override this; make sure the usage performs its
 **own** higher-level map reconstruction or tolerance and order comparison.
 It avoids a potentially expensive extra exponential, but the caller then
 owns convergence assessment. We deliberately keep ``validate=True`` as the
@@ -185,6 +188,23 @@ Subclass behaviour
 
 Generic map operations may produce a base ``TpsaMap`` instead of preserving
 an arbitrary subclass whose auxiliary state has no defined transformation.
+
+
+Canonical sign convention and composition operators
+----------------------------------------------------
+
+For canonical coordinate pairs ``(q1, p1, q2, p2, ...)``, define the
+antisymmetric matrix ``S`` as block-diagonal copies of ``[[0, 1], [-1, 0]]``.
+MAD-NG's native ``from_generator(f)`` uses ``F = -S grad(f)``. Scalar
+``exp_poisson(f)`` uses the opposite field sign relative to the native
+``from_generator`` result. Do not replace ``-S`` with ``S`` silently.
+
+``M << N`` means ``M.compose(N)``; ``M >> N`` means ``N.compose(M)``.
+For a scalar observable, ``f << M`` means ``f.compose(M)`` (pullback),
+whereas ``f >> M`` uses the inverse map (inverse pullback).
+``M ^ n`` is n-fold composition with ``n >= 0``; it is **not** a
+componentwise polynomial power. ``@`` denotes tensor matrix multiplication.
+
 
 API reference
 -------------

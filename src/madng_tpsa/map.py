@@ -57,30 +57,59 @@ class TpsaMap(TpsaTensor[TpsaSeriesT]):
     ) -> None:
         """Create a TPSA map.
 
+        A map contains one TPSA component per descriptor variable. Components can
+        be supplied as an ordered sequence or as named keyword arguments.
+
+        When a component is specified by a scalar, the value is interpreted as
+        an offset from the corresponding identity coordinate, rather than as a
+        constant polynomial. Unspecified components retain their identity values.
+
         Parameters
         ----------
-        components : Descriptor or sequence, optional
-            A descriptor to create an identity map, or a sequence of
-            component values in descriptor variable order.
-        descriptor : Descriptor, optional
-            Explicit descriptor, if not inferable from the components.
-        **coordinates
-            Named components. Unspecified coordinates retain their
-            identity-map values.
+        components : Descriptor or sequence of TPSAs or scalars, optional
+            Components of the map, ordered according to the descriptor variables.
 
-        Scalar values are interpreted as offsets from the corresponding
-        identity coordinate.
+            Alternatively, pass a `Descriptor` to construct an identity map.
+            If omitted, components can be supplied as named keyword arguments.
+
+        descriptor : Descriptor, optional
+            Descriptor defining the variables, parameters, and truncation order.
+            If omitted, it is inferred from the supplied TPSA components.
+
+        **coordinates
+            Named map components, using descriptor variable labels as keywords.
+            Each value can be a TPSA or a scalar offset. Components not explicitly
+            provided retain their identity values.
+
+            A descriptor must be supplied explicitly if all provided components
+            are scalars.
 
         Examples
         --------
-        The following are examples of valid initialisations:
-            TpsaMap(descriptor)       # Identity map
-            TpsaMap([x, px, y, py])
-            TpsaMap([x, 0, 0, 0])
-            TpsaMap([0.1, 0, 0.2, -0.1], descriptor=descriptor)
-            TpsaMap(x=x, px=px, y=y, py=py)
-            TpsaMap(x=x)
-            TpsaMap(x=0.1, descriptor=descriptor)
+        Construct an identity map:
+
+        >>> d = Descriptor(variables=('x', 'px', 'y', 'py'), parameters=('k'), order=4)
+        >>> M = TpsaMap(d)
+
+        Construct a map from TPSA components:
+
+        >>> x, px, y, py = d.vars()
+        >>> M = TpsaMap([x, px + k * x**2, y, py - k * y**2])
+
+        Mix TPSAs and scalar offsets:
+
+        >>> M = TpsaMap([x, 0, 0.2, -0.1])
+
+        Here, the map is (x, px, y + 0.2, py - 0.1), not
+        (x, 0, 0.2, -0.1).
+
+        Provide components by name:
+
+        >>> M = TpsaMap(px = px + k * x**2, py = py - k * y**2)
+
+        Or specify scalar offsets with an explicit descriptor:
+
+        >>> M = TpsaMap(descriptor=d, x=0.1, px=-0.2)
         """
         # Interpret the positional arguments
         if isinstance(components, Descriptor):
@@ -166,13 +195,15 @@ class TpsaMap(TpsaTensor[TpsaSeriesT]):
         """Promote the components, preserving the TpsaMap container."""
         return cast('TpsaMap[ComplexTpsa]', super().to_complex())
 
-    def __getitem__(self, key: int | tuple[int, ...]) -> TpsaSeriesT:
-        """Return the TPSA at the specified map coordinate."""
-        result = super().__getitem__(key)
-        if not isinstance(result, (Tpsa, ComplexTpsa)):
-            err_mess = 'TpsaMap requires a complete coordinate index'
-            raise IndexError(err_mess)
-        return result
+    @overload
+    def __getitem__(self, key: int | tuple[int, ...]) -> TpsaSeriesT: ...
+
+    @overload
+    def __getitem__(self, key: object) -> TpsaSeriesT | TpsaTensor[TpsaSeriesT]: ...
+
+    def __getitem__(self, key: object) -> TpsaSeriesT | TpsaTensor[TpsaSeriesT]:
+        """Index a coordinate or construct an ordinary tensor slice view."""
+        return super().__getitem__(key)
 
     def change_descriptor(
         self,
@@ -184,7 +215,7 @@ class TpsaMap(TpsaTensor[TpsaSeriesT]):
     ) -> Self:
         """Convert a full map, including its output-coordinate ordering."""
         rename = variable_map or {}
-        output_names = tuple(rename.get(name, name) for name in self.coord_names)
+        output_names = tuple(rename.get(name, name) for name in self.component_names)
         if len(set(output_names)) != len(output_names) or set(output_names) != set(
             descriptor.variables
         ):
@@ -198,7 +229,7 @@ class TpsaMap(TpsaTensor[TpsaSeriesT]):
                 parameter_map=parameter_map,
                 truncate=truncate,
             )
-            for name, component in self.coordinates.items()
+            for name, component in self.named_components.items()
         }
         return type(self)(
             [converted[name] for name in descriptor.variables],
@@ -224,7 +255,7 @@ class TpsaMap(TpsaTensor[TpsaSeriesT]):
             raise ValueError(err_mess)
         converted = {
             name: component.change_descriptor(descriptor)
-            for name, component in self.coordinates.items()
+            for name, component in self.named_components.items()
         }
         values = [
             converted[name] if name in converted else descriptor.var(name)
@@ -232,31 +263,17 @@ class TpsaMap(TpsaTensor[TpsaSeriesT]):
         ]
         return type(self)(values, descriptor=descriptor)
 
-    def keys(self):
-        """Return the coordinate names as keys on the coordinates dict."""
-        return self.coordinates.keys()
-
-    def values(self):
-        """Return the coordinate TPSAs as values on the coordinates dict."""
-        return self.coordinates.values()
-
-    def items(self):
-        """Return an items view on the coordinates dict."""
-        return self.coordinates.items()
-
     def __getattr__(self, name: str) -> TpsaSeriesT:
         try:
             names = object.__getattribute__(self, '_coord_names')
-            index = names.index(name)
-            flat = object.__getattribute__(self, '_flat')
-            offset = object.__getattribute__(self, '_offset')
+            i = names.index(name)
+            return object.__getattribute__(self, '_flat')[self._offset + i]
         except (AttributeError, ValueError):
             raise AttributeError(name) from None
-        return flat[offset + index]
 
     def __repr__(self) -> str:
         components = []
-        for coord, tpsa in self.coordinates.items():
+        for coord, tpsa in self.named_components.items():
             if len(tpsa) > 3:
                 components.append(f'{coord}=...')
             else:
@@ -264,19 +281,19 @@ class TpsaMap(TpsaTensor[TpsaSeriesT]):
         return f'TpsaMap({", ".join(components)})'
 
     @property
-    def coord_names(self) -> tuple[str, ...]:
-        """Coordinate names of the map."""
+    def component_names(self) -> tuple[str, ...]:
+        """Descriptor-ordered names of the full map outputs."""
         return self._coord_names
 
     @property
-    def coords(self) -> tuple[TpsaSeriesT, ...]:
-        """Coordinate TPSAs of the map."""
-        return tuple(self.flat)
+    def components(self) -> tuple[TpsaSeriesT, ...]:
+        """Complete coordinate-output TPSAs, in descriptor order."""
+        return self.flat
 
     @property
-    def coordinates(self) -> Mapping[str, TpsaSeriesT]:
-        """Read-only dict of coordinate names -> TPSAs of the map."""
-        return MappingProxyType(dict(zip(self._coord_names, self.flat, strict=True)))
+    def named_components(self) -> Mapping[str, TpsaSeriesT]:
+        """Read-only mapping of output names to mutable TPSA components."""
+        return MappingProxyType(dict(zip(self.component_names, self.components, strict=True)))
 
     @property
     def pointer_array_with_params(self) -> ffi.CData:
@@ -295,8 +312,8 @@ class TpsaMap(TpsaTensor[TpsaSeriesT]):
     def _coordinate_index(self, coord: str | int) -> int:
         """Resolve a coordinate name or zero-based integer index."""
         if isinstance(coord, str):
-            if coord in self.coord_names:
-                return self.coord_names.index(coord)
+            if coord in self.component_names:
+                return self.component_names.index(coord)
         elif isinstance(coord, int) and not isinstance(coord, bool) and 0 <= coord < self.num_vars:
             return coord
         err_mess = f'Not a valid coordinate name or index: {coord}'
@@ -332,7 +349,7 @@ class TpsaMap(TpsaTensor[TpsaSeriesT]):
         """Return coefficient(s) from one output series by coordinate name or index."""
         idx = self._coordinate_index(coord)
         arr = self._monomial_rows(monomials)
-        return self.coords[idx].coefficient(arr)
+        return self.components[idx].coefficient(arr)
 
     def set_coefficient(
         self,
@@ -347,7 +364,7 @@ class TpsaMap(TpsaTensor[TpsaSeriesT]):
             err_mess = 'Exactly one monomial must be supplied'
             raise ValueError(err_mess)
         mono = tuple(int(v) for v in arr)
-        component = self.coords[idx]
+        component = self.components[idx]
         if isinstance(component, Tpsa):
             converted = complex(value)
             if converted.imag != 0:
@@ -388,12 +405,16 @@ class TpsaMap(TpsaTensor[TpsaSeriesT]):
             dtype = complex if self.is_complex else float
             return np.empty((len(self), 0), dtype=dtype)
         if coordinates is None and parameters is None:
-            res = []
-            if wrt == 'variables' or wrt == 'all':
-                res += [tpsa.grad() for tpsa in self.coords]
-            if wrt == 'parameters' or wrt == 'all':
-                res += [tpsa.param_grad() for tpsa in self.coords]
-            return np.asarray(res)
+            if wrt not in ('variables', 'parameters', 'all'):
+                err_mess = 'Unknown differentiation direction'
+                raise ValueError(err_mess)
+            if wrt == 'variables':
+                return np.asarray([tpsa.grad() for tpsa in self.components])
+            if wrt == 'parameters':
+                return np.asarray([tpsa.param_grad() for tpsa in self.components])
+            return np.asarray(
+                [np.concatenate((tpsa.grad(), tpsa.param_grad())) for tpsa in self.components]
+            )
         if coordinates is None:
             coordinates = [0.0] * self.num_vars
         if parameters is None:
@@ -436,7 +457,89 @@ class TpsaMap(TpsaTensor[TpsaSeriesT]):
         """Compose full coordinate maps, preserving the TpsaMap result type."""
         return cast('TpsaMap[Tpsa] | TpsaMap[ComplexTpsa]', super().compose(other))
 
-    __matmul__ = compose
+    # We define the composition operators here, because every composition
+    # always involves a map. We use << (lshift) to represent regular
+    # composition (one can imagine it as the opening of the map's round
+    # brackets), and >> (rshift) to represent Dragt notation. The following are
+    # possible, for T a tensor of general rank, M a map, and f a scalar
+    # function:
+    #    T << M    T.compose(M)
+    #    f << M    M.pullback(f)
+    #    N << M    N.compose(M)
+    #    M >> T    T.compose(M)
+    #    M >> f    M.pullback(f)
+    #    M >> N    N.compose(M)
+
+    @overload
+    def __rshift__(self, other: TpsaMap) -> TpsaMap: ...
+
+    @overload
+    def __rshift__(self, other: TpsaTensor) -> TpsaTensor: ...
+
+    @overload
+    def __rshift__(self, other: Tpsa | ComplexTpsa) -> Tpsa | ComplexTpsa: ...
+
+    def __rshift__(
+        self, other: TpsaMap | TpsaTensor | Tpsa | ComplexTpsa
+    ) -> TpsaMap | TpsaTensor | Tpsa | ComplexTpsa:
+        """Use Dragt order: ``M >> X`` substitutes M into X.
+
+        For X a map or tensor, compute X.compose(M). For a scalar
+        observable f, compute the ordinary pullback f composed with M.
+        """
+        if isinstance(other, (TpsaMap, TpsaTensor)):
+            return other.compose(self)
+        if isinstance(other, (Tpsa, ComplexTpsa)):
+            return self.pullback(other)
+        return NotImplemented
+
+    def __lshift__(self, other: TpsaMap) -> TpsaMap:
+        """Use ordinary composition: ``M << N`` means ``M.compose(N)``."""
+        if not isinstance(other, TpsaMap):
+            return NotImplemented
+        return self.compose(other)
+
+    @overload
+    def __rlshift__(self, other: TpsaTensor) -> TpsaTensor: ...
+
+    @overload
+    def __rlshift__(self, other: Tpsa | ComplexTpsa) -> Tpsa | ComplexTpsa: ...
+
+    def __rlshift__(
+        self, other: TpsaTensor | Tpsa | ComplexTpsa
+    ) -> TpsaTensor | Tpsa | ComplexTpsa:
+        """Substitute a map into a tensor or scalar: ``X << M``."""
+        if isinstance(other, TpsaTensor):
+            return other.compose(self)
+        if isinstance(other, (Tpsa, ComplexTpsa)):
+            return self.pullback(other)
+        return NotImplemented
+
+    def composition_power(self, n: int) -> TpsaMap:
+        """Compose the map repeatedly by binary exponentiation, for n >= 0.
+
+        Formal powers preserve the algebra under truncation for zero-constant
+        maps. Nonzero constants can invalidate formal rearrangement identities.
+        """
+        if isinstance(n, bool) or not isinstance(n, Integral):
+            error_message = 'Composition exponent must be an integer'
+            raise TypeError(error_message)
+        if n < 0:
+            error_message = 'Composition exponent must be non-negative'
+            raise ValueError(error_message)
+        result = TpsaMap(self.descriptor)
+        base = self
+        while n:
+            if n & 1:
+                result = result.compose(base)
+            n >>= 1
+            if n:
+                base = base.compose(base)
+        return result
+
+    def __xor__(self, exponent: int) -> TpsaMap:
+        """``M ^ n`` is n-fold composition, not componentwise power."""
+        return self.composition_power(exponent)
 
     def inverse(self) -> TpsaMap[TpsaSeriesT]:
         """Return the formal inverse map about a zero-constant expansion point.
@@ -611,7 +714,7 @@ class TpsaMap(TpsaTensor[TpsaSeriesT]):
 
     @classmethod
     def from_generator(cls, generator: Tpsa | ComplexTpsa) -> TpsaMap[Tpsa] | TpsaMap[ComplexTpsa]:
-        """Construct the native Hamiltonian field ``-J grad(generator)``.
+        """Construct the native Hamiltonian field ``-S grad(generator)``.
 
         A scalar ``f`` in ``exp_poisson(f)`` uses the *negative* of this field.
         """
@@ -648,7 +751,7 @@ class TpsaMap(TpsaTensor[TpsaSeriesT]):
         """Recover a scalar generator from a Hamiltonian vector field.
 
         Use MAD-NG's native ``fld2vec`` to invert ``from_generator``:
-        the map is interpreted as ``F = -J grad(f)``, with canonical
+        the map is interpreted as ``F = -S grad(f)``, with canonical
         variable ordering ``(q1, p1, q2, p2, ...)``. The recovered generator
         has its phase-space-independent integration term ``C(parameters)``
         fixed to zero.
@@ -711,7 +814,7 @@ class TpsaMap(TpsaTensor[TpsaSeriesT]):
         if validate:
             rebuilt = type(self).from_generator(result)
             for name, original, reconstructed in zip(
-                self.coord_names, self.flat, rebuilt.flat, strict=True
+                self.component_names, self.flat, rebuilt.flat, strict=True
             ):
                 expected = original.monomial_coeffs(tol=0)
                 actual = reconstructed.monomial_coeffs(tol=0)
@@ -875,7 +978,7 @@ class TpsaMap(TpsaTensor[TpsaSeriesT]):
             # trigger descriptor alignment or real-to-complex promotion.
             reconstructed = TpsaMap(left.descriptor).exp_poisson(field)
             for name, expected_series, actual_series in zip(
-                left.coord_names, left.flat, reconstructed.flat, strict=True
+                left.component_names, left.flat, reconstructed.flat, strict=True
             ):
                 expected = expected_series.monomial_coeffs(tol=0)
                 actual = actual_series.monomial_coeffs(tol=0)
@@ -915,7 +1018,7 @@ class TpsaMap(TpsaTensor[TpsaSeriesT]):
             err_mess = 'Pullback requires a scalar TPSA'
             raise TypeError(err_mess)
         left, right, _ = self._align_descriptors(
-            self, function, extend_left=True, extend_right=False
+            self, function, extend_left=True, extend_right=False, reorder_variables=True
         )
         return TpsaTensor([right]).compose(left).flat[0]
 
