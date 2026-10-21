@@ -17,7 +17,9 @@ jobs:
       fail-fast: false
       matrix:
         os: [ubuntu-latest, macos-latest]
-        pyver: [cp311, cp312, cp313, cp314]
+        # cp315 requires cibuildwheel >= 4.3, which builds CPython 3.15
+        # wheels by default.
+        pyver: [cp311, cp312, cp313, cp314, cp315]
 
     steps:
       - name: Check out repository
@@ -36,7 +38,7 @@ jobs:
           echo "CIBW_ENVIRONMENT_MACOS=${compiler_environment}" >> "$GITHUB_ENV"
 
       - name: Build wheels
-        uses: pypa/cibuildwheel@v4.2.0
+        uses: pypa/cibuildwheel@v4.3.2
         env:
           CIBW_BUILD: ${{ matrix.pyver }}-*
           CIBW_SKIP: '*-musllinux*'
