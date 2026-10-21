@@ -1206,6 +1206,16 @@ class TpsaTensor(Generic[TpsaSeriesT]):
             self,
         )
 
+    def __eq__(self, other: object) -> bool:
+        """Compare to another tensor; True if all TPSAs and the descriptor are the same."""
+        if not isinstance(other, TpsaTensor):
+            return False
+        if self.descriptor != other.descriptor:
+            return False
+        if len(self.flat) != len(other.flat):
+            return False
+        return all(tt1 == tt2 for tt1, tt2 in zip(self.flat, other.flat, strict=True))
+
     def __neg__(self) -> Self:
         """Negate every component and preserve the container type."""
         values = [-cast('TpsaSeries', tpsa) for tpsa in self.flat]
