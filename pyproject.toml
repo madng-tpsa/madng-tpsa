@@ -53,9 +53,17 @@ provider = "scikit_build_core.metadata.setuptools_scm"
 write_to = "src/madng_tpsa/_version.py"
 
 [tool.scikit-build.sdist]
+# The sdist must stay small: without exclusions, scikit-build-core walks the
+# whole worktree and sweeps in the entire MAD-NG submodule worktree (hundreds
+# of MB of examples, PDFs and prebuilt libraries that a source build never
+# compiles). A source build only needs the gtpsa engine subset below (~1 MB).
+exclude = [
+  "madng/**",
+]
 include = [
     "CMakeLists.txt",
     "src/madng_tpsa/_version.py",
+    "madng/COPYING",
     "madng/src/mad_*.c",
     "madng/src/mad_*.h",
     "madng/src/mad_*.hpp",
