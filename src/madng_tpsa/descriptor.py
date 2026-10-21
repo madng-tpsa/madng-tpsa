@@ -24,7 +24,6 @@ if TYPE_CHECKING:
     from .tpsa import Tpsa
 
 import warnings
-from operator import index
 from weakref import WeakValueDictionary
 
 import numpy as np
@@ -82,6 +81,9 @@ class Descriptor:
     """
 
     _owners_by_ptr: ClassVar[WeakValueDictionary[int, _NativeDescriptor]] = WeakValueDictionary()
+    # Resolved lazily to avoid importing TPSA classes during Descriptor module import.
+    _real_tpsa_type: ClassVar[type[Tpsa] | None] = None
+    _complex_tpsa_type: ClassVar[type[ComplexTpsa] | None] = None
     _owner: _NativeDescriptor
     _ptr: Any
     variables: tuple[str, ...]
@@ -408,7 +410,8 @@ class Descriptor:
     @property
     def num_vars(self) -> int:
         """Number of variables (excluding parameters) supported by the descriptor."""
-        return self._get_descriptor_attrs().num_vars
+        # from_ptr() verifies that labels agree with the native descriptor.
+        return len(self.variables)
 
     @property
     def order(self) -> int:
@@ -418,7 +421,7 @@ class Descriptor:
     @property
     def num_params(self) -> int:
         """Number of parameters supported by the descriptor."""
-        return self._get_descriptor_attrs().num_params
+        return len(self.parameters)
 
     @property
     def param_order(self) -> int:
@@ -428,8 +431,7 @@ class Descriptor:
     @property
     def monomial_length(self) -> int:
         """Length of a full monomial, equal to ``num_vars`` + ``num_params``."""
-        attrs = self._get_descriptor_attrs()
-        return attrs.num_vars + attrs.num_params
+        return len(self.variables) + len(self.parameters)
 
     @property
     def max_orders(self) -> tuple[int, ...]:
@@ -438,21 +440,22 @@ class Descriptor:
         lib.mad_desc_maxord(self._ptr, self.monomial_length, max_order_arr)
         return tuple(max_order_arr)
 
-    def is_valid_monomial(self, monomial: Sequence[int]) -> bool:
+    def is_valid_monomial(self, monomial: Sequence[object] | np.ndarray) -> bool:
         """Whether ``monomial`` is representable (querying beyond order is illegal in the C API)."""
         try:
-            powers = tuple(index(v) for v in monomial)
+            if len(monomial) != self.monomial_length:
+                return False
         except TypeError:
-            return False
-        # Some manual checks first, to avoid false positives due to C casting
-        if len(powers) != self.monomial_length:
             return False
         if any(isinstance(v, (bool, np.bool_)) for v in monomial):
             return False
-        if any(not 0 <= p <= 255 for p in powers):
+        try:
+            # CFFI performs integer conversion and unsigned-byte range checks.
+            # tuple() also accepts array/range inputs (ffi.new does not).
+            arr = ffi.new('unsigned char[]', tuple(monomial))
+        except (TypeError, ValueError, OverflowError):
             return False
-        arr = ffi.new('unsigned char[]', powers)
-        return bool(lib.mad_desc_isvalidm(self._ptr, len(powers), arr))
+        return bool(lib.mad_desc_isvalidm(self._ptr, len(monomial), arr))
 
     def monomial_index(self, monomial: Iterable[int]) -> int:
         """Index of ``monomial`` in the descriptor's coefficient array."""
@@ -481,15 +484,23 @@ class Descriptor:
 
     def zero(self, order: int | None = None) -> Tpsa:
         """Create a zero TPSA series on this descriptor."""
-        from .tpsa import Tpsa
+        tpsa_type = Descriptor._real_tpsa_type
+        if tpsa_type is None:
+            from .tpsa import Tpsa
 
-        return Tpsa(self, truncation_order=order)
+            tpsa_type = Tpsa
+            Descriptor._real_tpsa_type = tpsa_type
+        return tpsa_type(self, truncation_order=order)
 
     def complex_zero(self, order: int | None = None) -> ComplexTpsa:
         """Create a zero complex TPSA series on this descriptor."""
-        from .complex_tpsa import ComplexTpsa
+        tpsa_type = Descriptor._complex_tpsa_type
+        if tpsa_type is None:
+            from .complex_tpsa import ComplexTpsa
 
-        return ComplexTpsa(self, truncation_order=order)
+            tpsa_type = ComplexTpsa
+            Descriptor._complex_tpsa_type = tpsa_type
+        return tpsa_type(self, truncation_order=order)
 
     def polynomial(
         self,
