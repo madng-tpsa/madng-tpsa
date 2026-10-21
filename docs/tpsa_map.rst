@@ -201,9 +201,21 @@ MAD-NG's native ``from_generator(f)`` uses ``F = -S grad(f)``. Scalar
 ``exp_poisson(f)`` uses the opposite field sign relative to the native
 ``from_generator`` result. Do not replace ``-S`` with ``S`` silently.
 
-``M << N`` means ``M.compose(N)``; ``M >> N`` means ``N.compose(M)``.
-For a scalar observable, ``f << M`` means ``f.compose(M)`` (pullback),
-whereas ``f >> M`` uses the inverse map (inverse pullback).
+``M << N`` means ``M.compose(N)`` (ordinary composition), while ``M >> N``
+means ``N.compose(M)`` (Dragt's reversed ordering). For an arbitrary-rank
+TPSA tensor ``T`` or a scalar observable ``f``, the following are equivalent:
+
+.. code-block:: python
+
+   T << M  # T.compose(M)
+   M >> T  # T.compose(M)
+   f << M  # M.pullback(f), i.e. f composed with M
+   M >> f  # M.pullback(f), i.e. f composed with M
+
+The operators represent **ordinary substitution**, never an implicit inverse
+pullback. ``f >> M`` is unsupported; use ``M.inverse().pullback(f)`` explicitly
+when an inverse pullback is intended.
+
 ``M ^ n`` is n-fold composition with ``n >= 0``; it is **not** a
 componentwise polynomial power. ``@`` denotes tensor matrix multiplication.
 

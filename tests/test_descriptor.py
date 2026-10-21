@@ -18,6 +18,13 @@ def test_descriptor_is_reused():
     assert a._owner in madng_tpsa.Descriptor._owners_by_ptr.values()
 
 
+def test_descriptor_comparison_with_other_types_returns_not_implemented():
+    descriptor = madng_tpsa.Descriptor(2, 3)
+    assert descriptor.__eq__(object()) is NotImplemented
+    assert descriptor != object()
+    assert (descriptor == object()) is False
+
+
 @pytest.mark.parametrize('nv, order', [(1, 1), (2, 3), (6, 4)])
 def test_descriptor_queries_come_from_c(nv, order):
     d = madng_tpsa.Descriptor(nv, order)

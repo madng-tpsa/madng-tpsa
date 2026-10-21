@@ -1081,7 +1081,6 @@ class TpsaTensor(Generic[TpsaSeriesT]):
             total = descriptor.complex_zero() if complex_needed else descriptor.zero()
             for contraction_idx in product(*(range(sizes[label]) for label in reduced)):
                 current.update(zip(reduced, contraction_idx, strict=True))
-                term: Tpsa | ComplexTpsa | float | complex = 1.0
                 # Numeric ndarray elements and TPSA components have disparate
                 # multiplication overloads; the accumulator is dynamically typed.
                 term: Any = 1.0

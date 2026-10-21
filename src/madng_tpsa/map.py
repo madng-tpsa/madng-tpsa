@@ -89,12 +89,14 @@ class TpsaMap(TpsaTensor[TpsaSeriesT]):
         --------
         Construct an identity map:
 
-        >>> d = Descriptor(variables=('x', 'px', 'y', 'py'), parameters=('k'), order=4)
+        >>> from madng_tpsa import Descriptor, TpsaMap
+        >>> d = Descriptor(variables=('x', 'px', 'y', 'py'), parameters=('k',), order=4)
         >>> M = TpsaMap(d)
 
         Construct a map from TPSA components:
 
         >>> x, px, y, py = d.vars()
+        >>> k = d.param('k')
         >>> M = TpsaMap([x, px + k * x**2, y, py - k * y**2])
 
         Mix TPSAs and scalar offsets:
@@ -106,7 +108,7 @@ class TpsaMap(TpsaTensor[TpsaSeriesT]):
 
         Provide components by name:
 
-        >>> M = TpsaMap(px = px + k * x**2, py = py - k * y**2)
+        >>> M = TpsaMap(px=px + k * x**2, py=py - k * y**2)
 
         Or specify scalar offsets with an explicit descriptor:
 

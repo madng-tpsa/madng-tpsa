@@ -699,8 +699,7 @@ class Descriptor:
 
     def __eq__(self, other: object) -> bool:
         if not isinstance(other, Descriptor):
-            err_mess = 'Expected another Descriptor'
-            raise TypeError(err_mess)
+            return NotImplemented
         return (
             type(self) is type(other)
             and self._owner is other._owner

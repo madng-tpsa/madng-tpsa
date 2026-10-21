@@ -214,17 +214,25 @@ def format_polynomial(
     max_terms: int | None = None,
 ) -> object:
     """Format ``tpsa`` using ``labels`` for variables and parameters."""
+    if max_terms is not None and max_terms < 0:
+        message = 'max_terms must be non-negative or None'
+        raise ValueError(message)
+
     coeffs = tpsa.monomial_coeffs()
     end = ''
-    if max_terms:
+    if max_terms is not None:
         coefficients = dict(list(coeffs.items())[:max_terms])
         if len(coefficients) < len(coeffs):
             end = ' + ...'
     else:
         coefficients = coeffs
     if style == 'unicode':
+        if not coefficients and end:
+            return '...'
         return _format_unicode(coefficients, labels) + end
     if style == 'code':
+        if not coefficients and end:
+            return '...'
         return _format_code(coefficients, labels) + end
     if style == 'math':
         return _format_math(coefficients, labels)
@@ -234,7 +242,7 @@ def format_polynomial(
     raise ValueError(message)
 
 
-def _format_unicode(coeffs: dict[tuple[int, ...], float], labels: Sequence[str]) -> str:
+def _format_unicode(coeffs: dict[tuple[int, ...], float | complex], labels: Sequence[str]) -> str:
     """Format a series into an expression such as ``'1.38·10⁻¹² + ζ + 2pζ - 3ζ² - 2ζpζ - pζ²'``."""
     formatted_labels = tuple(format_coord(ll) for ll in labels)
     return _format_terms(
@@ -246,7 +254,7 @@ def _format_unicode(coeffs: dict[tuple[int, ...], float], labels: Sequence[str])
     )
 
 
-def _format_code(coeffs: dict[tuple[int, ...], float], labels: Sequence[str]) -> str:
+def _format_code(coeffs: dict[tuple[int, ...], float | complex], labels: Sequence[str]) -> str:
     """Format a series into an expression such as ``'12 + 2 * x + 3 * x * y**2'``."""
     return _format_terms(
         coeffs,
@@ -257,7 +265,7 @@ def _format_code(coeffs: dict[tuple[int, ...], float], labels: Sequence[str]) ->
 
 
 @no_type_check
-def _format_math(coeffs: dict[tuple[int, ...], float], labels: Sequence[str]) -> object:
+def _format_math(coeffs: dict[tuple[int, ...], float | complex], labels: Sequence[str]) -> object:
     """Format a series as Jupyter-friendly Math object, e.g. ``Math('12 + 2 x + 3 x y^{2}')``."""
     from IPython.display import Math
 
@@ -271,7 +279,7 @@ def _format_math(coeffs: dict[tuple[int, ...], float], labels: Sequence[str]) ->
 
 
 def _format_terms(
-    coeffs: dict[tuple[int, ...], float],
+    coeffs: dict[tuple[int, ...], float | complex],
     labels: Sequence[str],
     separator: str,
     format_power: Callable[[str, int], str],
@@ -283,16 +291,39 @@ def _format_terms(
     chunks: list[str] = []
     for monomial, coefficient in coeffs.items():
         factors = _factors(monomial, labels, format_power)
+        if isinstance(coefficient, complex):
+            if coefficient.imag != 0:
+                if coefficient.real == 0:
+                    real = '0'
+                else:
+                    real = (
+                        f'{coefficient.real:g}'
+                        if format_coeff is None
+                        else format_coeff(coefficient.real)
+                    )
+                imag = (
+                    f'{abs(coefficient.imag):g}'
+                    if format_coeff is None
+                    else format_coeff(abs(coefficient.imag))
+                )
+                sign = '+' if coefficient.imag > 0 else '-'
+                term = f'({real}{sign}{imag}j)'
+                if factors:
+                    term += separator + separator.join(factors)
+                chunks.append(term if not chunks else f' + {term}')
+                continue
+            coefficient = coefficient.real
+
         magnitude = abs(coefficient)
         if factors and magnitude == 1.0:
             term = separator.join(factors)
         else:
-            magnitude = f'{magnitude:g}' if format_coeff is None else format_coeff(magnitude)
+            magnitude_text = f'{magnitude:g}' if format_coeff is None else format_coeff(magnitude)
             if factors:
                 factor_text = separator.join(factors)
-                term = f'{magnitude}{separator}{factor_text}'
+                term = f'{magnitude_text}{separator}{factor_text}'
             else:
-                term = magnitude
+                term = magnitude_text
 
         if not chunks:
             chunks.append(f'-{term}' if coefficient < 0 else term)
@@ -316,7 +347,7 @@ def _factors(
     return factors
 
 
-def _format_table(coeffs: dict[tuple[int, ...], float], labels: Sequence[str]) -> object:
+def _format_table(coeffs: dict[tuple[int, ...], float | complex], labels: Sequence[str]) -> object:
     """Format a series into a rich ``Table``.
 
     E.g. for Tpsa({(0, 0, 0): 12.0, (1, 0, 0): 2.0, (1, 2, 0): 3.0}):
