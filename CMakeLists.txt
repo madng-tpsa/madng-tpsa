@@ -75,7 +75,7 @@ target_sources(madng_tpsa PRIVATE
 )
 set_target_properties(madng_tpsa PROPERTIES
   OUTPUT_NAME "madng_tpsa"
-  C_STANDARD 23
+  C_STANDARD 11
   C_STANDARD_REQUIRED ON
   C_EXTENSIONS OFF
   POSITION_INDEPENDENT_CODE ON

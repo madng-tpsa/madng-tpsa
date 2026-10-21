@@ -16,7 +16,7 @@ int mad_warn_count = 0;
 int mad_trace_level = 0;
 int mad_trace_location = 0;
 
-static thread_local madng_tpsa_error_handler madng_tpsa_current_error_handler = NULL;
+static _Thread_local madng_tpsa_error_handler madng_tpsa_current_error_handler = NULL;
 
 madng_tpsa_error_handler madng_tpsa_set_error_handler(madng_tpsa_error_handler handler) {
     madng_tpsa_error_handler previous_handler = madng_tpsa_current_error_handler;
