@@ -225,3 +225,132 @@ def test_derivative_tensor_rejects_unselected_or_unavailable_axes() -> None:
     d = Descriptor(variables=('np_q', 'np_p'), order=3)
     with pytest.raises(ValueError, match='Select at least one'):
         TpsaMap(d).derivative_tensor(1, wrt='parameters')
+
+
+def test_mixed_parameter_derivative_tensor_is_symmetric_but_not_aliased() -> None:
+    d = Descriptor(
+        variables=('review_q2', 'review_p2'),
+        parameters=('review_k2',),
+        order=5,
+        param_order=2,
+    )
+    q, p = d.vars()
+    k = d.param('review_k2')
+    matrix = TpsaTensor([[q * k**2, p], [q**2 * k, p * k]])
+    hessian = matrix.derivative_tensor(2, wrt='all')
+    assert hessian.shape == (2, 2, 3, 3)
+    values = hessian.evaluate((2, 3), parameters=(4,))
+    assert values[0, 0, 0, 2] == 8
+    assert values[0, 0, 2, 0] == 8
+    assert values[0, 0, 2, 2] == 4
+    assert values[0, 0, 0, 2] == values[0, 0, 2, 0]
+
+    # Symmetry is mathematical, but mutable TPSA components must be independent.
+    first = hessian[0, 0, 0, 2]
+    second = hessian[0, 0, 2, 0]
+    assert first is not second
+    before = second.const_part
+    first.const_part = 123.0
+    assert second.const_part == before
+    np.testing.assert_allclose(matrix.evaluate((2, 3), parameters=(4,)), [[32, 3], [16, 12]])
+
+
+def test_tensor_partial_and_full_derivative_consistency() -> None:
+    d = Descriptor(variables=('review_q3', 'review_p3'), order=5)
+    q, p = d.vars()
+    m = TpsaMap([q**3 + q * p**2, q * p**3])
+    hessian = m.hessian()
+    selected = m.partial_derivative((1, 1))
+    for i, component in enumerate(selected.components):
+        assert component == hessian[i, 0, 1]
+
+
+def test_real_parameter_multiindex_matches_successive_derivatives() -> None:
+    d = Descriptor(
+        variables=('multi_q', 'multi_p'),
+        parameters=('multi_k',),
+        order=5,
+        param_order=3,
+    )
+    q, p = d.vars()
+    k = d.param('multi_k')
+    f = 2 * k**2 * p + 3 * k**2 * q + 5 * k**3
+
+    assert f.derivative((0, 1, 1)) == 4 * k
+    assert f.derivative((0, 0, 2)) == 4 * p + 6 * q + 30 * k
+    assert f.derivative((0, 0, 3)) == d.constant(30)
+    assert f.derivative((0, 0, 2)) == f.derivative('multi_k').derivative('multi_k')
+    assert f.derivative((0, 1, 1)) == f.derivative('multi_p').derivative('multi_k')
+
+
+def test_complex_parameter_multiindex_matches_successive_derivatives() -> None:
+    d = Descriptor(
+        variables=('cmulti_q', 'cmulti_p'),
+        parameters=('cmulti_k',),
+        order=5,
+        param_order=3,
+    )
+    q, p = d.vars()
+    k = d.param('cmulti_k')
+    f = (1 + 2j) * k**2 * q + (2 - 1j) * k * q * p + (3 - 4j) * k**3
+
+    assert f.derivative((1, 0, 1)) == (2 + 4j) * k + (2 - 1j) * p
+    assert f.derivative((0, 0, 2)) == (2 + 4j) * q + (18 - 24j) * k
+    assert f.derivative((0, 0, 2)) == f.derivative('cmulti_k').derivative('cmulti_k')
+
+
+def test_mixed_multiple_parameters() -> None:
+    d = Descriptor(
+        variables=('two_q', 'two_p'),
+        parameters=('two_k', 'two_l'),
+        order=5,
+        param_order=3,
+    )
+    q, _ = d.vars()
+    k = d.param('two_k')
+    ell = d.param('two_l')
+    f = (2 + 1j) * k**2 * ell * q
+
+    assert f.derivative((0, 0, 2, 1)) == (4 + 2j) * q
+    assert f.derivative((0, 0, 2, 1)) == (
+        f.derivative('two_k').derivative('two_k').derivative('two_l')
+    )
+
+
+def test_tensor_parameter_hessian_inherits_scalar_fix() -> None:
+    d = Descriptor(
+        variables=('hpar_q', 'hpar_p'),
+        parameters=('hpar_k',),
+        order=5,
+        param_order=3,
+    )
+    _, p = d.vars()
+    k = d.param('hpar_k')
+    m = TpsaMap([5 * k**2, 2 * k**2 * p])
+    h = m.derivative_tensor(2, wrt='parameters')
+    assert h.shape == (2, 1, 1)
+    np.testing.assert_allclose(
+        h.evaluate((2, 3), parameters=(4,)),
+        [[[10]], [[12]]],
+    )
+    np.testing.assert_allclose(
+        m.partial_derivative((0, 0, 2)).evaluate((2, 3), parameters=(4,)),
+        [10, 12],
+    )
+
+
+def test_extreme_rank_is_rejected_before_allocating_components() -> None:
+    d = Descriptor(variables=('rank_q', 'rank_p'), order=4)
+    t = TpsaTensor([d.var(1), d.var(2)])
+    with pytest.raises(ValueError, match='components|limit|large'):
+        t.derivative_tensor(21)
+
+
+def test_configurable_rank_limit_and_valid_small_tensor() -> None:
+    d = Descriptor(variables=('rank_a', 'rank_b'), order=4)
+    t = TpsaTensor([d.var(1), d.var(2)])
+    with pytest.raises(ValueError, match='components|limit|large'):
+        t.derivative_tensor(3, max_components=8)
+    higher = t.derivative_tensor(3, max_components=16)
+    assert higher.shape == (2, 2, 2, 2)
+    assert all(series.is_zero() for series in higher.flat)

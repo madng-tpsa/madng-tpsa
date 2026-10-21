@@ -460,3 +460,12 @@ def test_deprecated_set_const_part_retains_complex_coefficients() -> None:
     with pytest.warns(FutureWarning, match='deprecated'):
         mapping.set_const_part([1 + 2j, 3 - 4j])
     np.testing.assert_allclose(mapping.const_part, [1 + 2j, 3 - 4j])
+
+
+def test_named_map_components_follow_descriptor_order() -> None:
+    d = Descriptor(variables=('review_q', 'review_p'), order=4)
+    q, p = d.vars()
+    mapping = TpsaMap(review_p=p + q, review_q=q + p**2)
+    assert mapping.component_names == ('review_q', 'review_p')
+    assert mapping.components[0] == q + p**2
+    assert mapping.components[1] == p + q

@@ -125,3 +125,23 @@ def test_union_respects_left_label_order_on_native_descriptor_collision():
 
     assert merged.variables == ('left', 'right')
     assert merged.order == 15
+
+
+def test_union_of_distinct_label_sets_is_correct():
+    x = Descriptor(variables=('merge_x', 'merge_px'), order=12)
+    y = Descriptor(variables=('merge_y', 'merge_py'), order=12)
+
+    result = x.union(y)
+    assert result.variables == ('merge_x', 'merge_px', 'merge_y', 'merge_py')
+    assert result.order == 12
+    assert x.variables == ('merge_x', 'merge_px')
+    assert y.variables == ('merge_y', 'merge_py')
+
+
+def test_union_preserves_left_hand_order_on_native_collision():
+    x = Descriptor(variables=('reorder_x', 'reorder_y'), order=13)
+    y = Descriptor(variables=('reorder_y', 'reorder_x'), order=14)
+    merged = x.union(y)
+
+    assert merged.variables == ('reorder_x', 'reorder_y')
+    assert merged.order == 14
