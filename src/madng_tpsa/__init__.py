@@ -19,6 +19,7 @@ from ._version import __version__
 from .complex_tpsa import ComplexTpsa
 from .descriptor import Descriptor
 from .errors import TpsaError
+from .formatting import format_polynomial
 from .map import TpsaMap
 from .paths import core_library, include_dir
 from .tensor import TpsaTensor
@@ -34,6 +35,7 @@ __all__ = [
     'TpsaMap',
     'core_library',
     'ffi',
+    'format_polynomial',
     'include_dir',
     'lib',
     '__version__',

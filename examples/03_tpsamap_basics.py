@@ -19,10 +19,7 @@ turn_map = TpsaMap(
 print('Map:')
 print(turn_map)
 print()
-# TpsaMap(
-#     x=Tpsa({(1, 0): 1.0, (0, 1): 1.0, (2, 0): 0.2}),
-#     px=Tpsa({(1, 0): -0.3, (0, 1): 1.0, (1, 1): 0.1})
-# )
+# TpsaMap(x = x + px + 0.2·x², px = -0.3·x + px + 0.1·x·px)
 
 print('Coordinate names:')
 print(turn_map.component_names)
@@ -72,7 +69,7 @@ print('Truncated through first order:')
 linear = turn_map.truncate(1)
 print(linear)
 print()
-# TpsaMap(x=Tpsa({(1, 0): 1.0, (0, 1): 1.0}), px=Tpsa({(1, 0): -0.3, (0, 1): 1.0}))
+# TpsaMap(x = x + px, px = -0.3·x + px)
 
 print('Map norm:')
 print(turn_map.norm())
@@ -94,7 +91,7 @@ print()
 print('Identity map:')
 identity = TpsaMap(descriptor)
 print(identity)
-# TpsaMap(x=Tpsa({(1, 0): 1.0}), px=Tpsa({(0, 1): 1.0}))
+# TpsaMap(x = x, px = px)
 
 print()
 print('Numerical check of the identity:')

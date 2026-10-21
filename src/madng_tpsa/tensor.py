@@ -31,6 +31,7 @@ import numpy as np
 from ._cffi import ffi, lib
 from .complex_tpsa import ComplexTpsa
 from .descriptor import Descriptor
+from .formatting import format_polynomial
 from .tpsa import Tpsa
 
 
@@ -489,9 +490,29 @@ class TpsaTensor(Generic[TpsaSeriesT]):
         """Test object identity among components, *not* polynomial equality."""
         return any(t is tpsa for t in self.flat)
 
+    def show(self, *, max_tpsa: int | None = None, max_terms: int | None = 3) -> str:
+        """Return a string representation of the tensor, specifying how many TPSAs to show."""
+        if max_tpsa is not None and max_tpsa < 0:
+            message = 'max_tpsa must be non-negative or None'
+            raise ValueError(message)
+        if max_terms is not None and max_terms < 0:
+            message = 'max_terms must be non-negative or None'
+            raise ValueError(message)
+        flat = self.flat[:max_tpsa]
+        end = '' if len(flat) == self.size else ', ...'
+        labels = self.descriptor.variables + self.descriptor.parameters
+        components = []
+        for tpsa in flat:
+            tt = format_polynomial(tpsa=tpsa, labels=labels, style='unicode', max_terms=max_terms)
+            components.append(tt)
+        name = self.__class__.__name__
+        return (
+            f'{name}(shape={self.shape}, size={self.size}, values=[{", ".join(components)}{end}])'
+        )
+
     def __repr__(self) -> str:
-        """Return a string representation of the tensor."""
-        return f'{self.__class__.__name__}(shape={self.shape}, size={self.size})'
+        """Return a compact, human-readable polynomial representation."""
+        return self.show(max_tpsa=3)
 
     @property
     def shape(self) -> tuple[int, ...]:

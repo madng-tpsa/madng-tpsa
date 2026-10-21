@@ -125,3 +125,5 @@ API reference
 
 .. autoclass:: madng_tpsa.tensor.TpsaTensor
    :members:
+   :inherited-members:
+   :special-members: __getitem__, __setitem__, __len__, __iter__, __contains__, __neg__, __add__, __sub__, __mul__, __truediv__, __matmul__, __lshift__, __rrshift__

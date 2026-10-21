@@ -27,6 +27,7 @@ from ._cffi import ffi, lib
 from ._typing import TpsaSeriesT
 from .complex_tpsa import ComplexTpsa
 from .descriptor import Descriptor
+from .formatting import format_coord, format_polynomial
 from .tensor import TpsaTensor
 from .tpsa import Tpsa
 
@@ -271,14 +272,31 @@ class TpsaMap(TpsaTensor[TpsaSeriesT]):
         except (AttributeError, ValueError):
             raise AttributeError(name) from None
 
+    def show(self, *, max_tpsa: int | None = None, max_terms: int | None = 3) -> str:
+        """Return a string representation of the map, specifying how many terms to show."""
+        if max_tpsa is not None and max_tpsa < 0:
+            message = 'max_tpsa must be non-negative or None'
+            raise ValueError(message)
+        if max_terms is not None and max_terms < 0:
+            message = 'max_terms must be non-negative or None'
+            raise ValueError(message)
+        labels = self.descriptor.variables + self.descriptor.parameters
+        entries = tuple(self.named_components.items())
+        selected = entries[:max_tpsa]
+
+        components: list[str] = []
+        for coord, tpsa in selected:
+            tt = format_polynomial(tpsa=tpsa, labels=labels, style='unicode', max_terms=max_terms)
+            components.append(f'{format_coord(coord)} = {tt}')
+
+        suffix = ', ...' if len(selected) < len(entries) else ''
+        name = type(self).__name__
+
+        return f'{name}({", ".join(components)}{suffix})'
+
     def __repr__(self) -> str:
-        components = []
-        for coord, tpsa in self.named_components.items():
-            if len(tpsa) > 3:
-                components.append(f'{coord}=...')
-            else:
-                components.append(f'{coord}={tpsa}')
-        return f'TpsaMap({", ".join(components)})'
+        """Return a compact, human-readable polynomial representation."""
+        return self.show()
 
     @property
     def component_names(self) -> tuple[str, ...]:

@@ -25,12 +25,12 @@ drift = TpsaMap(
 print('Kick:')
 print(kick)
 print()
-# TpsaMap(q=Tpsa({(1, 0, 0): 1.0}), p=Tpsa({(0, 1, 0): 1.0, (2, 0, 1): -1.0}))
+# TpsaMap(q = q, p = p - q²·k)
 
 print('Drift:')
 print(drift)
 print()
-# TpsaMap(q=Tpsa({(1, 0, 0): 1.0, (0, 1, 0): 1.0}), p=Tpsa({(0, 1, 0): 1.0}))
+# TpsaMap(q = q + p, p = p)
 
 # Composition convention:
 # left << right == left(right(z))
@@ -39,10 +39,7 @@ one_step = drift << kick
 print('Drift after kick:')
 print(one_step)
 print()
-# TpsaMap(
-#     q=Tpsa({(1, 0, 0): 1.0, (0, 1, 0): 1.0, (2, 0, 1): -1.0}),
-#     p=Tpsa({(0, 1, 0): 1.0, (2, 0, 1): -1.0})
-# )
+# TpsaMap(q = q + p - q²·k, p = p - q²·k)
 
 print('Evaluate for q=0.1, p=0.02, k=0.5:')
 print(one_step.evaluate([0.1, 0.02], parameters=[0.5]))
@@ -53,13 +50,13 @@ print('Formal inverse:')
 inverse = one_step.inverse()
 print(inverse)
 print()
-# TpsaMap(q=Tpsa({(1, 0, 0): 1.0, (0, 1, 0): -1.0}), p=...)
+# TpsaMap(q = q - p, p = p + q²·k - 2·q·p·k + ...)
 
 print('Compose map with its inverse:')
 identity_check = one_step << inverse
 print(identity_check)
 print()
-# TpsaMap(q=Tpsa({(1, 0, 0): 1.0}), p=Tpsa({(0, 1, 0): 1.0}))
+# TpsaMap(q = q, p = p)
 
 generator = k * q**3 / 3
 
@@ -89,7 +86,7 @@ lie_map = identity.exp_poisson(generator)
 print('Lie map exp(:f:) applied to the identity:')
 print(lie_map)
 print()
-# TpsaMap(q=Tpsa({(1, 0, 0): 1.0}), p=Tpsa({(0, 1, 0): 1.0, (2, 0, 1): -1.0}))
+# TpsaMap(q = q, p = p - q²·k)
 
 assert lie_map.q == q
 assert lie_map.p == p - k * q**2

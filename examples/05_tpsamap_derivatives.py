@@ -22,27 +22,33 @@ np.testing.assert_allclose(
     by_name.evaluate(point, parameters=parameters),
     by_exponents.evaluate(point, parameters=parameters),
 )
-print('d^3 map / dq^2 dk:', by_name.evaluate(point, parameters=parameters))
+print('d^3 map / dq^2 dk:', by_name.evaluate(point, parameters=parameters))  # [2. 0.]
 print()
-# d^3 map / dq^2 dk: [2. 0.]
 
 # A 1-based integer index or coordinate/parameter name picks one direction.
-print('d map / dk:', mapping.partial_derivative('k').evaluate(point, parameters=parameters))
-print('d map / dq:', mapping.partial_derivative(1).evaluate(point, parameters=parameters))
+print(
+    'd map / dk:', mapping.partial_derivative('k').evaluate(point, parameters=parameters)
+)  # [4. 3.]
+print(
+    'd map / dq:', mapping.partial_derivative(1).evaluate(point, parameters=parameters)
+)  # [34.  9.]
 print()
-# d map / dk: [4. 3.]
-# d map / dq: [34.  9.]
 
 # The full derivative tensors append one axis per differentiation order.
 jacobian_tpsa = mapping.jacobian()
 hessian_tpsa = mapping.hessian()
 assert jacobian_tpsa.shape == (2, 2)
 assert hessian_tpsa.shape == (2, 2, 2)
-print('Jacobian operator shape:', jacobian_tpsa.shape)
-print('Hessian operator shape:', hessian_tpsa.shape)
+
+print('Jacobian shape:', jacobian_tpsa.shape)  # (2, 2)
+print('Full Jacobian:', jacobian_tpsa)
 print()
-# Jacobian operator shape: (2, 2)
-# Hessian operator shape: (2, 2, 2)
+# TpsaTensor(shape=(2, 2), size=4, values=[2·p + 3·q² + 2·q·k, 2·q, p², ...])
+
+print('Hessian shape:', hessian_tpsa.shape)  # (2, 2, 2)
+print('Full Hessian:', hessian_tpsa)
+print()
+# TpsaTensor(shape=(2, 2, 2), size=8, values=[6·q + 2·k, 2, 2, ...])
 
 print('Jacobian at point:')
 print(mapping.evaluate_jacobian(point, parameters=parameters))
@@ -62,19 +68,15 @@ print()
 # Include parameter derivatives as additional directions.
 full_hessian = mapping.hessian(wrt='all')
 param_hessian = mapping.derivative_tensor(2, wrt='parameters')
-print('Hessian incl. parameter axes shape:', full_hessian.shape)
-print('Parameter Hessian shape:', param_hessian.shape)
-print('Mixed q-k entry:', full_hessian.evaluate(point, parameters=parameters)[0, 0, 2])
+print('Hessian incl. parameter axes shape:', full_hessian.shape)  # (2, 3, 3)
+print('Parameter Hessian shape:', param_hessian.shape)  # (2, 3, 3)
+print('Mixed q-k entry:', full_hessian.evaluate(point, parameters=parameters)[0, 0, 2])  # 4.0
 print()
-# Hessian incl. parameter axes shape: (2, 3, 3)
-# Parameter Hessian shape: (2, 1, 1)
-# Mixed q-k entry: 4.0
 
 third = mapping.derivative_tensor(3, wrt='all')
 assert third.shape == (2, 3, 3, 3)
-print('Full third-derivative tensor shape:', third.shape)
+print('Full third-derivative tensor shape:', third.shape)  # (2, 3, 3, 3)
 print()
-# Full third-derivative tensor shape: (2, 3, 3, 3)
 
 # Rank independence: the same operations work on arbitrary tensors.
 matrix = TpsaTensor([[q**2 * k, q * p], [k * p**2, p**3]])
@@ -88,6 +90,5 @@ print()
 # [[2. 0.]
 #  [0. 0.]]
 
-print('Rank-two tensor Hessian shape:', higher_matrix.shape)
+print('Rank-two tensor Hessian shape:', higher_matrix.shape)  # (2, 2, 3, 3)
 print()
-# Rank-two tensor Hessian shape: (2, 2, 3, 3)

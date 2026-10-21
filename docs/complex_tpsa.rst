@@ -32,3 +32,5 @@ API reference
 
 .. autoclass:: madng_tpsa.complex_tpsa.ComplexTpsa
    :members:
+   :inherited-members:
+   :special-members: __neg__, __add__, __sub__, __mul__, __truediv__, __pow__, __getitem__, __setitem__

@@ -72,6 +72,8 @@ Evaluation, Jacobians, Hessians
    # array([[8., 1.],
    #        [3., 2.]])
    J = m.jacobian(wrt='variables')  # Shape (2, 2), TPSA-valued
+   print(J)
+   # TpsaTensor(shape=(2, 2), size=4, values=[2·q + k, 1, p, ...])
    H = m.hessian(wrt='all')         # Shape (2, 3, 3), TPSA-valued
    values = m.evaluate_hessian((2., 3.), parameters=(4.,), wrt='all')
 
@@ -212,3 +214,4 @@ API reference
 .. autoclass:: madng_tpsa.map.TpsaMap
    :members:
    :inherited-members:
+   :special-members: __getitem__, __setitem__, __getattr__, __len__, __iter__, __contains__, __neg__, __add__, __sub__, __mul__, __truediv__, __matmul__, __lshift__, __rshift__, __xor__
