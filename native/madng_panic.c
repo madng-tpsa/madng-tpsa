@@ -21,10 +21,10 @@ enum { MADNG_TPSA_ERROR_TEXT_SIZE = 1024 };
     handler synchronously, so the handler can copy its error and longjmp back
     to the setjmp below. Protected calls must not nest on a thread.
 */
-static thread_local jmp_buf madng_panic_environment;
-static thread_local madng_tpsa_error_handler madng_panic_previous_error_handler;
-static thread_local char madng_panic_last_location[MADNG_TPSA_ERROR_TEXT_SIZE];
-static thread_local char madng_panic_last_message[MADNG_TPSA_ERROR_TEXT_SIZE];
+static _Thread_local jmp_buf madng_panic_environment;
+static _Thread_local madng_tpsa_error_handler madng_panic_previous_error_handler;
+static _Thread_local char madng_panic_last_location[MADNG_TPSA_ERROR_TEXT_SIZE];
+static _Thread_local char madng_panic_last_message[MADNG_TPSA_ERROR_TEXT_SIZE];
 
 static void madng_panic_copy_error_text(
     char destination[static MADNG_TPSA_ERROR_TEXT_SIZE],
