@@ -108,13 +108,12 @@ class _TpsaBase(ABC, Generic[_Coefficient, _InputCoefficient]):
     def __init__(self, descriptor: Descriptor, truncation_order: int | None = None) -> None:
         """Initialize the TPSA object with a descriptor and an optional truncation order."""
 
-    def to_dict(self, tol: float = 1e-14) -> dict[str, Any]:
+    def to_dict(self, *, store_descriptor: bool = True, tol: float = 1e-14) -> dict[str, Any]:
         """Return a dictionary representation of the TPSA series."""
-        dct = {
-            '__class__': self.__class__.__name__,
-            'descriptor': self.descriptor.to_dict(),
-            'truncation_order': self.truncation_order,
-        }
+        dct = {'__class__': self.__class__.__name__}
+        if store_descriptor:
+            dct['descriptor'] = self.descriptor.to_dict()
+        dct['truncation_order'] = self.truncation_order
         for mon, coeff in self.monomial_coeffs(tol=tol).items():
             dct[json.dumps(mon)] = self._to_json_friendly_coefficient(coeff)
         return dct

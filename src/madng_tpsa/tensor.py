@@ -264,8 +264,7 @@ class TpsaTensor(Generic[TpsaSeriesT]):
         flat = []
         # Only store the TPSAs from the partial view
         for tpsa in self.flat:
-            tpsa_dct = tpsa.to_dict(tol=tol)
-            tpsa_dct.pop('descriptor', None)  # Duplicate
+            tpsa_dct = tpsa.to_dict(tol=tol, store_descriptor=False)
             flat.append(tpsa_dct)
         dct['flat'] = flat
         return dct
