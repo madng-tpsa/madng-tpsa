@@ -361,9 +361,6 @@ class ComplexTpsa(_TpsaBase[complex, SupportsFloat | SupportsComplex]):
         lib.mad_ctpsa_poisbra(self._ptr, other._ptr, result._ptr, c_num_vars)
         return result
 
-    def __repr__(self) -> str:
-        return f'ComplexTpsa({self.to_dict()!r})'
-
     @staticmethod
     def _to_json_friendly_coefficient(value: complex) -> list[float]:
         """Convert a coefficient to a JSON-friendly format."""

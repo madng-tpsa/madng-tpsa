@@ -24,6 +24,7 @@ import scipy.special
 from ._cffi import ffi, lib
 from .descriptor import Descriptor
 from .errors import TpsaError
+from .formatting import format_polynomial
 
 _Coefficient = TypeVar('_Coefficient')
 _InputCoefficient = TypeVar('_InputCoefficient')
@@ -488,3 +489,17 @@ class _TpsaBase(ABC, Generic[_Coefficient, _InputCoefficient]):
         result = np.empty((), dtype=object)
         result[()] = self
         return result
+
+    def show(self, *, max_terms: int | None = None) -> str:
+        """Return a string representation of the TPSA, specifying how many term to show."""
+        if max_terms is not None and max_terms < 0:
+            message = 'max_terms must be non-negative or None'
+            raise ValueError(message)
+        labels = self.descriptor.variables + self.descriptor.parameters
+        tt = format_polynomial(tpsa=self, labels=labels, style='unicode', max_terms=max_terms)
+        name = self.__class__.__name__
+        return f'{name}({tt})'
+
+    def __repr__(self) -> str:
+        """Return a compact, human-readable polynomial representation."""
+        return self.show(max_terms=3)

@@ -333,9 +333,6 @@ class Tpsa(_TpsaBase[float, SupportsFloat]):
         lib.mad_tpsa_poisbra(self._ptr, other._ptr, result._ptr, c_num_vars)
         return result
 
-    def __repr__(self):
-        return f'Tpsa({self.monomial_coeffs()!r})'
-
     def format(self, style: FormatStyle = 'code') -> object:
         """Format this series as code, LaTeX math, or a rich table.
 
