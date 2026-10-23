@@ -6,33 +6,30 @@ on a descriptor, and series can only be combined meaningfully when they belong
 to compatible descriptors.
 
 The Python object is a small handle to the underlying MAD-NG GTPSA descriptor.
-MAD-NG interns equivalent descriptors, and this module mirrors that by reusing the
-same Python ``Descriptor`` object for the same C descriptor pointer.
+MAD-NG interns equivalent native algebras. This module gives each distinct
+Python label set its own Descriptor view of the shared native pointer, and
+keeps the native allocation alive until the last labelled view is released.
 """
 
 from __future__ import annotations
 
+from typing import TYPE_CHECKING, NamedTuple, SupportsComplex, cast, overload
+
+if TYPE_CHECKING:
+    from collections.abc import Iterable, Mapping, Sequence
+    from typing import Any, ClassVar, SupportsFloat
+
+    from .complex_tpsa import ComplexTpsa
+    from .formatting import FormatStyle
+    from .tpsa import Tpsa
+
 import warnings
-from typing import (
-    TYPE_CHECKING,
-    Any,
-    ClassVar,
-    NamedTuple,
-    SupportsComplex,
-    SupportsFloat,
-    overload,
-)
 from weakref import WeakValueDictionary
+
+import numpy as np
 
 from . import _cffi
 from ._cffi import ffi, lib
-from .complex_tpsa import ComplexTpsa
-from .tpsa import Tpsa
-
-if TYPE_CHECKING:
-    from collections.abc import Iterable, Sequence
-
-    from .formatting import FormatStyle
 
 
 class _DescriptorAttrs(NamedTuple):
@@ -40,6 +37,39 @@ class _DescriptorAttrs(NamedTuple):
     order: int
     num_params: int
     param_order: int
+
+
+class _NativeDescriptor:
+    """Single Python owner of a shared MAD-NG descriptor allocation."""
+
+    _tpsas: WeakValueDictionary[int, Tpsa]
+    _complex_tpsas: WeakValueDictionary[int, ComplexTpsa]
+    __slots__ = (
+        'ptr',
+        'address',
+        'instances',
+        'tpsas',
+        'complex_tpsas',
+        '__weakref__',
+    )
+
+    def __init__(self, ptr: Any) -> None:
+        self.ptr = ptr
+        self.address = int(ffi.cast('uintptr_t', ptr))
+        self.instances: WeakValueDictionary[
+            tuple[type, tuple[str, ...], tuple[str, ...]], Descriptor
+        ] = WeakValueDictionary()
+        self.tpsas: WeakValueDictionary[int, Tpsa] = WeakValueDictionary()
+        self.complex_tpsas: WeakValueDictionary[int, ComplexTpsa] = WeakValueDictionary()
+
+    def __del__(self) -> None:
+        ptr = getattr(self, 'ptr', None)
+        if ptr is None:
+            return
+        self.ptr = None
+        native_lib = getattr(_cffi, 'lib', None)
+        if native_lib is not None:
+            native_lib.mad_desc_del(ptr)
 
 
 class Descriptor:
@@ -50,14 +80,25 @@ class Descriptor:
     three, where the last entry is the parameter order.
     """
 
-    _instances_by_ptr: ClassVar[WeakValueDictionary[int, Descriptor]] = WeakValueDictionary()
+    _owners_by_ptr: ClassVar[WeakValueDictionary[int, _NativeDescriptor]] = WeakValueDictionary()
+    # Resolved lazily to avoid importing TPSA classes during Descriptor module import.
+    _real_tpsa_type: ClassVar[type[Tpsa] | None] = None
+    _complex_tpsa_type: ClassVar[type[ComplexTpsa] | None] = None
+    _owner: _NativeDescriptor
     _ptr: Any
-    var_labels: tuple[str, ...]
-    param_labels: tuple[str, ...]
+    variables: tuple[str, ...]
+    parameters: tuple[str, ...]
     _tpsas: WeakValueDictionary[int, Tpsa]
     _complex_tpsas: WeakValueDictionary[int, ComplexTpsa]
-
-    __slots__ = ('_ptr', 'param_labels', 'var_labels', '_tpsas', '_complex_tpsas', '__weakref__')
+    __slots__ = (
+        '_owner',
+        '_ptr',
+        'variables',
+        'parameters',
+        '_tpsas',
+        '_complex_tpsas',
+        '__weakref__',
+    )
 
     def __new__(
         cls,
@@ -67,8 +108,9 @@ class Descriptor:
         num_params: int | None = None,
         param_order: int = 1,
         variables: Sequence[str] | None = None,
-        params: Sequence[str] | None = None,
+        parameters: Sequence[str] | None = None,
         max_orders: Sequence[int] | None = None,
+        params: Sequence[str] | None = None,  # Only for backwards compatibility
     ) -> Descriptor:
         """Create or reuse a descriptor: equivalent descriptors are interned.
 
@@ -79,13 +121,13 @@ class Descriptor:
         order
             Maximum combined order of variable and parameter monomials.
         num_params
-            Number of parameters. Omit it when ``params`` provides their labels;
-            defaults to zero when ``params`` is omitted.
+            Number of parameters. Omit it when ``parameters`` provides their labels;
+            defaults to zero when ``parameters`` is omitted.
         param_order
             Maximum combined order of parameter monomials.
         variables
             Variable labels. Their number must match ``num_vars`` when both are given.
-        params
+        parameters
             Parameter labels. Their number must match ``num_params`` when both are given.
         max_orders
             Per-variable and per-parameter order caps. It must contain one positive
@@ -95,12 +137,21 @@ class Descriptor:
             message = 'Descriptor order is required'
             raise TypeError(message)
 
+        if parameters is None and params is not None:
+            warnings.warn(
+                'The params argument is deprecated and will be removed in a future version. '
+                'Use parameters instead.',
+                FutureWarning,
+                stacklevel=2,
+            )
+            parameters = params
+
         var_labels = cls._resolve_labels('variable', num_vars, variables, 'v_')
 
-        if num_params is None and params is None:
+        if num_params is None and parameters is None:
             num_params = 0
 
-        param_labels = cls._resolve_labels('param', num_params, params, 'p_')
+        param_labels = cls._resolve_labels('param', num_params, parameters, 'p_')
 
         num_vars = len(var_labels)
         num_params = len(param_labels)
@@ -121,22 +172,7 @@ class Descriptor:
         else:
             ptr = lib.mad_desc_newv(num_vars, order)
 
-        descriptor = cls.from_ptr(ptr, var_labels=var_labels, param_labels=param_labels)
-
-        if variables is not None and tuple(variables) != descriptor.var_labels:
-            warnings.warn(
-                'A descriptor of this shape already exists with different variable labels.'
-                'The variables argument will be ignored, and the original labels will be reused.',
-                stacklevel=2,
-            )
-
-        if params is not None and tuple(params) != descriptor.param_labels:
-            warnings.warn(
-                'A descriptor of this shape already exists with different parameter labels.'
-                'The params argument will be ignored, and the original labels will be reused.',
-                stacklevel=2,
-            )
-
+        descriptor = cls.from_ptr(ptr, variables=var_labels, parameters=param_labels)
         if descriptor.order > order:
             warnings.warn(
                 f'Order {order} was given, but it was overridden to {descriptor.order}.',
@@ -173,9 +209,8 @@ class Descriptor:
     ) -> list[int]:
         resolved = [int(max_order) for max_order in max_orders]
         if len(resolved) != monomial_length:
-            message = (
-                f'Length of max_orders must have the length of vars + params ({monomial_length}).'
-            )
+            message = 'Length of max_orders must have the length of vars + parameters '
+            message += f'({monomial_length}).'
             raise ValueError(message)
 
         if any(max_order <= 0 for max_order in resolved):
@@ -187,37 +222,142 @@ class Descriptor:
     def from_ptr(
         cls,
         ptr: Any,
-        var_labels: Sequence[str] | None = None,
-        param_labels: Sequence[str] | None = None,
+        variables: Sequence[str] | None = None,
+        parameters: Sequence[str] | None = None,
     ) -> Descriptor:
-        """Return the interned ``Descriptor`` for a raw C pointer."""
-        key = int(ffi.cast('uintptr_t', ptr))
-        descriptor = cls._instances_by_ptr.get(key)
+        """Intern by both native pointer AND Python labels.
 
-        if descriptor is not None:
-            return descriptor
-
-        if var_labels is None or param_labels is None:
-            message = 'No existing Descriptor found: var_labels, param_labels must be provided.'
-            raise ValueError(message)
-
-        descriptor = super().__new__(cls)
-        descriptor._ptr = ptr
-        descriptor.var_labels = tuple(var_labels)
-        descriptor.param_labels = tuple(param_labels)
-        descriptor._tpsas = WeakValueDictionary()
-        descriptor._complex_tpsas = WeakValueDictionary()
-        cls._instances_by_ptr[key] = descriptor
-
+        An unlabelled lookup is allowed only with a unique live labelled view.
+        A newly encountered native pointer is assumed Python-owned, matching
+        the previous from_ptr() contract. Borrowed pointers need an explicit
+        ownership policy before they may be passed here.
+        """
+        if ptr == ffi.NULL:
+            err_mess = 'Cannot wrap a null descriptor pointer'
+            raise ValueError(err_mess)
+        address = int(ffi.cast('uintptr_t', ptr))
+        owner = Descriptor._owners_by_ptr.get(address)
+        if variables is None and parameters is None:
+            live = list(owner.instances.values()) if owner is not None else []
+            if len(live) == 1:
+                return live[0]
+            if len(live) > 1:
+                err_mess = 'Ambiguous descriptor pointer: multiple labelled views exist. '
+                err_mess += 'Supply variables= and parameters= explicitly.'
+                raise ValueError(err_mess)
+            err_mess = 'Unknown descriptor pointer: supply variables= and parameters= explicitly.'
+            raise ValueError(err_mess)
+        if variables is None or parameters is None:
+            err_mess = 'Supply both variables and parameters, or neither'
+            raise ValueError(err_mess)
+        var_labels = tuple(variables)
+        param_labels = tuple(parameters)
+        if len(set(var_labels)) != len(var_labels):
+            err_mess = 'Variable labels must be unique'
+            raise ValueError(err_mess)
+        if len(set(param_labels)) != len(param_labels):
+            err_mess = 'Parameter labels must be unique'
+            raise ValueError(err_mess)
+        if set(var_labels) & set(param_labels):
+            err_mess = 'A label cannot be both variable and parameter'
+            raise ValueError(err_mess)
+        # Reject metadata that disagrees with the actual native descriptor.
+        native_order = ffi.new('unsigned char*')
+        native_np = ffi.new('int*')
+        native_po = ffi.new('unsigned char*')
+        native_nv = lib.mad_desc_getnv(ptr, native_order, native_np, native_po)
+        if len(var_labels) != native_nv or len(param_labels) != native_np[0]:
+            err_mess = f'Native descriptor requires {native_nv} variables and '
+            err_mess += f'{native_np[0]} parameters, got '
+            err_mess += f'{len(var_labels)} and {len(param_labels)} labels'
+            raise ValueError(err_mess)
+        if owner is None:
+            owner = _NativeDescriptor(ptr)
+            Descriptor._owners_by_ptr[address] = owner
+        key = (cls, var_labels, param_labels)
+        existing = owner.instances.get(key)
+        if existing is not None:
+            return existing
+        descriptor = object.__new__(cls)
+        descriptor._owner = owner
+        descriptor._ptr = owner.ptr
+        descriptor.variables = var_labels
+        descriptor.parameters = param_labels
+        descriptor._tpsas = owner.tpsas
+        descriptor._complex_tpsas = owner.complex_tpsas
+        owner.instances[key] = descriptor
         return descriptor
 
-    def __del__(self) -> None:
-        if getattr(self, '_ptr', None) is None:
-            return
+    def to_dict(self) -> dict[str, Any]:
+        """Return a dictionary representation of the descriptor."""
+        attr = self._get_descriptor_attrs()
+        if len(self.variables) != attr.num_vars:
+            raise ValueError(f'Expected {attr.num_vars} variables, got {len(self.variables)}')
+        if len(self.parameters) != attr.num_params:
+            raise ValueError(f'Expected {attr.num_params} parameters, got {len(self.parameters)}')
+        # Only specify max_order if it is non-trivial
+        max_orders = tuple(int(v) for v in self.max_orders)
+        defaults = (self.order,) * self.num_vars + (self.param_order,) * self.num_params
+        return {
+            '__class__': self.__class__.__name__,
+            'variables': self.variables,
+            'parameters': self.parameters,
+            'order': attr.order,
+            'param_order': attr.param_order,
+            'max_orders': None if max_orders == defaults else max_orders,
+        }
 
-        if getattr(_cffi, 'lib', None) is not None:
-            _cffi.lib.mad_desc_del(self._ptr)
-        self._ptr = None
+    @classmethod
+    def from_dict(cls, dct) -> Descriptor:
+        """Instantiate a Descriptor from a dictionary representation."""
+        class_name = dct.get('__class__')
+        if cls.__name__ != class_name:
+            err_mess = f'Wrong dict: expected class {cls.__name__}, got {class_name}'
+            raise ValueError(err_mess)
+        for kk in ('variables', 'parameters', 'order', 'param_order', 'max_orders'):
+            if kk not in dct:
+                raise ValueError(f'Missing required key: {kk}')
+        return cls(
+            variables=dct['variables'],
+            parameters=dct['parameters'],
+            order=dct['order'],
+            param_order=dct['param_order'],
+            max_orders=dct['max_orders'],
+        )
+
+    def union(self, other: Descriptor) -> Descriptor:
+        """Create a common descriptor containing both variable sets."""
+        if not isinstance(other, Descriptor):
+            err_mess = 'Expected another Descriptor'
+            raise TypeError(err_mess)
+        if self is other:
+            return self
+
+        variables = tuple(dict.fromkeys((*self.variables, *other.variables)))
+        parameters = tuple(dict.fromkeys((*self.parameters, *other.parameters)))
+        overlap = set(variables) & set(parameters)
+        if overlap:
+            err_mess = f'Labels cannot be both variables and parameters: {overlap}'
+            raise ValueError(err_mess)
+        order = max(self.order, other.order)
+        param_order = max(self.param_order, other.param_order)
+        # Merge the limits for labels actually present in each descriptor.
+        limits: dict[str, int] = {}
+        for desc in (self, other):
+            labels = (*desc.variables, *desc.parameters)
+            for name, limit in zip(labels, desc.max_orders, strict=True):
+                limits[name] = max(limits.get(name, 0), int(limit))
+
+        max_orders = tuple(limits[name] for name in (*variables, *parameters))
+        defaults = (order,) * len(variables) + (param_order,) * len(parameters)
+
+        return type(self)(
+            variables=variables,
+            parameters=parameters,
+            order=order,
+            param_order=param_order,
+            max_orders=None if max_orders == defaults else max_orders,
+        )
 
     def _default_var_labels(self) -> tuple[str, ...]:
         return tuple(f'v_{index}' for index in range(1, self.num_vars + 1))
@@ -246,9 +386,32 @@ class Descriptor:
         )
 
     @property
+    def var_labels(self) -> tuple[str, ...]:
+        """Backwards-compatible property for variable labels (deprecated)."""
+        warnings.warn(
+            'The var_labels property is deprecated and will be removed in a future version. '
+            'Use the variables property instead.',
+            FutureWarning,
+            stacklevel=2,
+        )
+        return self.variables
+
+    @property
+    def param_labels(self) -> tuple[str, ...]:
+        """Backwards-compatible property for parameter labels (deprecated)."""
+        warnings.warn(
+            'The param_labels property is deprecated and will be removed in a future version. '
+            'Use the parameters property instead.',
+            FutureWarning,
+            stacklevel=2,
+        )
+        return self.parameters
+
+    @property
     def num_vars(self) -> int:
         """Number of variables (excluding parameters) supported by the descriptor."""
-        return self._get_descriptor_attrs().num_vars
+        # from_ptr() verifies that labels agree with the native descriptor.
+        return len(self.variables)
 
     @property
     def order(self) -> int:
@@ -258,7 +421,7 @@ class Descriptor:
     @property
     def num_params(self) -> int:
         """Number of parameters supported by the descriptor."""
-        return self._get_descriptor_attrs().num_params
+        return len(self.parameters)
 
     @property
     def param_order(self) -> int:
@@ -268,8 +431,7 @@ class Descriptor:
     @property
     def monomial_length(self) -> int:
         """Length of a full monomial, equal to ``num_vars`` + ``num_params``."""
-        attrs = self._get_descriptor_attrs()
-        return attrs.num_vars + attrs.num_params
+        return len(self.variables) + len(self.parameters)
 
     @property
     def max_orders(self) -> tuple[int, ...]:
@@ -278,9 +440,21 @@ class Descriptor:
         lib.mad_desc_maxord(self._ptr, self.monomial_length, max_order_arr)
         return tuple(max_order_arr)
 
-    def is_valid_monomial(self, monomial: Sequence[int]) -> bool:
+    def is_valid_monomial(self, monomial: Sequence[object] | np.ndarray) -> bool:
         """Whether ``monomial`` is representable (querying beyond order is illegal in the C API)."""
-        arr = ffi.new('unsigned char[]', monomial)
+        try:
+            if len(monomial) != self.monomial_length:
+                return False
+        except TypeError:
+            return False
+        if any(isinstance(v, (bool, np.bool_)) for v in monomial):
+            return False
+        try:
+            # CFFI performs integer conversion and unsigned-byte range checks.
+            # tuple() also accepts array/range inputs (ffi.new does not).
+            arr = ffi.new('unsigned char[]', tuple(monomial))
+        except (TypeError, ValueError, OverflowError):
+            return False
         return bool(lib.mad_desc_isvalidm(self._ptr, len(monomial), arr))
 
     def monomial_index(self, monomial: Iterable[int]) -> int:
@@ -301,20 +475,70 @@ class Descriptor:
         """Create a constant TPSA series on this descriptor."""
         if isinstance(value, SupportsComplex):
             t = self.complex_zero()
-            t.set_const_part(value)
+            t.const_part = value
             return t
 
         t = self.zero()
-        t.set_const_part(value)
+        t.const_part = value
         return t
 
     def zero(self, order: int | None = None) -> Tpsa:
         """Create a zero TPSA series on this descriptor."""
-        return Tpsa(self, order=order)
+        tpsa_type = Descriptor._real_tpsa_type
+        if tpsa_type is None:
+            from .tpsa import Tpsa
+
+            tpsa_type = Tpsa
+            Descriptor._real_tpsa_type = tpsa_type
+        return tpsa_type(self, truncation_order=order)
 
     def complex_zero(self, order: int | None = None) -> ComplexTpsa:
         """Create a zero complex TPSA series on this descriptor."""
-        return ComplexTpsa(self, order=order)
+        tpsa_type = Descriptor._complex_tpsa_type
+        if tpsa_type is None:
+            from .complex_tpsa import ComplexTpsa
+
+            tpsa_type = ComplexTpsa
+            Descriptor._complex_tpsa_type = tpsa_type
+        return tpsa_type(self, truncation_order=order)
+
+    def polynomial(
+        self,
+        coeffs: Mapping[tuple[int, ...], SupportsFloat | SupportsComplex],
+        *,
+        order: int | None = None,
+        needs_complex: bool = False,
+    ) -> Tpsa | ComplexTpsa:
+        """Create a scalar TPSA from monomial coefficients on this descriptor.
+
+        Complex-valued coefficients select the complex TPSA representation.
+        """
+        if needs_complex or any(
+            isinstance(value, (complex, np.complexfloating)) for value in coeffs.values()
+        ):
+            complex_result = self.complex_zero(order=order)
+            for monomial, coefficient in coeffs.items():
+                complex_result.set(monomial, coefficient)
+            return complex_result
+        result = self.zero(order=order)
+        for monomial, coefficient in coeffs.items():
+            result.set(monomial, cast('SupportsFloat', coefficient))
+        return result
+
+    def from_monomial_coeffs(
+        self,
+        coeffs: Mapping[tuple[int, ...], SupportsFloat | SupportsComplex],
+        *,
+        order: int | None = None,
+    ) -> Tpsa | ComplexTpsa:
+        """Create a scalar TPSA from monomial coefficients on this descriptor (deprecated)."""
+        warnings.warn(
+            'The from_monomial_coeffs method is deprecated and will be removed in a future '
+            'version. Use polynomial instead.',
+            FutureWarning,
+            stacklevel=2,
+        )
+        return self.polynomial(coeffs=coeffs, order=order)
 
     @overload
     def var(
@@ -429,7 +653,7 @@ class Descriptor:
     def _var_index(self, variable: int | str) -> int:
         if isinstance(variable, str):
             try:
-                return self.var_labels.index(variable) + 1
+                return self.variables.index(variable) + 1
             except ValueError as exc:
                 raise KeyError(variable) from exc
         return int(variable)
@@ -437,7 +661,7 @@ class Descriptor:
     def _param_index(self, parameter: int | str) -> int:
         if isinstance(parameter, str):
             try:
-                return self.param_labels.index(parameter) + 1
+                return self.parameters.index(parameter) + 1
             except ValueError as exc:
                 raise KeyError(parameter) from exc
         return int(parameter)
@@ -445,10 +669,10 @@ class Descriptor:
     def var_or_param_index(self, variable: int | str) -> int:
         """Return the 1-based combined variable/parameter index for ``variable``."""
         if isinstance(variable, str):
-            if variable in self.var_labels:
-                return self.var_labels.index(variable) + 1
-            if variable in self.param_labels:
-                return self.num_vars + self.param_labels.index(variable) + 1
+            if variable in self.variables:
+                return self.variables.index(variable) + 1
+            if variable in self.parameters:
+                return self.num_vars + self.parameters.index(variable) + 1
             raise KeyError(variable)
 
         index = int(variable)
@@ -485,10 +709,24 @@ class Descriptor:
         return tuple(self.param(index, value) for index, value in enumerate(values, start=1))
 
     def __eq__(self, other: object) -> bool:
-        return isinstance(other, Descriptor) and self._ptr == other._ptr
+        if not isinstance(other, Descriptor):
+            return NotImplemented
+        return (
+            type(self) is type(other)
+            and self._owner is other._owner
+            and self.variables == other.variables
+            and self.parameters == other.parameters
+        )
 
     def __hash__(self) -> int:
-        return int(ffi.cast('uintptr_t', self._ptr))
+        return hash(
+            (
+                type(self),
+                self._owner.address,
+                self.variables,
+                self.parameters,
+            )
+        )
 
     def __repr__(self) -> str:
         attrs = self._get_descriptor_attrs()
@@ -497,12 +735,12 @@ class Descriptor:
             return (
                 f'Descriptor(num_vars={attrs.num_vars}, order={attrs.order}, '
                 f'num_params={attrs.num_params}, param_order={attrs.param_order}, '
-                f'var_labels={self.var_labels!r}, param_labels={self.param_labels!r})'
+                f'variables={self.variables!r}, parameters={self.parameters!r})'
             )
 
         return (
             f'Descriptor(num_vars={attrs.num_vars}, order={attrs.order}, '
-            f'var_labels={self.var_labels!r})'
+            f'variables={self.variables!r})'
         )
 
     def format_polynomial(self, tpsa: Tpsa, style: FormatStyle = 'code') -> object:
@@ -519,4 +757,4 @@ class Descriptor:
 
         from .formatting import format_polynomial
 
-        return format_polynomial(tpsa, self.var_labels + self.param_labels, style=style)
+        return format_polynomial(tpsa, self.variables + self.parameters, style=style)

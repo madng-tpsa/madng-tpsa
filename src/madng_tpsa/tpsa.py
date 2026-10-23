@@ -7,23 +7,26 @@ truncated multivariate power series.
 
 from __future__ import annotations
 
+from typing import TYPE_CHECKING, SupportsComplex, SupportsFloat, overload
+
+if TYPE_CHECKING:
+    from collections.abc import Iterable
+    from typing import Any, Literal
+
+    from .complex_tpsa import ComplexTpsa
+    from .formatting import FormatStyle
+
 import operator
 from numbers import Integral
-from typing import TYPE_CHECKING, Any, Literal, SupportsComplex, SupportsFloat, overload
+from warnings import warn
 
 import numpy as np
 
 from . import _cffi
 from ._cffi import ffi, lib
-from ._tpsa_base import _TpsaBase
+from ._tpsa_base import _JsonCoefficient, _TpsaBase
+from .descriptor import Descriptor
 from .errors import TpsaError
-
-if TYPE_CHECKING:
-    from collections.abc import Iterable
-
-    from .complex_tpsa import ComplexTpsa
-    from .descriptor import Descriptor
-    from .formatting import FormatStyle
 
 
 class Tpsa(_TpsaBase[float, SupportsFloat]):
@@ -43,24 +46,38 @@ class Tpsa(_TpsaBase[float, SupportsFloat]):
         ),
     }
 
-    def __init__(self, descriptor: Descriptor, order: int | None = None) -> None:
+    def __init__(
+        self,
+        descriptor: Descriptor,
+        truncation_order: int | None = None,
+        *,
+        order: int | None = None,  # Deprecated: use truncation_order instead of order
+    ) -> None:
         """Create a zero series on ``descriptor``."""
-        if order is None:
-            order = lib.mad_tpsa_dflt
+        if truncation_order is None and order is not None:
+            warn(
+                'The order property is deprecated, use truncation_order instead.',
+                FutureWarning,
+                stacklevel=2,
+            )
+            truncation_order = order
+        if truncation_order is None:
+            truncation_order = lib.mad_tpsa_dflt
 
         self._descriptor = descriptor
-        self._ptr = lib.mad_tpsa_newd(descriptor.ptr, order)
+        self._ptr = lib.mad_tpsa_newd(descriptor.ptr, truncation_order)
         descriptor._tpsas[int(ffi.cast('uintptr_t', self._ptr))] = self
 
     @classmethod
     def from_ptr(
         cls, ptr: Any, descriptor: Descriptor | None = None, *, owns: bool = False
     ) -> Tpsa:
-        """Return the interned ``Tpsa`` for a raw C pointer.
+        """Retrieve an existing TPSA or adopt an unwrapped native allocation.
 
-        If a live ``Tpsa`` already wraps ``ptr`` it is returned directly, so
-        that at most one Python object exists per C allocation, preventing a
-        use-after-free if two owners existed for the same pointer.
+        An existing wrapper is returned regardless of the number of labelled
+        descriptors sharing its native descriptor.
+
+        For an unknown pointer, owns=True transfers ownership on success.
 
         Parameters
         ----------
@@ -75,41 +92,48 @@ class Tpsa(_TpsaBase[float, SupportsFloat]):
             the allocation and is handing ownership. The default ``False``
             treats an unknown pointer as a bug and will raise.
         """
+        if ptr == ffi.NULL:
+            err_mess = 'Cannot wrap a null TPSA pointer'
+            raise ValueError(err_mess)
         key = int(ffi.cast('uintptr_t', ptr))
+        native_ptr = lib.mad_tpsa_desc(ptr)
+        native_key = int(ffi.cast('uintptr_t', native_ptr))
+        owner = Descriptor._owners_by_ptr.get(native_key)
+        existing = None if owner is None else owner.tpsas.get(key)
 
-        if descriptor is not None:
-            existing = descriptor._tpsas.get(key)
-            if existing is not None:
-                return existing
-            if not owns:
-                message = (
-                    'No live Tpsa found for the given pointer. '
-                    'Pass owns=True to wrap a freshly allocated pointer.'
-                )
-                raise ValueError(message)
-        elif not owns:
-            message = 'A descriptor must be provided if owns is False.'
-            raise ValueError(message)
-        else:
-            from .descriptor import Descriptor
+        if existing is not None:
+            if descriptor is not None and existing.descriptor is not descriptor:
+                err_mess = 'TPSA is already wrapped with a different labelled descriptor'
+                raise ValueError(err_mess)
+            return existing
 
-            descriptor = Descriptor.from_ptr(lib.mad_tpsa_desc(ptr))
-            existing = descriptor._tpsas.get(key)
-            if existing is not None:
-                return existing
+        if not owns:
+            err_mess = 'No live TPSA wrapper exists for this pointer. '
+            err_mess += 'Use owns=True to adopt a newly allocated TPSA.'
+            raise ValueError(err_mess)
 
-        t = cls.__new__(cls)
-        t._descriptor = descriptor
-        t._ptr = ptr
-        descriptor._tpsas[key] = t
-        return t
+        # From here onwards, the native allocation has no Python owner.
+        if descriptor is None:
+            descriptor = Descriptor.from_ptr(native_ptr)
+        elif descriptor.ptr != native_ptr:
+            err_mess = 'Supplied descriptor does not match the native TPSA'
+            raise ValueError(err_mess)
+
+        result = cls.__new__(cls)
+        result._descriptor = descriptor
+        result._ptr = ptr
+        descriptor._owner.tpsas[key] = result
+        return result
 
     def __del__(self) -> None:
         # The underlying object, or the library might have already been released,
         # if not release the handle now.
-        if getattr(self, '_ptr', None) is not None and getattr(_cffi, 'lib', None) is not None:
-            _cffi.lib.mad_tpsa_del(self._ptr)
+        ptr = getattr(self, '_ptr', None)
+        if ptr is not None:
             self._ptr = None
+            native_lib = getattr(_cffi, 'lib', None)
+            if native_lib is not None:
+                native_lib.mad_tpsa_del(ptr)
 
     @property
     def ptr(self) -> Any:
@@ -122,13 +146,13 @@ class Tpsa(_TpsaBase[float, SupportsFloat]):
         return self._descriptor
 
     @property
-    def order(self) -> int:
+    def truncation_order(self) -> int:
         """Maximum order stored by this series."""
         highest_non_zero_order = False
         return lib.mad_tpsa_ord(self._ptr, highest_non_zero_order)
 
     @property
-    def max_nonzero_order(self) -> int:
+    def degree(self) -> int:
         """Highest order currently containing a non-zero coefficient."""
         highest_non_zero_order = True
         return lib.mad_tpsa_ord(self._ptr, highest_non_zero_order)
@@ -138,6 +162,11 @@ class Tpsa(_TpsaBase[float, SupportsFloat]):
         """Constant coefficient of the series."""
         return lib.mad_tpsa_geti(self._ptr, 0)
 
+    @const_part.setter
+    def const_part(self, value: SupportsFloat) -> None:
+        """Set the constant coefficient."""
+        lib.mad_tpsa_seti(self._ptr, 0, 0.0, float(value))
+
     def get(self, monomial: Iterable[int]) -> float:
         """Return the coefficient for ``monomial``."""
         monomial_orders = list(monomial)
@@ -146,7 +175,12 @@ class Tpsa(_TpsaBase[float, SupportsFloat]):
         return lib.mad_tpsa_getm(self._ptr, len(monomial_orders), monomial_arr)
 
     def set_const_part(self, value: SupportsFloat) -> None:
-        """Set the constant coefficient."""
+        """Set the constant coefficient (deprecated)."""
+        warn(
+            "The method 'set_const_part' is deprecated; use the setter for 'const_part' instead.",
+            FutureWarning,
+            stacklevel=2,
+        )
         lib.mad_tpsa_seti(self._ptr, 0, 0.0, float(value))
 
     def set(self, monomial: Iterable[int], value: SupportsFloat) -> None:
@@ -176,6 +210,27 @@ class Tpsa(_TpsaBase[float, SupportsFloat]):
 
         return coeffs
 
+    def homogeneous(self, degree: int) -> Tpsa:
+        """Return only the homogeneous part of exactly `degree`."""
+        degree = self._validate_degree(degree, self.truncation_order)
+        result = self.descriptor.zero(order=degree)
+        lib.mad_tpsa_getord(self._ptr, result._ptr, degree)
+        return result
+
+    def truncate(self, degree: int) -> Tpsa:
+        """Return the TPSA truncated through `degree`."""
+        degree = self._validate_degree(degree, self.truncation_order)
+        result = self.descriptor.zero(order=degree)
+        lib.mad_tpsa_cutord(self._ptr, result._ptr, degree + 1)
+        return result
+
+    def clear_order(self, degree: int) -> Tpsa:
+        """Return a copy with homogeneous order `degree` removed."""
+        degree = self._validate_degree(degree, self.truncation_order)
+        result = self.copy()
+        lib.mad_tpsa_clrord(result._ptr, degree)
+        return result
+
     def is_zero(self) -> bool:
         """Return whether this series has no non-zero coefficients."""
         return bool(lib.mad_tpsa_isnul(self._ptr))
@@ -190,10 +245,10 @@ class Tpsa(_TpsaBase[float, SupportsFloat]):
 
     def grad(self) -> list[float]:
         """First-order coefficients for the descriptor variables."""
-        num_vars = self.descriptor.num_vars
+        monomial_len = self.descriptor.monomial_length
         grad = []
-        for var_idx in range(num_vars):
-            monomial = [0] * num_vars
+        for var_idx in range(self.descriptor.num_vars):
+            monomial = [0] * monomial_len
             monomial[var_idx] = 1
             grad.append(self.get(monomial))
         return grad
@@ -211,7 +266,7 @@ class Tpsa(_TpsaBase[float, SupportsFloat]):
 
     def copy(self) -> Tpsa:
         """Return an independent copy of this series."""
-        result = self.descriptor.zero()
+        result = self.descriptor.zero(order=self.truncation_order)
         lib.mad_tpsa_copy(self._ptr, result._ptr)
         return result
 
@@ -226,7 +281,7 @@ class Tpsa(_TpsaBase[float, SupportsFloat]):
             :meth:`_resolve_single_monomial` for accepted inputs.
         """
         variable_index = self._integration_index(variable)
-        result = self.descriptor.zero()
+        result = self.descriptor.zero(order=self.truncation_order)
         lib.mad_tpsa_integ(self._ptr, result._ptr, variable_index)
         return result
 
@@ -240,9 +295,19 @@ class Tpsa(_TpsaBase[float, SupportsFloat]):
             or a TPSA with exactly one non-constant coefficient equal to one. See
             :meth:`_resolve_single_monomial` for accepted inputs.
         """
-        result = self.descriptor.zero()
-
         monomial = self._resolve_single_monomial(variable)
+        if any(monomial[self.descriptor.num_vars :]):
+            # MAD-NG's multi-index derivative omits parameter multiplicities.
+            # Repeated first derivatives retain the correct factorial factors.
+            current: Tpsa = self
+            for index, multiplicity in enumerate(monomial, start=1):
+                for _ in range(multiplicity):
+                    result = self.descriptor.zero(order=self.truncation_order)
+                    lib.mad_tpsa_deriv(current._ptr, result._ptr, index)
+                    current = result
+            return current
+
+        result = self.descriptor.zero(order=self.truncation_order)
         monomial_arr = ffi.new('unsigned char[]', monomial)
         lib.mad_tpsa_derivm(self._ptr, result._ptr, len(monomial), monomial_arr)
         return result
@@ -267,9 +332,6 @@ class Tpsa(_TpsaBase[float, SupportsFloat]):
         result = self.descriptor.zero()
         lib.mad_tpsa_poisbra(self._ptr, other._ptr, result._ptr, c_num_vars)
         return result
-
-    def __repr__(self):
-        return f'Tpsa({self.to_dict()!r})'
 
     def format(self, style: FormatStyle = 'code') -> object:
         """Format this series as code, LaTeX math, or a rich table.
@@ -325,15 +387,22 @@ class Tpsa(_TpsaBase[float, SupportsFloat]):
             self._raise_mad_error()
         return first, second
 
-    def _check_compatible(self, other: Tpsa) -> None:
-        """Raise if ``other`` cannot be combined with this series."""
-        if not lib.madng_tpsa_check_tpsa_compatibility(self._ptr, other._ptr):
-            message = 'Incompatible TPSA descriptors'
-            raise ValueError(message)
+    @staticmethod
+    def _to_json_friendly_coefficient(value: float) -> float:
+        """Convert a coefficient to a JSON-friendly format."""
+        return value
+
+    @staticmethod
+    def _from_json_friendly_coefficient(value: _JsonCoefficient) -> float:
+        """Convert a JSON-friendly coefficient back to its internal format."""
+        if not isinstance(value, (int, float)) or isinstance(value, bool):
+            err_mess = 'Expected a real coefficient.'
+            raise ValueError(err_mess)
+        return value
 
     def equals(self, other: Tpsa, tol: SupportsFloat = 0.0) -> bool:
         """Return whether this series and ``other`` have matching coefficients."""
-        if not lib.madng_tpsa_check_tpsa_compatibility(self._ptr, other._ptr):
+        if not self._compatible(other):
             return False
         return bool(lib.mad_tpsa_equ(self._ptr, other._ptr, float(tol)))
 
@@ -472,9 +541,7 @@ class Tpsa(_TpsaBase[float, SupportsFloat]):
 
     def __pow__(self, other: Tpsa | SupportsFloat | SupportsComplex) -> Tpsa | ComplexTpsa:
         if isinstance(other, Tpsa):
-            if not lib.madng_tpsa_check_tpsa_compatibility(self._ptr, other._ptr):
-                message = 'Incompatible TPSA descriptors'
-                raise ValueError(message)
+            self._check_compatible(other)
             result = self.descriptor.zero()
             lib.mad_tpsa_pow(self._ptr, other._ptr, result._ptr)
             return result
