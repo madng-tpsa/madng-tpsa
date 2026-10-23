@@ -18,49 +18,53 @@ if TYPE_CHECKING:
 FormatStyle = Literal['unicode', 'code', 'math', 'table']
 
 
-_SUPERSCRIPT_MAP = {
-    '0': '⁰',
-    '1': '¹',
-    '2': '²',
-    '3': '³',
-    '4': '⁴',
-    '5': '⁵',
-    '6': '⁶',
-    '7': '⁷',
-    '8': '⁸',
-    '9': '⁹',
-    '+': '⁺',
-    '-': '⁻',
-    '=': '⁼',
-    '(': '⁽',
-    ')': '⁾',
-    'a': 'ᵃ',
-    'b': 'ᵇ',
-    'c': 'ᶜ',
-    'd': 'ᵈ',
-    'e': 'ᵉ',
-    'f': 'ᶠ',
-    'g': 'ᵍ',
-    'h': 'ʰ',
-    'i': 'ⁱ',
-    'j': 'ʲ',
-    'k': 'ᵏ',
-    'l': 'ˡ',
-    'm': 'ᵐ',
-    'n': 'ⁿ',
-    'o': 'ᵒ',
-    'p': 'ᵖ',
-    'r': 'ʳ',
-    's': 'ˢ',
-    't': 'ᵗ',
-    'u': 'ᵘ',
-    'v': 'ᵛ',
-    'w': 'ʷ',
-    'x': 'ˣ',
-    'y': 'ʸ',
-    'z': 'ᶻ',
-}  # q is missing
+# q is missing
+_SUPERSCRIPT_MAP = str.maketrans(
+    {
+        '0': '⁰',
+        '1': '¹',
+        '2': '²',
+        '3': '³',
+        '4': '⁴',
+        '5': '⁵',
+        '6': '⁶',
+        '7': '⁷',
+        '8': '⁸',
+        '9': '⁹',
+        '+': '⁺',
+        '-': '⁻',
+        '=': '⁼',
+        '(': '⁽',
+        ')': '⁾',
+        'a': 'ᵃ',
+        'b': 'ᵇ',
+        'c': 'ᶜ',
+        'd': 'ᵈ',
+        'e': 'ᵉ',
+        'f': 'ᶠ',
+        'g': 'ᵍ',
+        'h': 'ʰ',
+        'i': 'ⁱ',
+        'j': 'ʲ',
+        'k': 'ᵏ',
+        'l': 'ˡ',
+        'm': 'ᵐ',
+        'n': 'ⁿ',
+        'o': 'ᵒ',
+        'p': 'ᵖ',
+        'r': 'ʳ',
+        's': 'ˢ',
+        't': 'ᵗ',
+        'u': 'ᵘ',
+        'v': 'ᵛ',
+        'w': 'ʷ',
+        'x': 'ˣ',
+        'y': 'ʸ',
+        'z': 'ᶻ',
+    }
+)
 
+# b,c,d,f,g,q,r,u,v,w are missing
 _SUBSCRIPT_MAP = str.maketrans(
     {
         '0': '₀',
@@ -154,14 +158,14 @@ def to_superscript(s: str | int) -> str:
     """Move all characters in a string to superscript, if possible (keep basescript otherwise)."""
     if isinstance(s, int):
         s = str(s)
-    return ''.join(_SUPERSCRIPT_MAP.get(c, c) for c in str(s))
+    return s.translate(_SUPERSCRIPT_MAP)
 
 
 def to_subscript(s: str | int) -> str:
     """Move all characters in a string to subscript, if possible (keep basescript otherwise)."""
     if isinstance(s, int):
         s = str(s)
-    return ''.join(_SUBSCRIPT_MAP.get(c, c) for c in str(s))
+    return s.translate(_SUBSCRIPT_MAP)
 
 
 def format_coeff(coef: SupportsFloat) -> str:
