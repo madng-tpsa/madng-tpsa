@@ -2,7 +2,7 @@
 
 from __future__ import annotations
 
-from typing import TYPE_CHECKING, TypeAlias, TypeVar
+from typing import TYPE_CHECKING, Literal, TypeAlias, TypeVar
 
 if TYPE_CHECKING:
     from collections.abc import Sequence
@@ -32,3 +32,6 @@ TpsaSeriesT = TypeVar('TpsaSeriesT', bound='_TpsaBase[Any, Any]')
 
 # An independent type variable for maps passed as operands.
 MapSeriesT = TypeVar('MapSeriesT', bound='_TpsaBase[Any, Any]')
+
+# Different matrix norms
+NormDefinition = Literal['max_abs', 'frobenius', 'relative_frobenius', 'spectral']

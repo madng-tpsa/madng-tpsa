@@ -14,7 +14,7 @@ if TYPE_CHECKING:
     from collections.abc import Mapping, Sequence
     from typing import Literal, Self
 
-    from ._typing import MapSeriesT, Scalar, SelectionValue, TpsaSeries
+    from ._typing import MapSeriesT, NormDefinition, Scalar, SelectionValue, TpsaSeries
     from .tpsa import Tpsa
 
 from collections.abc import Sequence
@@ -30,6 +30,30 @@ from .descriptor import Descriptor
 from .formatting import format_coord, format_polynomial
 from .tensor import TpsaTensor
 from .tpsa import Tpsa
+
+
+def symplectic_unit_matrix(n: int) -> np.ndarray:
+    """Canonical symplectic matrix for n phase-space variables."""
+    if n <= 0 or n % 2:
+        err_mess = 'Phase-space dimension must be positive and even.'
+        raise ValueError(err_mess)
+
+    s2 = np.array([[0, 1], [-1, 0]])
+    return np.kron(np.eye(n // 2), s2)
+
+
+def _matrix_norm(matrix: np.ndarray, norm: NormDefinition):
+    if norm == 'max_abs':
+        return np.max(np.abs(matrix))
+    if norm == 'frobenius':
+        return np.linalg.norm(matrix, ord='fro')
+    if norm == 'relative_frobenius':
+        return float(np.linalg.norm(matrix, ord='fro') / np.sqrt(matrix.shape[0]))
+    if norm == 'spectral':
+        return np.linalg.norm(matrix, ord=2)
+    err_mess = "Argument 'norm' needs to be one of ['max_abs', 'frobenius', "
+    err_mess += "'relative_frobenius', 'spectral']"
+    raise ValueError(err_mess)
 
 
 class TpsaMap(TpsaTensor[TpsaSeriesT]):
@@ -472,6 +496,54 @@ class TpsaMap(TpsaTensor[TpsaSeriesT]):
         if parameters is None:
             parameters = [0.0] * self.num_params
         return self.hessian(wrt=wrt).evaluate(coordinates=coordinates, parameters=parameters)
+
+    def non_symplectic_residual(
+        self,
+        coordinates: Sequence[Scalar] | np.ndarray | None = None,
+        *,
+        parameters: Sequence[Scalar] | np.ndarray | None = None,
+        norm: NormDefinition = 'max_abs',
+    ) -> float:
+        """Norm of J.T @ S @ J - S at a phase-space point."""
+        jj = self.evaluate_jacobian(coordinates=coordinates, parameters=parameters)
+        ss = symplectic_unit_matrix(self.num_vars)
+        res = jj.T @ ss @ jj - ss
+        return _matrix_norm(res, norm)
+
+    def non_symplectic_coeffs_by_degree(self, norm: NormDefinition = 'max_abs') -> dict[int, float]:
+        """Maximum coefficient-matrix norm per phase-space degree.
+
+        Tests formal symplecticity through order N-1.
+        """
+        n = self.num_vars
+        ss = symplectic_unit_matrix(n)
+        jj = self.jacobian()
+        res = (jj.T @ ss @ jj - ss).truncate(self.truncation_order - 1)  # ty: ignore[unsupported-operator]
+
+        # One numerical matrix for each monomial.
+        dtype = complex if res.is_complex else float
+        matrices = {}
+
+        for idx, component in enumerate(res.flat):
+            i, j = divmod(idx, n)
+
+            for monomial, coeff in component.monomial_coeffs(tol=0).items():
+                if monomial not in matrices:
+                    matrices[monomial] = np.zeros((n, n), dtype=dtype)
+
+                matrices[monomial][i, j] = coeff
+
+        # Maximum norm per phase-space degree.
+        result = dict.fromkeys(range(self.truncation_order), 0.0)
+        for monomial, matrix in matrices.items():
+            degree = sum(monomial[:n])
+            if degree in result:
+                result[degree] = max(
+                    result[degree],
+                    _matrix_norm(matrix, norm),
+                )
+
+        return result
 
     def compose(self, other: TpsaMap[MapSeriesT]) -> TpsaMap[Tpsa] | TpsaMap[ComplexTpsa]:
         """Compose full coordinate maps, preserving the TpsaMap result type."""

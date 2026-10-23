@@ -20,7 +20,7 @@ from .complex_tpsa import ComplexTpsa
 from .descriptor import Descriptor
 from .errors import TpsaError
 from .formatting import format_polynomial
-from .map import TpsaMap
+from .map import TpsaMap, symplectic_unit_matrix
 from .paths import core_library, include_dir
 from .tensor import TpsaTensor
 from .tpsa import Tpsa
@@ -38,5 +38,6 @@ __all__ = [
     'format_polynomial',
     'include_dir',
     'lib',
+    'symplectic_unit_matrix',
     '__version__',
 ]
