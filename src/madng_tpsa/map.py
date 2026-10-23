@@ -258,10 +258,7 @@ class TpsaMap(TpsaTensor[TpsaSeriesT]):
             )
             for name, component in self.named_components.items()
         }
-        return type(self)(
-            [converted[name] for name in descriptor.variables],
-            descriptor=descriptor,
-        )
+        return self._new_like([converted[name] for name in descriptor.variables])
 
     def extend_descriptor(self, descriptor: Descriptor, *, merge: bool = False) -> Self:
         """Extend a coordinate map, inserting identity components.
@@ -285,10 +282,12 @@ class TpsaMap(TpsaTensor[TpsaSeriesT]):
             for name, component in self.named_components.items()
         }
         values = [
-            converted[name] if name in converted else descriptor.var(name)
+            converted[name]
+            if name in converted
+            else descriptor.var(name, 0j if self.is_complex else 0.0)
             for name in descriptor.variables
         ]
-        return type(self)(values, descriptor=descriptor)
+        return self._new_like(cast('Sequence[TpsaSeriesT]', values))
 
     def __getattr__(self, name: str) -> TpsaSeriesT:
         try:
@@ -619,7 +618,7 @@ class TpsaMap(TpsaTensor[TpsaSeriesT]):
         if n < 0:
             error_message = 'Composition exponent must be non-negative'
             raise ValueError(error_message)
-        result = TpsaMap(self.descriptor)
+        result = self._new_like(self.descriptor.vars())
         base = self
         while n:
             if n & 1:
@@ -671,7 +670,7 @@ class TpsaMap(TpsaTensor[TpsaSeriesT]):
         )
         if status:
             self.flat[0]._raise_mad_error()
-        return cast('TpsaMap[TpsaSeriesT]', type(self)(result))
+        return cast('TpsaMap[TpsaSeriesT]', self._new_like(result))
 
     def partial_inverse(self, select: Sequence[SelectionValue]) -> TpsaMap[TpsaSeriesT]:
         """Invert selected variables, leaving other variables and parameters intact.
@@ -731,7 +730,7 @@ class TpsaMap(TpsaTensor[TpsaSeriesT]):
         )
         if status:
             self.flat[0]._raise_mad_error()
-        return cast('TpsaMap[TpsaSeriesT]', type(self)(result))
+        return cast('TpsaMap[TpsaSeriesT]', self._new_like(result))
 
     def translate(
         self, offsets: Sequence[Scalar] | np.ndarray
@@ -773,7 +772,7 @@ class TpsaMap(TpsaTensor[TpsaSeriesT]):
                 )
                 for index, value in enumerate(offsets, start=1)
             ]
-            return self.compose(TpsaMap(substitutions))
+            return self.compose(self._new_like(substitutions))
 
         source = self.to_complex() if complex_needed and not self.is_complex else self
         if complex_needed:
@@ -802,10 +801,10 @@ class TpsaMap(TpsaTensor[TpsaSeriesT]):
         )
         if status:
             source.flat[0]._raise_mad_error()
-        return TpsaMap(result)
+        return cast('TpsaMap[Tpsa] | TpsaMap[ComplexTpsa]', source._new_like(result))
 
-    @classmethod
-    def from_generator(cls, generator: Tpsa | ComplexTpsa) -> TpsaMap[Tpsa] | TpsaMap[ComplexTpsa]:
+    @staticmethod
+    def from_generator(generator: Tpsa | ComplexTpsa) -> TpsaMap[Tpsa] | TpsaMap[ComplexTpsa]:
         """Construct the native Hamiltonian field ``-S grad(generator)``.
 
         A scalar ``f`` in ``exp_poisson(f)`` uses the *negative* of this field.
@@ -835,7 +834,7 @@ class TpsaMap(TpsaTensor[TpsaSeriesT]):
         )
         if status:
             generator._raise_mad_error()
-        return cast('TpsaMap[Tpsa] | TpsaMap[ComplexTpsa]', cls(output))
+        return cast('TpsaVectorField[Tpsa] | TpsaVectorField[ComplexTpsa]', TpsaVectorField(output))
 
     def to_generator(
         self, *, validate: bool = True, atol: float = 1e-12, rtol: float = 1e-10
@@ -904,7 +903,7 @@ class TpsaMap(TpsaTensor[TpsaSeriesT]):
             result = clean
 
         if validate:
-            rebuilt = type(self).from_generator(result)
+            rebuilt = TpsaVectorField.from_generator(result)
             for name, original, reconstructed in zip(
                 self.component_names, self.flat, rebuilt.flat, strict=True
             ):
@@ -954,7 +953,7 @@ class TpsaMap(TpsaTensor[TpsaSeriesT]):
         )
         if status:
             self.flat[0]._raise_mad_error()
-        return TpsaMap(result)
+        return TpsaVectorField(result)
 
     def exp_poisson(
         self, generator: Tpsa | ComplexTpsa | TpsaMap[Tpsa] | TpsaMap[ComplexTpsa]
@@ -1000,7 +999,7 @@ class TpsaMap(TpsaTensor[TpsaSeriesT]):
         )
         if status:
             self.flat[0]._raise_mad_error()
-        return TpsaMap(result)
+        return left._new_like(result)
 
     def log_poisson(
         self,
@@ -1064,7 +1063,7 @@ class TpsaMap(TpsaTensor[TpsaSeriesT]):
         )
         if status:
             self.flat[0]._raise_mad_error()
-        field = TpsaMap(result)
+        field = TpsaVectorField(result)
         if validate:
             # Compare against `left`, not self: a supplied initial guess can
             # trigger descriptor alignment or real-to-complex promotion.
@@ -1119,3 +1118,21 @@ class TpsaMap(TpsaTensor[TpsaSeriesT]):
         if self.is_complex:
             return float(lib.mad_ctpsa_mnrm(self.num_vars, self.pointer_array))
         return float(lib.mad_tpsa_mnrm(self.num_vars, self.pointer_array))
+
+
+class TpsaVectorField(TpsaMap[TpsaSeriesT]):
+    """A TPSA representation of a vector field.
+
+    A vector field assigns a tangent vector to each point in phase
+    space. Although represented by the same number of TPSA components
+    as a coordinate map, it describes an infinitesimal generator
+    rather than a finite coordinate transformation.
+
+    Inheriting from TpsaMap provides the same TPSA storage and
+    algebraic operations. The distinct class identifies operations
+    whose results are vector fields, such as Lie brackets and
+    Poisson logarithms.
+
+    In particular, TpsaVectorField is not a trackable particle
+    representation.
+    """

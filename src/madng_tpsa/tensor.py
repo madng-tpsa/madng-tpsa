@@ -258,7 +258,7 @@ class TpsaTensor(Generic[TpsaSeriesT]):
     def to_dict(self, tol: float = 1e-14) -> dict[str, Any]:
         """Return a dictionary representation of a TpsaTensor."""
         dct = {
-            '__class__': self.__class__.__name__,
+            '__class__': type(self).__name__,
             'descriptor': self.descriptor.to_dict(),
             'shape': self.shape,
         }
@@ -505,7 +505,7 @@ class TpsaTensor(Generic[TpsaSeriesT]):
         for tpsa in flat:
             tt = format_polynomial(tpsa=tpsa, labels=labels, style='unicode', max_terms=max_terms)
             components.append(tt)
-        name = self.__class__.__name__
+        name = type(self).__name__
         return (
             f'{name}(shape={self.shape}, size={self.size}, values=[{", ".join(components)}{end}])'
         )
