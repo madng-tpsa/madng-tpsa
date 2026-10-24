@@ -325,7 +325,7 @@ class Descriptor:
             max_orders=dct['max_orders'],
         )
 
-    def union(self, other: Descriptor) -> Descriptor:
+    def union(self, other: Descriptor, *, restrict_order: bool = False) -> Descriptor:
         """Create a common descriptor containing both variable sets."""
         if not isinstance(other, Descriptor):
             err_mess = 'Expected another Descriptor'
@@ -339,8 +339,13 @@ class Descriptor:
         if overlap:
             err_mess = f'Labels cannot be both variables and parameters: {overlap}'
             raise ValueError(err_mess)
-        order = max(self.order, other.order)
         param_order = max(self.param_order, other.param_order)
+        if restrict_order:
+            order = min(self.order, other.order)
+            if self.param_order > 0 and other.param_order > 0:
+                param_order = min(self.param_order, other.param_order)
+        else:
+            order = max(self.order, other.order)
         # Merge the limits for labels actually present in each descriptor.
         limits: dict[str, int] = {}
         for desc in (self, other):
