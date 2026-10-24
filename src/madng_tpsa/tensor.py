@@ -248,12 +248,54 @@ class TpsaTensor(Generic[TpsaSeriesT]):
         return type(self)(values, shape=self.shape)
 
     @classmethod
-    def _from_dict_components(cls, values: Sequence[TpsaSeries], dct: dict[str, Any]) -> Self:
-        """Create a new instance from a dict.
+    def _parse_dict(
+        cls, dct: dict[str, Any]
+    ) -> tuple[Descriptor, tuple[int], Sequence[TpsaSeries]]:
+        """Parse and validate a dict representing the tensor."""
+        class_name = dct.pop('__class__', None)
+        if cls.__name__ != class_name:
+            err_mess = f'Wrong dict: expected class {cls.__name__}, got {class_name}'
+            raise ValueError(err_mess)
+        desc_dct = dct.pop('descriptor', None)
+        if desc_dct is None:
+            err_mess = 'Descriptor is missing in the dictionary'
+            raise ValueError(err_mess)
+        descriptor = Descriptor.from_dict(desc_dct)
+        shape = dct.pop('shape')
+        if shape is None:
+            err_mess = 'Shape is missing in the dictionary'
+            raise ValueError(err_mess)
+        shape = tuple(shape)
+        flat = dct.pop('flat', None)
+        if flat is None:
+            err_mess = 'Flat list is missing in the dictionary'
+            raise ValueError(err_mess)
+        if prod(shape) != len(flat):
+            err_mess = f'Incompatible size in dictionary! Expected {prod(shape)}, got {len(flat)}.'
+            raise ValueError(err_mess)
+        tpsa_flat = []
+        for tpsa_dct in flat:
+            this_cls = tpsa_dct.get('__class__', None)
+            if this_cls is None:
+                err_mess = "Missing '__class__' key in TPSA dict."
+                raise ValueError(err_mess)
+            if this_cls == 'ComplexTpsa':
+                tpsa_flat.append(ComplexTpsa.from_dict(tpsa_dct, descriptor=descriptor))
+            elif this_cls == 'Tpsa':
+                tpsa_flat.append(Tpsa.from_dict(tpsa_dct, descriptor=descriptor))
+            else:
+                err_mess = f'Unsupported class {this_cls} in TPSA dict.'
+                raise ValueError(err_mess)
+        if dct:
+            err_mess = f'Unexpected entries in dictionary: {dct.keys()}.'
+            raise ValueError(err_mess)
+        return descriptor, shape, tpsa_flat
 
-        This should probably be overwritten when inherited.
-        """
-        return cls(values, shape=tuple(dct['shape']))
+    @classmethod
+    def from_dict(cls, dct: dict[str, Any]) -> Self:
+        """Instantiate a TpsaTensor from a dictionary representation."""
+        _, shape, tpsa_flat = cls._parse_dict(dct)
+        return cls(tpsa_flat, shape=shape)
 
     def to_dict(self, tol: float = 1e-14) -> dict[str, Any]:
         """Return a dictionary representation of a TpsaTensor."""
@@ -269,42 +311,6 @@ class TpsaTensor(Generic[TpsaSeriesT]):
             flat.append(tpsa_dct)
         dct['flat'] = flat
         return dct
-
-    @classmethod
-    def from_dict(cls, dct: dict[str, Any]) -> Self:
-        """Instantiate a TpsaTensor from a dictionary representation."""
-        class_name = dct.get('__class__')
-        if cls.__name__ != class_name:
-            err_mess = f'Wrong dict: expected class {cls.__name__}, got {class_name}'
-            raise ValueError(err_mess)
-        desc_dct = dct.get('descriptor')
-        if desc_dct is None:
-            err_mess = 'Descriptor is missing in the dictionary'
-            raise ValueError(err_mess)
-        descriptor = Descriptor.from_dict(desc_dct)
-        shape = dct.get('shape')
-        if shape is None:
-            err_mess = 'Shape is missing in the dictionary'
-            raise ValueError(err_mess)
-        shape = tuple(shape)
-        flat = dct.get('flat')
-        if flat is None:
-            err_mess = 'Flat list is missing in the dictionary'
-            raise ValueError(err_mess)
-        tpsa_flat = []
-        for tpsa_dct in flat:
-            this_cls = tpsa_dct.get('__class__', None)
-            if this_cls is None:
-                err_mess = "Missing '__class__' key in TPSA dict."
-                raise ValueError(err_mess)
-            if this_cls == 'ComplexTpsa':
-                tpsa_flat.append(ComplexTpsa.from_dict(tpsa_dct, descriptor=descriptor))
-            elif this_cls == 'Tpsa':
-                tpsa_flat.append(Tpsa.from_dict(tpsa_dct, descriptor=descriptor))
-            else:
-                err_mess = f'Unsupported class {this_cls} in TPSA dict.'
-                raise ValueError(err_mess)
-        return cls._from_dict_components(tpsa_flat, dct)
 
     def copy(self) -> Self:
         """Return an independent copy of the tensor."""

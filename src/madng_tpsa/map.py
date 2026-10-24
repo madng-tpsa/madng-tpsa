@@ -12,7 +12,7 @@ from typing import TYPE_CHECKING, SupportsComplex, SupportsFloat, cast, overload
 
 if TYPE_CHECKING:
     from collections.abc import Mapping, Sequence
-    from typing import Literal, Self
+    from typing import Any, Literal, Self
 
     from ._typing import MapSeriesT, NormDefinition, Scalar, SelectionValue, TpsaSeries
     from .tpsa import Tpsa
@@ -208,15 +208,21 @@ class TpsaMap(TpsaTensor[TpsaSeriesT]):
         return type(self)(values)
 
     @classmethod
-    def _from_dict_components(cls, values, dct) -> Self:
-        shape = tuple(dct['shape'])
+    def _parse_dict(
+        cls, dct: dict[str, Any]
+    ) -> tuple[Descriptor, tuple[int], Sequence[TpsaSeries]]:
+        """Parse and validate a dict representing the map."""
+        descriptor, shape, tpsa_flat = super()._parse_dict(dct)
         if len(shape) != 1:
             err_mess = 'A TpsaMap always has to be rank 1!'
             raise ValueError(err_mess)
-        if shape[0] != len(values):
-            err_mess = f"Incompatible 'shape' in dictionary! Expected {len(values)}, got {shape}."
-            raise ValueError(err_mess)
-        return cls(values)
+        return descriptor, shape, tpsa_flat
+
+    @classmethod
+    def from_dict(cls, dct: dict[str, Any]) -> Self:
+        """Instantiate a TpsaMap from a dictionary representation."""
+        _, _, tpsa_flat = cls._parse_dict(dct)
+        return cls(tpsa_flat)
 
     def to_complex(self) -> TpsaMap[ComplexTpsa]:
         """Promote the components, preserving the TpsaMap container."""
