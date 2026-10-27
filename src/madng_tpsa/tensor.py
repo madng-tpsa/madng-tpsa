@@ -193,6 +193,10 @@ class TpsaTensor(Generic[TpsaSeriesT]):
         """Backing pointer array (the full allocation)."""
         return self._storage.pointers
 
+    # ===================================
+    # === Construction and Access API ===
+    # ===================================
+
     def __init__(self, values: Nested[TpsaSeriesT], *, shape: Sequence[int] | None = None) -> None:
         """Create a multidimensional tensor of TPSA components.
 
@@ -310,10 +314,6 @@ class TpsaTensor(Generic[TpsaSeriesT]):
         self._descriptor = descriptor
         self._pointer_cache = None
         self._pointer_cache_version = -1
-
-    # ===================================
-    # === Construction and Access API ===
-    # ===================================
 
     def _new_like(self, values: Sequence[TpsaSeriesT]) -> Self:
         """Create a new tensor with the same structure."""
@@ -669,7 +669,7 @@ class TpsaTensor(Generic[TpsaSeriesT]):
         return self._is_complex
 
     # =======================
-    # === TPSA operations ===
+    # === TPSA Operations ===
     # =======================
 
     def to_complex(self) -> TpsaTensor[ComplexTpsa]:
@@ -986,7 +986,7 @@ class TpsaTensor(Generic[TpsaSeriesT]):
         return cast('TpsaTensor[Tpsa] | TpsaTensor[ComplexTpsa]', left._new_like(result))
 
     # ========================
-    # === Numpy operations ===
+    # === Numpy Operations ===
     # ========================
 
     def transpose(self, *axes: int) -> TpsaTensor[TpsaSeriesT]:
@@ -1217,7 +1217,7 @@ class TpsaTensor(Generic[TpsaSeriesT]):
         )
 
     # =============================
-    # === Arithmetic operations ===
+    # === Arithmetic Operations ===
     # =============================
 
     def __eq__(self, other: object) -> bool:

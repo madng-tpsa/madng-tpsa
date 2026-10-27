@@ -1,7 +1,7 @@
 """Type semantics for TPSA coordinate maps and TPSA vector fields.
 
 These tests assume ``TpsaVectorField(TpsaMap)`` is a minimal semantic subclass
-and that ``from_generator``, ``lie_bracket``, and ``log_poisson`` construct it.
+and that ``from_generator``, ``lie_bracket``, and ``log_fgrad`` construct it.
 They also exercise preservation of map subclasses through ``_new_like``.
 """
 
@@ -93,13 +93,13 @@ def test_lie_bracket_promotes_to_complex_vector_field() -> None:
     assert all(isinstance(component, ComplexTpsa) for component in result.components)
 
 
-def test_log_poisson_returns_field_and_exponential_returns_map() -> None:
+def test_log_fgrad_returns_field_and_exponential_returns_map() -> None:
     d = _descriptor()
     q, p = d.vars()
     mapping = _CustomMap([q, p - 0.015 * q**2])
 
-    field = mapping.log_poisson()
-    reconstructed = TpsaMap(d).exp_grad(field)
+    field = mapping.log_fgrad()
+    reconstructed = TpsaMap(d).exp_fgrad(field)
 
     assert type(field) is TpsaVectorField
     assert type(reconstructed) is TpsaMap
@@ -110,12 +110,12 @@ def test_log_poisson_returns_field_and_exponential_returns_map() -> None:
     )
 
 
-def test_log_poisson_preserves_complex_coefficients_in_field() -> None:
+def test_log_fgrad_preserves_complex_coefficients_in_field() -> None:
     d = _descriptor()
     q, p = d.vars()
     mapping = TpsaMap([q, p + (0.01 + 0.005j) * q**2])
 
-    field = mapping.log_poisson()
+    field = mapping.log_fgrad()
 
     assert type(field) is TpsaVectorField
     assert field.is_complex

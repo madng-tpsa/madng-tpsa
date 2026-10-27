@@ -447,21 +447,6 @@ def test_jacobians_at_origin_and_at_nonzero_point() -> None:
     np.testing.assert_allclose(mapping.evaluate_jacobian(np.asarray([2, 3])), [[4, 3], [0, 6]])
 
 
-def test_deprecated_set_const_part_works_for_non_six_dimensional_maps() -> None:
-    mapping = TpsaMap(_descriptor())
-    with pytest.warns(FutureWarning, match='deprecated'):
-        mapping.set_const_part([2.0, 3.0])
-    np.testing.assert_allclose(mapping.const_part, [2, 3])
-    np.testing.assert_allclose(mapping.evaluate([1, 1]), [3, 4])
-
-
-def test_deprecated_set_const_part_retains_complex_coefficients() -> None:
-    mapping = TpsaMap(_descriptor()).to_complex()
-    with pytest.warns(FutureWarning, match='deprecated'):
-        mapping.set_const_part([1 + 2j, 3 - 4j])
-    np.testing.assert_allclose(mapping.const_part, [1 + 2j, 3 - 4j])
-
-
 def test_named_map_components_follow_descriptor_order() -> None:
     d = Descriptor(variables=('review_q', 'review_p'), order=4)
     q, p = d.vars()

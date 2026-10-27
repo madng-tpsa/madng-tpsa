@@ -363,7 +363,7 @@ class TpsaMap(TpsaVector[TpsaSeriesT]):
         return cast('TpsaMap[TpsaSeriesT]', self._new_like(result))
 
     def exp_poisson(self, generator: Tpsa | ComplexTpsa) -> TpsaMap[Tpsa] | TpsaMap[ComplexTpsa]:
-        """Apply the Lie operator exponential to this map: M.exp_poisson(f) = exp(-:f:) M."""
+        """Apply the Lie operator exponential to this map: M.exp_poisson(f) = exp(:f:) M."""
         if not isinstance(generator, (Tpsa, ComplexTpsa)):
             err_mess = 'Generator must be a scalar TPSA'
             raise TypeError(err_mess)
@@ -374,13 +374,13 @@ class TpsaMap(TpsaVector[TpsaSeriesT]):
         # Starting from a generator, transforming to a field, and then taking
         # the exponentiated grad amounts to the exponentiated Poisson bracket
         # of the original generator
-        left = -TpsaVectorField.from_generator(left)
+        left = TpsaVectorField.from_generator(left)
         return self._exppb(left, right, complex_needed=complex_needed)
 
-    def exp_grad(
+    def exp_fgrad(
         self, field: TpsaVectorField[Tpsa] | TpsaVectorField[ComplexTpsa]
     ) -> TpsaMap[Tpsa] | TpsaMap[ComplexTpsa]:
-        """Apply the Lie grad exponential to this map: M.exp_grad(F) = exp(F^i ∂_i) M."""
+        """Apply the Lie grad exponential to this map: M.exp_fgrad(F) = exp(F^i ∂_i) M."""
         if not isinstance(field, TpsaVectorField):
             err_mess = 'Field must be a vector field'
             raise TypeError(err_mess)
@@ -421,7 +421,7 @@ class TpsaMap(TpsaVector[TpsaSeriesT]):
             left.flat[0]._raise_mad_error()
         return right._new_like(result)
 
-    def log_poisson(
+    def log_fgrad(
         self,
         initial_guess: TpsaVectorField[Tpsa] | TpsaVectorField[ComplexTpsa] | None = None,
         *,
@@ -430,6 +430,8 @@ class TpsaMap(TpsaVector[TpsaSeriesT]):
         rtol: float = 1e-10,
     ) -> TpsaVectorField[Tpsa] | TpsaVectorField[ComplexTpsa]:
         """Compute a native vector-field logarithm of this coordinate map.
+
+        This is implemented such that I.exp_fgrad(F).log_fgrad = F.
 
         When ``validate=True`` (default), re-exponentiate the field and
         compare **every represented TPSA coefficient** against the input map.
@@ -487,7 +489,7 @@ class TpsaMap(TpsaVector[TpsaSeriesT]):
         if validate:
             # Compare against `left`, not self: a supplied initial guess can
             # trigger descriptor alignment or real-to-complex promotion.
-            reconstructed = TpsaMap(left.descriptor).exp_grad(field)
+            reconstructed = TpsaMap(left.descriptor).exp_fgrad(field)
             for name, expected_series, actual_series in zip(
                 left.component_names, left.flat, reconstructed.flat, strict=True
             ):
@@ -498,7 +500,7 @@ class TpsaMap(TpsaVector[TpsaSeriesT]):
                     rhs = actual.get(monomial, 0)
                     if not np.isclose(lhs, rhs, atol=atol, rtol=rtol):
                         err_mess = (
-                            'Native log_poisson did not reconstruct the input map: '
+                            'Native log_fgrad did not reconstruct the input map: '
                             f'coordinate {name}, monomial {monomial}, '
                             f'expected {lhs}, obtained {rhs}. '
                             'The logarithm may not have converged or the map '
@@ -507,7 +509,7 @@ class TpsaMap(TpsaVector[TpsaSeriesT]):
                         raise ValueError(err_mess)
         return field
 
-    def log_generator(
+    def log_poisson(
         self,
         initial_guess: TpsaVectorField[Tpsa] | TpsaVectorField[ComplexTpsa] | None = None,
         *,
@@ -517,11 +519,13 @@ class TpsaMap(TpsaVector[TpsaSeriesT]):
     ) -> Tpsa | ComplexTpsa:
         """Return the scalar logarithmic generator using MAD-NG's sign.
 
+        This is implemented such that I.exp_poisson(f).log_poisson = f.
+
         When ``validate=True``, reject non-Hamiltonian logarithmic fields or
         generators not reconstructable at this descriptor's order.
         """
-        field = self.log_poisson(initial_guess, validate=validate, atol=atol, rtol=rtol)
-        return -field.to_generator(validate=validate, atol=atol, rtol=rtol)
+        field = self.log_fgrad(initial_guess, validate=validate, atol=atol, rtol=rtol)
+        return field.to_generator(validate=validate, atol=atol, rtol=rtol)
 
     def pullback(self, function: Tpsa | ComplexTpsa) -> Tpsa | ComplexTpsa:
         """Return ``function ∘ self`` (ordinary, not inverse, pullback)."""

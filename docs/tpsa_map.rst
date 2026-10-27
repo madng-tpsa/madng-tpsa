@@ -2,9 +2,9 @@ TpsaMap
 =======
 
 :class:`~madng_tpsa.map.TpsaMap` represents a full vector-valued TPSA map.
-It subclasses :class:`~madng_tpsa.tensor.TpsaTensor` with one component per
+It subclasses :class:`~madng_tpsa.vector.TpsaVector` with one component per
 *descriptor variable*. All components share the same descriptor; mixed real
-and complex series are promoted to a complex map.
+and complex series are promoted to a complex vector.
 
 Construction and coordinate ordering
 ------------------------------------
@@ -53,7 +53,7 @@ Conversion and inspection
    restored = TpsaMap.from_dict(saved)
 
 ``set_coefficient`` updates the selected component in place. ``const_part`` is
-a writable array-shaped property; ``set_const_part`` is deprecated.
+a writable array-shaped property.
 
 ``change_descriptor`` converts a complete map to another compatible descriptor,
 including the output coordinate ordering; ``extend_descriptor`` inserts identity
@@ -130,35 +130,21 @@ Hamiltonian operations assume an **even** number of descriptor variables,
 ordered in canonical pairs ``(q1, p1, q2, p2, ...)``. Names are not checked for
 physical meaning. Descriptor parameters are not canonical named_components.
 
-MAD-NG's native scalar-to-field convention is
-:math:`G=-S\nabla f`, implemented by
-:meth:`~madng_tpsa.map.TpsaMap.from_generator`. For Hamiltonian fields,
-:meth:`~madng_tpsa.map.TpsaMap.to_generator` reverses this conversion up to
-an additive function of the descriptor parameters. With its default
-``validate=True`` it rejects vector fields that cannot be reconstructed from
-a scalar generator at the available TPSA order.
-
 .. code-block:: python
 
    f = k * q**3 / 3
-   field = TpsaMap.from_generator(f)
-   recovered = field.to_generator()     # f, with parameter-only terms removed
    lie_map = TpsaMap(d).exp_poisson(f)
-   same_lie_map = TpsaMap(d).exp_poisson(-field)
-   logarithmic_field = lie_map.log_poisson()
-   logarithmic_scalar = lie_map.log_generator()
+   field = TpsaVectorField.from_generator(f)
+   same_lie_map = TpsaMap(d).exp_fgrad(field)
+   logarithmic_field = lie_map.log_fgrad()
+   logarithmic_scalar = lie_map.log_poisson()
 
-The *minus sign* in ``exp_poisson(-field)`` is deliberate: scalar inputs follow
-MAD-NG's high-level exponential convention, whereas field inputs are passed
-to the native exponential directly. A scalar field is not interchangeable
-with the raw ``from_generator`` output without this sign change.
+``exp_poisson()`` and ``log_fgrad()`` act on the corresponding Lie operators.
+The native logarithm uses an iterative algorithm and is principally intended
+for maps close to the identity. A normal return from MAD-NG does **not** prove
+that it converged.
 
-``lie_bracket()`` acts on vector fields; ``exp_poisson()`` and
-``log_poisson()`` act on the corresponding Lie operators. The native logarithm
-uses an iterative algorithm and is principally intended for maps close to the
-identity. A normal return from MAD-NG does **not** prove that it converged.
-
-By default, ``log_poisson(validate=True)`` checks the **full retained TPSA
+By default, ``log_fgrad(validate=True)`` checks the **full retained TPSA
 coefficient map** after re-exponentiating the returned vector field. The
 comparison uses ``atol=1e-12`` and ``rtol=1e-10`` by default, and raises
 ``ValueError`` if the map cannot be reconstructed at those tolerances. The
@@ -166,14 +152,14 @@ check does not require symplecticity or even a Hamiltonian vector field.
 
 .. code-block:: python
 
-   field = lie_map.log_poisson()  # Checks exp_poisson(field) == lie_map
-   unchecked = lie_map.log_poisson(validate=False)
+   field = lie_map.log_fgrad()  # Checks exp_poisson(field) == lie_map
+   unchecked = lie_map.log_fgrad(validate=False)
 
 Use ``validate=False`` to override this; make sure the usage performs its
 **own** higher-level map reconstruction or tolerance and order comparison.
 It avoids a potentially expensive extra exponential, but the caller then
 owns convergence assessment. We deliberately keep ``validate=True`` as the
-public API default, including in ``log_generator()``, which *also* checks
+public API default, including in ``log_poisson()``, which *also* checks
 Hamiltonian integrability. Passing an ``initial_guess`` supplies the native
 iteration with a vector-field guess, not a reference coordinate map.
 
@@ -183,13 +169,14 @@ round trip is not a proof of existence or uniqueness of a global logarithm.
 A TPSA map known to order :math:`N` generally allows verification of its
 symplectic condition only through order :math:`N-1` because derivatives lower
 polynomial order. ``TpsaMap`` supplies the algebraic primitives for normal-form
-work, not eigenvector normalisation, resonance classification or RDT extraction.
+work, not eigenvector normalisation, resonance classification, or RDT extraction.
 
 Subclass behaviour
 ------------------
 
-Generic map operations may produce a base ``TpsaMap`` instead of preserving
-an arbitrary subclass whose auxiliary state has no defined transformation.
+Generic map operations may produce a base ``TpsaVector`` or ``TpsaTensor``
+instead of preserving an arbitrary subclass whose auxiliary state has no
+defined transformation.
 
 
 Canonical sign convention and composition operators
@@ -197,9 +184,6 @@ Canonical sign convention and composition operators
 
 For canonical coordinate pairs ``(q1, p1, q2, p2, ...)``, define the
 antisymmetric matrix ``S`` as block-diagonal copies of ``[[0, 1], [-1, 0]]``.
-MAD-NG's native ``from_generator(f)`` uses ``F = -S grad(f)``. Scalar
-``exp_poisson(f)`` uses the opposite field sign relative to the native
-``from_generator`` result. Do not replace ``-S`` with ``S`` silently.
 
 ``M << N`` means ``M.compose(N)`` (ordinary composition), while ``M >> N``
 means ``N.compose(M)`` (Dragt's reversed ordering). For an arbitrary-rank

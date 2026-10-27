@@ -201,11 +201,11 @@ recovered = field.to_generator()
 lie_map = identity.exp_poisson(generator)
 np.testing.assert_allclose(
     lie_map.evaluate((0.1, 0.2), parameters=(0.5,)),
-    identity.exp_grad(-field).evaluate((0.1, 0.2), parameters=(0.5,)),
+    identity.exp_fgrad(field).evaluate((0.1, 0.2), parameters=(0.5,)),
 )
 print('Generator round-trip:', recovered)
 print('Vector-field Lie bracket:', field.lie_bracket(field))
-print('Logarithmic field and scalar:', lie_map.log_poisson(), lie_map.log_generator())
+print('Logarithmic field and scalar:', lie_map.log_fgrad(), lie_map.log_poisson())
 invertible = TpsaMap([q + p**2, p])
 invertible.const_part = 0
 print('Formal inverse:', invertible.inverse())

@@ -191,7 +191,7 @@ def test_exponential_of_zero_field_is_identity_on_arbitrary_map() -> None:
     q, p = d.vars()
     mapping = TpsaMap([q + p * p, p + q * q])
     zero = TpsaVectorField([d.zero(), d.zero()])
-    result = mapping.exp_grad(zero)
+    result = mapping.exp_fgrad(zero)
     np.testing.assert_allclose(result.evaluate((2, 3)), mapping.evaluate((2, 3)))
 
 
@@ -219,17 +219,17 @@ def test_logarithm_with_near_identity_map_and_round_trip() -> None:
     q, p = d.vars()
     # Nilpotent shear; logpb should return a polynomial vector field.
     mapping = TpsaMap([q + p * p, p])
-    field = mapping.log_poisson()
-    rebuilt = TpsaMap(d).exp_grad(field)
+    field = mapping.log_fgrad()
+    rebuilt = TpsaMap(d).exp_fgrad(field)
     np.testing.assert_allclose(rebuilt.evaluate((2, 3)), mapping.evaluate((2, 3)))
-    assert isinstance(mapping.log_generator(), Tpsa)
+    assert isinstance(mapping.log_poisson(), Tpsa)
 
 
 def test_logarithm_rejects_mismatched_guess() -> None:
     mapping = TpsaMap(_d())
     other = Descriptor(variables=('alg_wrong_q', 'alg_wrong_p'), order=5)
     with pytest.raises(ValueError, match='descriptor'):
-        mapping.log_poisson(TpsaVectorField(other))
+        mapping.log_fgrad(TpsaVectorField(other))
 
 
 def test_pullback_polynomial_with_parameters() -> None:
@@ -472,15 +472,15 @@ def test_to_generator_rejects_invalid_tolerances() -> None:
         m.to_generator(rtol=-1)
 
 
-def test_scalar_exponential_matches_negative_native_hamiltonian_field() -> None:
+def test_scalar_exponential_does_not_match_negative_native_hamiltonian_field() -> None:
     d = _d(parameters=())
     q, _ = d.vars()
     generator = q * q / 2
     field = TpsaVectorField.from_generator(generator)
     identity = TpsaMap(d)
     scalar_action = identity.exp_poisson(generator)
-    field_action = identity.exp_grad(-field)
-    opposite_action = identity.exp_grad(field)
+    field_action = identity.exp_fgrad(field)
+    opposite_action = identity.exp_fgrad(-field)
 
     np.testing.assert_allclose(scalar_action.evaluate((2, 3)), field_action.evaluate((2, 3)))
     assert not np.allclose(scalar_action.evaluate((2, 3)), opposite_action.evaluate((2, 3)))

@@ -21,7 +21,6 @@ if TYPE_CHECKING:
     from .tpsa import Tpsa
 
 from collections.abc import Sequence
-from warnings import warn
 
 import numpy as np
 
@@ -65,6 +64,10 @@ class TpsaVector(TpsaTensor[TpsaSeriesT]):
 
     __slots__ = ('_coord_names',)
     _coord_names: tuple[str, ...]
+
+    # ===================================
+    # === Construction and Access API ===
+    # ===================================
 
     @staticmethod
     def _scalar_component(
@@ -330,6 +333,10 @@ class TpsaVector(TpsaTensor[TpsaSeriesT]):
         """Return a compact, human-readable polynomial representation."""
         return self.show()
 
+    # ==================
+    # === Attributes ===
+    # ==================
+
     @property
     def component_names(self) -> tuple[str, ...]:
         """Descriptor-ordered names of the full map outputs."""
@@ -345,14 +352,9 @@ class TpsaVector(TpsaTensor[TpsaSeriesT]):
         """Read-only mapping of output names to mutable TPSA components."""
         return MappingProxyType(dict(zip(self.component_names, self.components, strict=True)))
 
-    def set_const_part(self, values: Sequence[Scalar] | np.ndarray) -> None:
-        """Set the map's constant vector (deprecated; use ``const_part``)."""
-        warn(
-            "The method 'set_const_part' is deprecated; use the setter for 'const_part' instead.",
-            FutureWarning,
-            stacklevel=2,
-        )
-        self.const_part = np.asarray(values).tolist()
+    # =======================
+    # === TPSA Operations ===
+    # =======================
 
     def _coordinate_index(self, coord: str | int) -> int:
         """Resolve a coordinate name or zero-based integer index."""
@@ -575,10 +577,14 @@ class TpsaVector(TpsaTensor[TpsaSeriesT]):
         return cast('TpsaVector[Tpsa] | TpsaVector[ComplexTpsa]', source._new_like(result))
 
     def norm(self) -> float:
-        """Return the native map norm (sum of component coefficient norms)."""
+        """Return the native vector norm (sum of component coefficient norms)."""
         if self.is_complex:
             return float(lib.mad_ctpsa_mnrm(self.num_vars, self.pointer_array))
         return float(lib.mad_tpsa_mnrm(self.num_vars, self.pointer_array))
+
+    # ====================
+    # === Typing Casts ===
+    # ====================
 
     def to_complex(self) -> TpsaVector[ComplexTpsa]:
         """Promote the components, preserving the TpsaVector container. Only for typing."""
@@ -635,6 +641,10 @@ class TpsaVectorField(TpsaVector[TpsaSeriesT]):
     """
 
     __slots__ = ()
+
+    # ===================================
+    # === Construction and Access API ===
+    # ===================================
 
     @classmethod
     def from_generator(
@@ -757,6 +767,10 @@ class TpsaVectorField(TpsaVector[TpsaSeriesT]):
                         raise ValueError(err_mess)
         return result
 
+    # =======================
+    # === TPSA Operations ===
+    # =======================
+
     def lie_bracket(
         self, other: TpsaVectorField[MapSeriesT]
     ) -> TpsaVectorField[Tpsa] | TpsaVectorField[ComplexTpsa]:
@@ -795,68 +809,10 @@ class TpsaVectorField(TpsaVector[TpsaSeriesT]):
         """Component substitution of a vector field with a map."""
         return TpsaVector(super().compose(other).flat)
 
+    # ====================
+    # === Typing Casts ===
+    # ====================
+
     def to_complex(self) -> TpsaVectorField[ComplexTpsa]:
         """Promote the components, preserving the TpsaVectorField container. Only for typing."""
         return cast('TpsaVectorField[ComplexTpsa]', super().to_complex())
-
-    # def compose(self, other: TpsaMap[MapSeriesT]) -> TpsaMap[Tpsa] | TpsaMap[ComplexTpsa]:
-    #     """Compose full coordinate maps, preserving the TpsaMap result type."""
-    #     return cast('TpsaMap[Tpsa] | TpsaMap[ComplexTpsa]', super().compose(other))
-
-    # # We define the composition operators here, because every composition
-    # # always involves a map. We use << (lshift) to represent regular
-    # # composition (one can imagine it as the opening of the map's round
-    # # brackets), and >> (rshift) to represent Dragt notation. The following are
-    # # possible, for T a tensor of general rank, M a map, and f a scalar
-    # # function:
-    # #    T << M    T.compose(M)
-    # #    f << M    M.pullback(f)
-    # #    N << M    N.compose(M)
-    # #    M >> T    T.compose(M)
-    # #    M >> f    M.pullback(f)
-    # #    M >> N    N.compose(M)
-
-    # @overload
-    # def __rshift__(self, other: TpsaMap) -> TpsaMap: ...
-
-    # @overload
-    # def __rshift__(self, other: TpsaTensor) -> TpsaTensor: ...
-
-    # @overload
-    # def __rshift__(self, other: Tpsa | ComplexTpsa) -> Tpsa | ComplexTpsa: ...
-
-    # def __rshift__(
-    #     self, other: TpsaMap | TpsaTensor | Tpsa | ComplexTpsa
-    # ) -> TpsaMap | TpsaTensor | Tpsa | ComplexTpsa:
-    #     """Use Dragt order: ``M >> X`` substitutes M into X.
-
-    #     For X a map or tensor, compute X.compose(M). For a scalar
-    #     observable f, compute the ordinary pullback f composed with M.
-    #     """
-    #     if isinstance(other, (TpsaMap, TpsaTensor)):
-    #         return other.compose(self)
-    #     if isinstance(other, (Tpsa, ComplexTpsa)):
-    #         return self.pullback(other)
-    #     return NotImplemented
-
-    # def __lshift__(self, other: TpsaMap) -> TpsaMap:
-    #     """Use ordinary composition: ``M << N`` means ``M.compose(N)``."""
-    #     if not isinstance(other, TpsaMap):
-    #         return NotImplemented
-    #     return self.compose(other)
-
-    # @overload
-    # def __rlshift__(self, other: TpsaTensor) -> TpsaTensor: ...
-
-    # @overload
-    # def __rlshift__(self, other: Tpsa | ComplexTpsa) -> Tpsa | ComplexTpsa: ...
-
-    # def __rlshift__(
-    #     self, other: TpsaTensor | Tpsa | ComplexTpsa
-    # ) -> TpsaTensor | Tpsa | ComplexTpsa:
-    #     """Substitute a map into a tensor or scalar: ``X << M``."""
-    #     if isinstance(other, TpsaTensor):
-    #         return other.compose(self)
-    #     if isinstance(other, (Tpsa, ComplexTpsa)):
-    #         return self.pullback(other)
-    #     return NotImplemented

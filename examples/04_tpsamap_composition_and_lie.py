@@ -86,11 +86,11 @@ lie_map = identity.exp_poisson(generator)
 print('Lie map exp(:f:) applied to the identity:')
 print(lie_map)
 print()
-# TpsaMap(q = q, p = p - q²·k)
+# TpsaMap(q = q, p = p + q²·k)
 
 assert lie_map.q == q
-assert lie_map.p == p - k * q**2
+assert lie_map.p == p + k * q**2
 
 print('Recover the logarithmic generator:')
-print(lie_map.log_generator().format('code'))
+print(lie_map.log_poisson().format('code'))
 # 0.333333 * q**3 * k
