@@ -15,6 +15,7 @@ from typing import TYPE_CHECKING, Generic, SupportsComplex, SupportsFloat, Suppo
 from ._typing import TpsaSeriesT
 
 if TYPE_CHECKING:
+    import builtins  # To be able to define method 'str' on the class
     from collections.abc import Iterator, Mapping
     from typing import Any, Literal, Self
 
@@ -321,7 +322,7 @@ class TpsaTensor(Generic[TpsaSeriesT]):
 
     @classmethod
     def _parse_dict(
-        cls, dct: dict[str, Any]
+        cls, dct: dict[builtins.str, Any]
     ) -> tuple[Descriptor, tuple[int], Sequence[TpsaSeries]]:
         """Parse and validate a dict representing the tensor."""
         class_name = dct.pop('__class__', None)
@@ -364,12 +365,12 @@ class TpsaTensor(Generic[TpsaSeriesT]):
         return descriptor, shape, tpsa_flat
 
     @classmethod
-    def from_dict(cls, dct: dict[str, Any]) -> Self:
+    def from_dict(cls, dct: dict[builtins.str, Any]) -> Self:
         """Instantiate a TpsaTensor from a dictionary representation."""
         _, shape, tpsa_flat = cls._parse_dict(dct)
         return cls(tpsa_flat, shape=shape)
 
-    def to_dict(self, tol: float = 1e-14) -> dict[str, Any]:
+    def to_dict(self, tol: float = 1e-14) -> dict[builtins.str, Any]:
         """Return a dictionary representation of a TpsaTensor."""
         dct = {
             '__class__': type(self).__name__,
@@ -392,8 +393,8 @@ class TpsaTensor(Generic[TpsaSeriesT]):
         self,
         descriptor: Descriptor,
         *,
-        variable_map: Mapping[str, str] | None = None,
-        parameter_map: Mapping[str, str] | None = None,
+        variable_map: Mapping[builtins.str, builtins.str] | None = None,
+        parameter_map: Mapping[builtins.str, builtins.str] | None = None,
         truncate: bool = False,
     ) -> Self:
         """Convert the TpsaTensor to a new descriptor."""
@@ -531,7 +532,7 @@ class TpsaTensor(Generic[TpsaSeriesT]):
         """Test object identity among components, *not* polynomial equality."""
         return any(t is tpsa for t in self.flat)
 
-    def show(self, *, max_tpsa: int | None = None, max_terms: int | None = 3) -> str:
+    def str(self, *, max_tpsa: int | None = None, max_terms: int | None = 3) -> builtins.str:
         """Return a string representation of the tensor, specifying how many TPSAs to show."""
         if max_tpsa is not None and max_tpsa < 0:
             message = 'max_tpsa must be non-negative or None'
@@ -551,9 +552,13 @@ class TpsaTensor(Generic[TpsaSeriesT]):
             f'{name}(shape={self.shape}, size={self.size}, values=[{", ".join(components)}{end}])'
         )
 
-    def __repr__(self) -> str:
+    def show(self, *, max_tpsa: int | None = None, max_terms: int | None = None) -> None:
+        """Print a representation of the tensor, specifying how many terms to show."""
+        print(self.str(max_tpsa=max_tpsa, max_terms=max_terms))  # noqa: T201
+
+    def __repr__(self) -> builtins.str:
         """Return a compact, human-readable polynomial representation."""
-        return self.show(max_tpsa=3)
+        return self.str(max_tpsa=3, max_terms=3)
 
     # ==================
     # === Attributes ===
@@ -717,7 +722,7 @@ class TpsaTensor(Generic[TpsaSeriesT]):
             return self.flat[0]._resolve_single_monomial(spec)
 
         if isinstance(spec, str):
-            factors: tuple[int | str | tuple[int | str, int], ...] = (spec,)
+            factors: tuple[int | builtins.str | tuple[int | builtins.str, int], ...] = (spec,)
         elif isinstance(spec, Integral):
             if isinstance(spec, (bool, np.bool_)):
                 err_mess = 'Derivative coordinate must be a name or 1-based index'
@@ -1023,7 +1028,7 @@ class TpsaTensor(Generic[TpsaSeriesT]):
 
     @staticmethod
     def _contract_einsum(
-        expression: str, *operands: TpsaTensor[TpsaSeriesT] | np.ndarray
+        expression: builtins.str, *operands: TpsaTensor[TpsaSeriesT] | np.ndarray
     ) -> TpsaTensor[Tpsa] | TpsaTensor[ComplexTpsa] | Tpsa | ComplexTpsa:
         """Contract TPSA and numeric operands using explicit Einstein indices.
 
@@ -1069,7 +1074,7 @@ class TpsaTensor(Generic[TpsaSeriesT]):
                 op = op.change_descriptor(descriptor)
             compatible.append(op)
 
-        sizes: dict[str, int] = {}
+        sizes: dict[builtins.str, int] = {}
         for labels, op in zip(inputs, compatible, strict=True):
             shape = op.shape
             if len(labels) != len(shape):
@@ -1106,7 +1111,7 @@ class TpsaTensor(Generic[TpsaSeriesT]):
 
     @staticmethod
     def einsum(
-        expression: str, *operands: TpsaTensor[Any] | np.ndarray
+        expression: builtins.str, *operands: TpsaTensor[Any] | np.ndarray
     ) -> TpsaTensor[Tpsa] | TpsaTensor[ComplexTpsa] | Tpsa | ComplexTpsa:
         """Perform an explicit Einstein contraction over TPSA-valued arrays."""
         return TpsaTensor._contract_einsum(expression, *operands)
@@ -1236,7 +1241,7 @@ class TpsaTensor(Generic[TpsaSeriesT]):
         return self._new_like(cast('Sequence[TpsaSeriesT]', values))
 
     def _elementwise(
-        self, other: object, operation: str, *, reverse: bool = False
+        self, other: object, operation: builtins.str, *, reverse: bool = False
     ) -> TpsaTensor[Tpsa] | TpsaTensor[ComplexTpsa]:
         """Implement consistent descriptor alignment for elementwise arithmetic."""
         left: TpsaTensor[Any] = self

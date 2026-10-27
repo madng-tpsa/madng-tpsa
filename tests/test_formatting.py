@@ -80,7 +80,7 @@ def test_unicode_formatting_of_complex_coefficients_in_tensor_and_map():
     tensor = TpsaTensor([polynomial, q])
     mapping = TpsaMap([polynomial, p])
     for obj in (tensor, mapping):
-        assert '(2+3j)·q²' in obj.show(max_terms=None)
+        assert '(2+3j)·q²' in obj.str(max_terms=None)
         assert 'j)' in repr(obj)
 
 
@@ -92,4 +92,4 @@ def test_max_terms_zero_and_negative_limits():
     assert format_polynomial(d.zero(), labels, style='unicode', max_terms=0) == '0'
     with pytest.raises(ValueError, match='max_terms'):
         format_polynomial(t, labels, style='unicode', max_terms=-1)
-    assert 'values=[, ...]' not in TpsaTensor([t]).show(max_tpsa=1, max_terms=0)
+    assert 'values=[, ...]' not in TpsaTensor([t]).str(max_tpsa=1, max_terms=0)

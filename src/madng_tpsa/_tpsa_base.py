@@ -5,6 +5,7 @@ from __future__ import annotations
 from typing import TYPE_CHECKING, Generic, TypeAlias, TypeVar, cast
 
 if TYPE_CHECKING:
+    import builtins  # To be able to define method 'str' on the class
     from collections.abc import Iterable, Mapping, Sequence
     from typing import Any, Self
 
@@ -109,7 +110,9 @@ class _TpsaBase(ABC, Generic[_Coefficient, _InputCoefficient]):
     def __init__(self, descriptor: Descriptor, truncation_order: int | None = None) -> None:
         """Initialize the TPSA object with a descriptor and an optional truncation order."""
 
-    def to_dict(self, *, store_descriptor: bool = True, tol: float = 1e-14) -> dict[str, Any]:
+    def to_dict(
+        self, *, store_descriptor: bool = True, tol: float = 1e-14
+    ) -> dict[builtins.str, Any]:
         """Return a dictionary representation of the TPSA series."""
         dct = {'__class__': self.__class__.__name__}
         if store_descriptor:
@@ -120,7 +123,7 @@ class _TpsaBase(ABC, Generic[_Coefficient, _InputCoefficient]):
         return dct
 
     @classmethod
-    def from_dict(cls, dct: dict[str, Any], descriptor: Descriptor | None = None) -> Self:
+    def from_dict(cls, dct: dict[builtins.str, Any], descriptor: Descriptor | None = None) -> Self:
         """Instantiate a Tpsa from a dictionary representation."""
         class_name = dct.get('__class__')
         if cls.__name__ != class_name:
@@ -171,8 +174,8 @@ class _TpsaBase(ABC, Generic[_Coefficient, _InputCoefficient]):
         self,
         descriptor: Descriptor,
         *,
-        variable_map: Mapping[str, str] | None = None,
-        parameter_map: Mapping[str, str] | None = None,
+        variable_map: Mapping[builtins.str, builtins.str] | None = None,
+        parameter_map: Mapping[builtins.str, builtins.str] | None = None,
         truncate: bool = False,
     ) -> Self:
         """Convert this TPSA to a different descriptor.
@@ -315,7 +318,7 @@ class _TpsaBase(ABC, Generic[_Coefficient, _InputCoefficient]):
     def __len__(self) -> int:
         return len(self.monomial_coeffs())
 
-    def __array_ufunc__(self, ufunc: Any, method: str, *inputs: Any, **kwargs: Any) -> Any:
+    def __array_ufunc__(self, ufunc: Any, method: builtins.str, *inputs: Any, **kwargs: Any) -> Any:
         """Map supported NumPy ufunc calls to the matching TPSA operations."""
         if method != '__call__' or kwargs:
             return NotImplemented
@@ -400,7 +403,7 @@ class _TpsaBase(ABC, Generic[_Coefficient, _InputCoefficient]):
             raise ValueError(message)
 
     def _resolve_single_monomial(
-        self, monomial: int | str | tuple[int, ...] | Tpsa
+        self, monomial: int | builtins.str | tuple[int, ...] | Tpsa
     ) -> tuple[int, ...]:
         """Validate and resolve a single non-constant monomial specification to an exponent tuple.
 
@@ -450,7 +453,7 @@ class _TpsaBase(ABC, Generic[_Coefficient, _InputCoefficient]):
 
         return monomial_orders
 
-    def _integration_index(self, monomial: int | str | Tpsa) -> int:
+    def _integration_index(self, monomial: int | builtins.str | Tpsa) -> int:
         """Resolve an identity variable for formal integration."""
         monomial_orders = self._resolve_single_monomial(monomial)
         if sum(monomial_orders) != 1:
@@ -490,7 +493,7 @@ class _TpsaBase(ABC, Generic[_Coefficient, _InputCoefficient]):
         result[()] = self
         return result
 
-    def show(self, *, max_terms: int | None = None) -> str:
+    def str(self, *, max_terms: int | None = None) -> builtins.str:
         """Return a string representation of the TPSA, specifying how many term to show."""
         if max_terms is not None and max_terms < 0:
             message = 'max_terms must be non-negative or None'
@@ -500,6 +503,10 @@ class _TpsaBase(ABC, Generic[_Coefficient, _InputCoefficient]):
         name = self.__class__.__name__
         return f'{name}({tt})'
 
-    def __repr__(self) -> str:
+    def show(self, *, max_terms: int | None = None) -> None:
+        """Print a representation of the TPSA, specifying how many term to show."""
+        print(self.str(max_terms=max_terms))  # noqa: T201
+
+    def __repr__(self) -> builtins.str:
         """Return a compact, human-readable polynomial representation."""
-        return self.show(max_terms=3)
+        return self.str(max_terms=3)
