@@ -10,7 +10,11 @@ from __future__ import annotations
 import numpy as np
 import pytest
 
-from madng_tpsa import ComplexTpsa, Descriptor, Tpsa, TpsaMap, TpsaVectorField
+from madng_tpsa import ComplexTpsa, Descriptor, Tpsa, TpsaMap, TpsaVector, TpsaVectorField
+
+
+class _CustomField(TpsaVectorField[Tpsa]):
+    """Stand-in for a downstream subclass."""
 
 
 class _CustomMap(TpsaMap[Tpsa]):
@@ -26,7 +30,7 @@ def test_from_generator_returns_real_vector_field() -> None:
     q, p = d.vars()
     h = (q**2 + p**2) / 2
 
-    field = TpsaMap.from_generator(h)
+    field = TpsaVectorField.from_generator(h)
 
     assert type(field) is TpsaVectorField
     assert field.shape == (2,)
@@ -41,7 +45,7 @@ def test_from_generator_returns_complex_vector_field() -> None:
     q, p = d.vars()
     h = 1j * (q**2 + p**2) / 2
 
-    field = TpsaMap.from_generator(h)
+    field = TpsaVectorField.from_generator(h)
 
     assert type(field) is TpsaVectorField
     assert field.is_complex
@@ -53,8 +57,9 @@ def test_from_generator_returns_complex_vector_field() -> None:
 def test_from_generator_does_not_inherit_arbitrary_map_subclass() -> None:
     d = _descriptor()
     q, p = d.vars()
-    field = _CustomMap.from_generator((q**2 + p**2) / 2)
+    field = _CustomField.from_generator((q**2 + p**2) / 2)
     assert type(field) is TpsaVectorField
+    assert not isinstance(field, TpsaMap)
 
 
 def test_lie_bracket_returns_vector_field() -> None:
@@ -94,7 +99,7 @@ def test_log_poisson_returns_field_and_exponential_returns_map() -> None:
     mapping = _CustomMap([q, p - 0.015 * q**2])
 
     field = mapping.log_poisson()
-    reconstructed = TpsaMap(d).exp_poisson(field)
+    reconstructed = TpsaMap(d).exp_grad(field)
 
     assert type(field) is TpsaVectorField
     assert type(reconstructed) is TpsaMap
@@ -146,7 +151,9 @@ def test_vector_field_compose_is_componentwise_substitution() -> None:
 
     substituted = field.compose(mapping)
 
-    assert type(substituted) is TpsaVectorField
+    assert type(substituted) is TpsaVector
+    assert type(substituted) is not TpsaVectorField
+    assert type(substituted) is not TpsaMap
     np.testing.assert_allclose(substituted.evaluate((2, 3)), (25, 6))
 
 
@@ -174,4 +181,27 @@ def test_zero_composition_power_preserves_map_subclass() -> None:
     result = mapping.composition_power(0)
 
     assert type(result) is _CustomMap
+    assert not isinstance(result, TpsaVectorField)
     np.testing.assert_allclose(result.evaluate((0.2, -0.3)), (0.2, -0.3))
+
+
+def test_descriptor_extension_distinguishes_map_and_field():
+    d1 = Descriptor(variables=('x', 'px'), order=3)
+    d2 = Descriptor(variables=('x', 'px', 'y', 'py'), order=3)
+
+    map_ = TpsaMap(d1)
+    field = TpsaVectorField(d1)
+
+    map2 = map_.extend_descriptor(d2)
+    field2 = field.extend_descriptor(d2)
+
+    assert isinstance(map2, TpsaMap)
+    assert isinstance(field2, TpsaVectorField)
+
+    # Map: newly introduced outputs are identity coordinates.
+    assert map2.y == d2.var('y')
+    assert map2.py == d2.var('py')
+
+    # Field: newly introduced outputs are zero.
+    assert field2.y.is_zero()
+    assert field2.py.is_zero()

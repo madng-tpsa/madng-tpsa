@@ -11,7 +11,7 @@ from typing import Any, cast
 import numpy as np
 import pytest
 
-from madng_tpsa import ComplexTpsa, Descriptor, Tpsa, TpsaMap, TpsaTensor
+from madng_tpsa import ComplexTpsa, Descriptor, Tpsa, TpsaMap, TpsaTensor, TpsaVectorField
 
 
 def _d(
@@ -137,7 +137,7 @@ def test_from_generator_native_sign_convention_and_inverse_conversion() -> None:
     d = _d()
     q, p = d.vars()
     generator = (q * q + p * p) / 2
-    field = TpsaMap.from_generator(generator)
+    field = TpsaVectorField.from_generator(generator)
     np.testing.assert_allclose(field.evaluate((2, 3)), (-3, 2))
     recovered = field.to_generator()
     assert recovered == generator
@@ -147,7 +147,7 @@ def test_from_generator_and_field_to_vector_complex() -> None:
     d = _d()
     q, p = d.vars()
     generator = 1j * (q * q + p * p) / 2
-    field = TpsaMap.from_generator(generator)
+    field = TpsaVectorField.from_generator(generator)
     assert field.is_complex
     np.testing.assert_allclose(field.evaluate((2, 3)), (-3j, 2j))
     assert field.to_generator() == generator
@@ -156,19 +156,19 @@ def test_from_generator_and_field_to_vector_complex() -> None:
 def test_generator_methods_reject_odd_variable_count() -> None:
     d = Descriptor(variables=('alg_a', 'alg_b', 'alg_c'), order=4)
     with pytest.raises(ValueError, match='even'):
-        TpsaMap.from_generator(d.var('alg_a'))
+        TpsaVectorField.from_generator(d.var('alg_a'))
     with pytest.raises(ValueError, match='even'):
-        TpsaMap(d).to_generator()
+        TpsaVectorField(d).to_generator()
 
 
 def test_lie_bracket_antisymmetry_and_self_zero() -> None:
     d = _d()
     q, p = d.vars()
-    a = TpsaMap([q * q, p])
-    b = TpsaMap([p, q])
+    a = TpsaVectorField([q * q, p])
+    b = TpsaVectorField([p, q])
     ab = a.lie_bracket(b)
     ba = b.lie_bracket(a)
-    assert isinstance(ab, TpsaMap)
+    assert isinstance(ab, TpsaVectorField)
     np.testing.assert_allclose(ab.evaluate((2, 3)), -ba.evaluate((2, 3)))
     np.testing.assert_allclose(a.lie_bracket(a).evaluate((2, 3)), (0, 0))
 
@@ -176,22 +176,22 @@ def test_lie_bracket_antisymmetry_and_self_zero() -> None:
 def test_lie_bracket_promotes_complex_and_rejects_wrong_descriptor() -> None:
     d = _d()
     q, p = d.vars()
-    real = TpsaMap([q * p, p])
-    complex_field = TpsaMap([1j * p, q])
+    real = TpsaVectorField([q * p, p])
+    complex_field = TpsaVectorField([1j * p, q])
     result = real.lie_bracket(complex_field)
     assert result.is_complex
     assert all(isinstance(t, ComplexTpsa) for t in result.flat)
     other = Descriptor(variables=('alg_diff_x', 'alg_diff_p'), order=5)
     with pytest.raises(ValueError, match='descriptor'):
-        real.lie_bracket(TpsaMap(other))
+        real.lie_bracket(TpsaVectorField(other))
 
 
 def test_exponential_of_zero_field_is_identity_on_arbitrary_map() -> None:
     d = _d()
     q, p = d.vars()
     mapping = TpsaMap([q + p * p, p + q * q])
-    zero = TpsaMap([d.zero(), d.zero()])
-    result = mapping.exp_poisson(zero)
+    zero = TpsaVectorField([d.zero(), d.zero()])
+    result = mapping.exp_grad(zero)
     np.testing.assert_allclose(result.evaluate((2, 3)), mapping.evaluate((2, 3)))
 
 
@@ -220,7 +220,7 @@ def test_logarithm_with_near_identity_map_and_round_trip() -> None:
     # Nilpotent shear; logpb should return a polynomial vector field.
     mapping = TpsaMap([q + p * p, p])
     field = mapping.log_poisson()
-    rebuilt = TpsaMap(d).exp_poisson(field)
+    rebuilt = TpsaMap(d).exp_grad(field)
     np.testing.assert_allclose(rebuilt.evaluate((2, 3)), mapping.evaluate((2, 3)))
     assert isinstance(mapping.log_generator(), Tpsa)
 
@@ -229,7 +229,7 @@ def test_logarithm_rejects_mismatched_guess() -> None:
     mapping = TpsaMap(_d())
     other = Descriptor(variables=('alg_wrong_q', 'alg_wrong_p'), order=5)
     with pytest.raises(ValueError, match='descriptor'):
-        mapping.log_poisson(TpsaMap(other))
+        mapping.log_poisson(TpsaVectorField(other))
 
 
 def test_pullback_polynomial_with_parameters() -> None:
@@ -380,14 +380,14 @@ def test_hamiltonian_field_to_generator_roundtrip_discards_parameter_only_term()
     q, p = d.vars()
     k = d.param('alg_k')
     generator = q * p + k * q + k * k
-    field = TpsaMap.from_generator(generator)
+    field = TpsaVectorField.from_generator(generator)
 
     recovered = field.to_generator()
     assert recovered.descriptor is d
     assert recovered.get((0, 0, 1)) == 0
     assert recovered.get((0, 0, 2)) == 0
     np.testing.assert_allclose(TpsaTensor([recovered]).evaluate((2, 3), parameters=(4,)), (14,))
-    rebuilt = TpsaMap.from_generator(recovered)
+    rebuilt = TpsaVectorField.from_generator(recovered)
     for original, restored in zip(field.flat, rebuilt.flat, strict=True):
         assert original == restored
 
@@ -397,7 +397,7 @@ def test_complex_hamiltonian_field_roundtrip_with_parameter() -> None:
     q, p = d.vars()
     k = d.param('alg_k')
     generator = (1 + 1j) * q * p + 2j * k * q + k * k
-    field = TpsaMap.from_generator(generator)
+    field = TpsaVectorField.from_generator(generator)
     recovered = field.to_generator()
 
     assert isinstance(recovered, ComplexTpsa)
@@ -406,7 +406,9 @@ def test_complex_hamiltonian_field_roundtrip_with_parameter() -> None:
     np.testing.assert_allclose(
         TpsaTensor([recovered]).evaluate((2, 3), parameters=(4,)), (6 + 22j,)
     )
-    for original, restored in zip(field.flat, TpsaMap.from_generator(recovered).flat, strict=True):
+    for original, restored in zip(
+        field.flat, TpsaVectorField.from_generator(recovered).flat, strict=True
+    ):
         assert original == restored
 
 
@@ -416,7 +418,7 @@ def test_to_generator_clears_mixed_parameter_only_monomials() -> None:
     k, ell = d.params()
     generator = q * p + k * q + ell * p + k * ell
 
-    recovered = TpsaMap.from_generator(generator).to_generator()
+    recovered = TpsaVectorField.from_generator(generator).to_generator()
     assert recovered.get((0, 0, 1, 0)) == 0
     assert recovered.get((0, 0, 0, 1)) == 0
     assert recovered.get((0, 0, 1, 1)) == 0
@@ -431,7 +433,7 @@ def test_to_generator_clears_mixed_parameter_only_monomials() -> None:
 def test_to_generator_rejects_nonhamiltonian_field_by_default() -> None:
     d = _d()
     q, _ = d.vars()
-    field = TpsaMap([q, d.zero()])  # Divergence != 0 in the (q,p) plane.
+    field = TpsaVectorField([q, d.zero()])  # Divergence != 0 in the (q,p) plane.
 
     with pytest.raises(ValueError, match='Hamiltonian|non-integrable'):
         field.to_generator()
@@ -444,7 +446,7 @@ def test_to_generator_rejects_nonhamiltonian_field_by_default() -> None:
 def test_to_generator_rejects_complex_nonhamiltonian_field() -> None:
     d = _d()
     q, _ = d.vars()
-    field = TpsaMap([1j * q, d.complex_zero()])
+    field = TpsaVectorField([1j * q, d.complex_zero()])
 
     with pytest.raises(ValueError, match='Hamiltonian|non-integrable'):
         field.to_generator()
@@ -455,7 +457,7 @@ def test_to_generator_detects_generator_order_beyond_descriptor() -> None:
     _, p = d.vars()
     # A Hamiltonian primitive needs degree four, but the descriptor only
     # supports order three. The native integral cannot be a true round trip.
-    field = TpsaMap([p**3, d.zero()])
+    field = TpsaVectorField([p**3, d.zero()])
 
     with pytest.raises(ValueError, match='truncation|higher order'):
         field.to_generator()
@@ -463,7 +465,7 @@ def test_to_generator_detects_generator_order_beyond_descriptor() -> None:
 
 
 def test_to_generator_rejects_invalid_tolerances() -> None:
-    m = TpsaMap(_d())
+    m = TpsaVectorField(_d())
     with pytest.raises(ValueError, match='non-negative'):
         m.to_generator(atol=-1)
     with pytest.raises(ValueError, match='non-negative'):
@@ -474,11 +476,11 @@ def test_scalar_exponential_matches_negative_native_hamiltonian_field() -> None:
     d = _d(parameters=())
     q, _ = d.vars()
     generator = q * q / 2
-    field = TpsaMap.from_generator(generator)
+    field = TpsaVectorField.from_generator(generator)
     identity = TpsaMap(d)
     scalar_action = identity.exp_poisson(generator)
-    field_action = identity.exp_poisson(-field)
-    opposite_action = identity.exp_poisson(field)
+    field_action = identity.exp_grad(-field)
+    opposite_action = identity.exp_grad(field)
 
     np.testing.assert_allclose(scalar_action.evaluate((2, 3)), field_action.evaluate((2, 3)))
     assert not np.allclose(scalar_action.evaluate((2, 3)), opposite_action.evaluate((2, 3)))
@@ -487,7 +489,7 @@ def test_scalar_exponential_matches_negative_native_hamiltonian_field() -> None:
 def test_field_to_vector_compatibility_alias_uses_validation() -> None:
     d = _d(parameters=())
     q, _ = d.vars()
-    m = TpsaMap([q, d.zero()])
+    m = TpsaVectorField([q, d.zero()])
     with pytest.raises(ValueError, match='Hamiltonian|non-integrable'):
         m.to_generator()
     assert m.to_generator(validate=False).descriptor is d
@@ -590,8 +592,8 @@ def test_canonical_labels_are_positional_not_inferred() -> None:
     assert q.poisson_bracket(p).const_part == 1
     assert q_rev.poisson_bracket(p_rev).const_part == -1
     # Core algebra deliberately does NOT validate names or guess conjugacy.
-    assert TpsaMap.from_generator(q**2 / 2).physical_p == q
-    assert TpsaMap.from_generator(q_rev**2 / 2).physical_p == -q_rev
+    assert TpsaVectorField.from_generator(q**2 / 2).physical_p == q
+    assert TpsaVectorField.from_generator(q_rev**2 / 2).physical_p == -q_rev
 
 
 def test_complex_descriptor_relabelling_with_reordered_variables_and_two_parameters() -> None:

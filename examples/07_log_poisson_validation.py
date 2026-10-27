@@ -2,7 +2,7 @@
 
 import numpy as np
 
-from madng_tpsa import Descriptor, TpsaMap
+from madng_tpsa import Descriptor, TpsaMap, TpsaVectorField
 
 
 def close_as_tpsa(left: TpsaMap, right: TpsaMap, tol: float = 1e-9) -> bool:
@@ -24,20 +24,20 @@ q, p = d.vars()
 # An exactly solvable symplectic shear.
 kick = TpsaMap([q, p - 0.01 * q**2])
 log_field = kick.log_poisson()  # Validates the native iteration by default.
-recovered = TpsaMap(d).exp_poisson(log_field)
+recovered = TpsaMap(d).exp_grad(log_field)
 assert close_as_tpsa(kick, recovered)
 print('Kick reconstructs:', close_as_tpsa(kick, recovered))
 
 # log_poisson is more general than log_generator: a vector field can have
 # nonzero divergence and generate a non-symplectic coordinate transformation.
-field = TpsaMap([0.01 * q**2, d.zero()])
-non_symplectic = TpsaMap(d).exp_poisson(field)
+field = TpsaVectorField([0.01 * q**2, d.zero()])
+non_symplectic = TpsaMap(d).exp_grad(field)
 recovered_field = non_symplectic.log_poisson()
-assert close_as_tpsa(non_symplectic, TpsaMap(d).exp_poisson(recovered_field), tol=1e-8)
+assert close_as_tpsa(non_symplectic, TpsaMap(d).exp_grad(recovered_field), tol=1e-8)
 print('Non-Hamiltonian map reconstructs: Success.')
 
 # For a higher-level algorithm that does its own re-exponentiation comparison,
 # the extra check can be omitted deliberately, but not silently.
 unchecked_field = kick.log_poisson(validate=False)
-assert close_as_tpsa(kick, TpsaMap(d).exp_poisson(unchecked_field))
+assert close_as_tpsa(kick, TpsaMap(d).exp_grad(unchecked_field))
 print('Unchecked logarithm explicitly verified: Success.')

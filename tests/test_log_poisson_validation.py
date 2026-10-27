@@ -7,7 +7,7 @@ from typing import Any, cast
 import numpy as np
 import pytest
 
-from madng_tpsa import ComplexTpsa, Descriptor, TpsaMap
+from madng_tpsa import ComplexTpsa, Descriptor, TpsaMap, TpsaVectorField
 
 
 def _assert_maps_close(actual: TpsaMap, expected: TpsaMap, tol: float = 1e-9) -> None:
@@ -38,7 +38,7 @@ def test_logarithm_of_identity_is_zero_field() -> None:
 def test_logarithm_of_polynomial_kick_reconstructs_both_components() -> None:
     mapping = _shear()
     field = mapping.log_poisson()
-    recovered = TpsaMap(mapping.descriptor).exp_poisson(field)
+    recovered = TpsaMap(mapping.descriptor).exp_grad(field)
     _assert_maps_close(recovered, mapping)
     # A scalar generator is an *additional* condition, not a requirement of log_poisson.
     generator = mapping.log_generator()
@@ -49,10 +49,10 @@ def test_logarithm_of_non_hamiltonian_map_is_allowed() -> None:
     d = Descriptor(variables=('log_nonsym_q', 'log_nonsym_p'), order=5)
     q, _ = d.vars()
     # div(F) != 0, so this field cannot be Hamiltonian for canonical (q,p).
-    field = TpsaMap([0.012 * q**2, d.zero()])
-    mapping = TpsaMap(d).exp_poisson(field)
+    field = TpsaVectorField([0.012 * q**2, d.zero()])
+    mapping = TpsaMap(d).exp_grad(field)
     logarithm = mapping.log_poisson()
-    _assert_maps_close(TpsaMap(d).exp_poisson(logarithm), mapping, tol=1e-8)
+    _assert_maps_close(TpsaMap(d).exp_grad(logarithm), mapping, tol=1e-8)
     with pytest.raises(ValueError, match='Hamiltonian|representable|integrab'):
         logarithm.to_generator()
 
@@ -64,7 +64,7 @@ def test_logarithm_of_complex_kick_and_complex_result() -> None:
     logarithm = mapping.log_poisson()
     assert logarithm.is_complex
     assert all(isinstance(t, ComplexTpsa) for t in logarithm.flat)
-    _assert_maps_close(TpsaMap(d).exp_poisson(logarithm), mapping, tol=1e-8)
+    _assert_maps_close(TpsaMap(d).exp_grad(logarithm), mapping, tol=1e-8)
 
 
 def test_parameter_dependent_lie_logarithm() -> None:
@@ -73,9 +73,9 @@ def test_parameter_dependent_lie_logarithm() -> None:
     k = d.param('log_k')
     mapping = TpsaMap([q, p - 0.02 * k * q**2])
     logarithm = mapping.log_poisson()
-    _assert_maps_close(TpsaMap(d).exp_poisson(logarithm), mapping, tol=1e-8)
+    _assert_maps_close(TpsaMap(d).exp_grad(logarithm), mapping, tol=1e-8)
     np.testing.assert_allclose(
-        TpsaMap(d).exp_poisson(logarithm).evaluate((0.1, 0.2), parameters=(0.5,)),
+        TpsaMap(d).exp_grad(logarithm).evaluate((0.1, 0.2), parameters=(0.5,)),
         mapping.evaluate((0.1, 0.2), parameters=(0.5,)),
         atol=1e-9,
     )
@@ -83,8 +83,8 @@ def test_parameter_dependent_lie_logarithm() -> None:
 
 def test_explicit_initial_guess_and_wrong_type() -> None:
     mapping = _shear()
-    zero = TpsaMap([mapping.descriptor.zero(), mapping.descriptor.zero()])
-    _assert_maps_close(TpsaMap(mapping.descriptor).exp_poisson(mapping.log_poisson(zero)), mapping)
+    zero = TpsaVectorField([mapping.descriptor.zero(), mapping.descriptor.zero()])
+    _assert_maps_close(TpsaMap(mapping.descriptor).exp_grad(mapping.log_poisson(zero)), mapping)
     with pytest.raises(TypeError, match='initial_guess'):
         mapping.log_poisson(cast('Any', 42))
 
@@ -100,11 +100,11 @@ def test_validation_rejects_deliberately_corrupted_exponential(
     def inaccurate_exp(self: TpsaMap, _generator: Any) -> TpsaMap:
         return TpsaMap(self.descriptor)
 
-    monkeypatch.setattr(TpsaMap, 'exp_poisson', inaccurate_exp)
+    monkeypatch.setattr(TpsaMap, 'exp_grad', inaccurate_exp)
     with pytest.raises(ValueError, match='logarithm|reconstruct'):
         mapping.log_poisson(validate=True)
     unchecked = mapping.log_poisson(validate=False)
-    assert isinstance(unchecked, TpsaMap)
+    assert isinstance(unchecked, TpsaVectorField)
 
 
 @pytest.mark.parametrize('bad', [-1.0, float('nan'), float('inf')])
@@ -126,4 +126,4 @@ def test_challenging_nonlinear_input_either_reconstructs_or_fails_clearly() -> N
     except ValueError as exc:
         assert 'did not reconstruct' in str(exc)
     else:
-        _assert_maps_close(TpsaMap(d).exp_poisson(field), mapping, tol=1e-8)
+        _assert_maps_close(TpsaMap(d).exp_grad(field), mapping, tol=1e-8)

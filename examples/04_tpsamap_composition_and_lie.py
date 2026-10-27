@@ -1,6 +1,6 @@
 """Composition, inversion, parameters, and Lie-map operations."""
 
-from madng_tpsa import Descriptor, TpsaMap
+from madng_tpsa import Descriptor, TpsaMap, TpsaVectorField
 
 descriptor = Descriptor(
     variables=['q', 'p'],
@@ -65,8 +65,8 @@ print('f =', generator.format('code'))
 print()
 # f = 0.333333 * q**3 * k
 
-field = TpsaMap.from_generator(generator)
-print('MAD-NG Hamiltonian vector field G = -J grad(f):')
+field = TpsaVectorField.from_generator(generator)
+print('MAD-NG Hamiltonian vector field G = -S grad(f):')
 print('G_q =', field[0].format('code'))
 print('G_p =', field[1].format('code'))
 print()

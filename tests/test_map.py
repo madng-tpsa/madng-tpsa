@@ -129,7 +129,7 @@ def test_rejects_duplicate_descriptor() -> None:
 def test_rejects_nested_map_components() -> None:
     d = _descriptor()
     x, px = d.vars()
-    with pytest.raises(ValueError, match='nested'):
+    with pytest.raises(ValueError, match='Nested components require TpsaTensor'):
         TpsaMap(cast('Any', [[x, px]]), descriptor=d)
 
 

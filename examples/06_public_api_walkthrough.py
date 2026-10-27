@@ -6,7 +6,7 @@ transient CFFI pointers beyond the lifetime of their owning TPSAs.
 
 import numpy as np
 
-from madng_tpsa import ComplexTpsa, Descriptor, TpsaMap, TpsaTensor
+from madng_tpsa import ComplexTpsa, Descriptor, TpsaMap, TpsaTensor, TpsaVectorField
 
 d = Descriptor(variables=('q', 'p'), parameters=('k',), order=5, param_order=2)
 q, p = d.vars()
@@ -182,7 +182,7 @@ print(
 print('Map descriptor conversion:', map_.change_descriptor(d).shape)
 print('Map translation:', map_.translate((1, 0)).evaluate((2, 3), parameters=(4,)))
 print('Map pullback:', map_.pullback(q**2).get((0, 4, 0)))
-print('Map composition:', (map_ @ identity))
+print('Map composition:', (map_ << identity))
 
 # Map extension adds a new identity output in descriptor order.
 d_extended = Descriptor(variables=('q', 'p', 'r'), parameters=('k',), order=5)
@@ -196,12 +196,12 @@ print('Mutated map:', modifiable)
 
 # Hamiltonian conversion and Lie conventions.
 generator = k * q**3 / 3
-field = TpsaMap.from_generator(generator)
+field = TpsaVectorField.from_generator(generator)
 recovered = field.to_generator()
 lie_map = identity.exp_poisson(generator)
 np.testing.assert_allclose(
     lie_map.evaluate((0.1, 0.2), parameters=(0.5,)),
-    identity.exp_poisson(-field).evaluate((0.1, 0.2), parameters=(0.5,)),
+    identity.exp_grad(-field).evaluate((0.1, 0.2), parameters=(0.5,)),
 )
 print('Generator round-trip:', recovered)
 print('Vector-field Lie bracket:', field.lie_bracket(field))

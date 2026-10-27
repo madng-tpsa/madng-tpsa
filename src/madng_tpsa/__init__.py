@@ -20,10 +20,11 @@ from .complex_tpsa import ComplexTpsa
 from .descriptor import Descriptor
 from .errors import TpsaError
 from .formatting import format_polynomial
-from .map import TpsaMap, TpsaVectorField, symplectic_unit_matrix
+from .map import TpsaMap, symplectic_unit_matrix
 from .paths import core_library, include_dir
 from .tensor import TpsaTensor
 from .tpsa import Tpsa
+from .vector import TpsaVector, TpsaVectorField
 
 __all__ = [
     'CDEF',
@@ -32,6 +33,7 @@ __all__ = [
     'Tpsa',
     'ComplexTpsa',
     'TpsaTensor',
+    'TpsaVector',
     'TpsaVectorField',
     'TpsaMap',
     'core_library',
