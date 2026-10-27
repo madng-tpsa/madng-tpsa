@@ -1,0 +1,213 @@
+TpsaMap
+=======
+
+:class:`~madng_tpsa.map.TpsaMap` represents a full vector-valued TPSA map.
+It subclasses :class:`~madng_tpsa.vector.TpsaVector` with one component per
+*descriptor variable*. All components share the same descriptor; mixed real
+and complex series are promoted to a complex vector.
+
+Construction and coordinate ordering
+------------------------------------
+
+.. code-block:: python
+
+   from madng_tpsa import Descriptor, TpsaMap
+
+   d = Descriptor(variables=('q', 'p'), parameters=('k',), order=5)
+   q, p = d.vars()
+   k = d.param('k')
+   identity = TpsaMap(d)
+   shifted = TpsaMap([q + k, p], descriptor=d)
+   named = TpsaMap(p=p, q=q + k)  # reordered into descriptor variable order
+   offset = TpsaMap(d, q=0.1)     # first output is q + 0.1
+
+   assert named.component_names == ('q', 'p')
+   assert named.q == q + k
+   assert named.p == p
+
+Each map has exactly ``d.num_vars`` outputs, ordered according to
+``d.variables``. The sequence constructor is **positional**; the keyword
+constructor uses names and orders them by the descriptor. Unknown names are
+rejected. Scalar component values are *offsets from the corresponding identity
+coordinate*, not constant output polynomials. Missing keyword components retain
+the identity. The descriptor can be inferred from TPSA inputs, or supplied
+explicitly for scalar-only construction.
+
+``map.components`` returns the tuple of component TPSAs; ``map.component_names``
+returns the tuple of coordinates;``map.named_components`` is a read-only
+*mapping of names to mutable TPSA objects*. Use positional indexing
+(``map[0]``) or ``map.q`` for access. The names do not establish canonical
+conjugacy.
+
+Conversion and inspection
+-------------------------
+
+.. code-block:: python
+
+   named.const_part                # NumPy array of output constants
+   named.coefficient('q', (1, 0, 1))
+   named.set_coefficient('q', (1, 0, 1), 2.0)
+   complex_map = named.to_complex()
+   copy = named.copy()
+   saved = named.to_dict()
+   restored = TpsaMap.from_dict(saved)
+
+``set_coefficient`` updates the selected component in place. ``const_part`` is
+a writable array-shaped property.
+
+``change_descriptor`` converts a complete map to another compatible descriptor,
+including the output coordinate ordering; ``extend_descriptor`` inserts identity
+components for newly introduced variables. Both use descriptor variable names,
+not merely the number of named_components. ``homogeneous()``, ``truncate()`` and
+``clear_order()`` operate on every component without modifying the original.
+
+Evaluation, Jacobians, Hessians
+-------------------------------
+
+.. code-block:: python
+
+   m = TpsaMap([q**2 + k*q + p, q*p + k], descriptor=d)
+   m.evaluate((2., 3.), parameters=(4.,))  # array([15., 10.])
+   m.evaluate_jacobian((2., 3.), parameters=(4.,))
+   # array([[8., 1.],
+   #        [3., 2.]])
+   J = m.jacobian(wrt='variables')  # Shape (2, 2), TPSA-valued
+   print(J)
+   # TpsaTensor(shape=(2, 2), size=4, values=[2·q + k, 1, p, ...])
+   H = m.hessian(wrt='all')         # Shape (2, 3, 3), TPSA-valued
+   values = m.evaluate_hessian((2., 3.), parameters=(4.,), wrt='all')
+
+Each Jacobian and Hessian is evaluated in the original descriptor named_components.
+
+The inherited generic methods
+:meth:`~madng_tpsa.tensor.TpsaTensor.partial_derivative` and
+:meth:`~madng_tpsa.tensor.TpsaTensor.derivative_tensor` cover arbitrary mixed
+partial derivatives and preserve parameter dependence. See :doc:`tpsa_tensor`
+and ``examples/05_tpsamap_derivatives.py``.
+
+Composition, translation and pullback
+-------------------------------------
+
+``left << right`` and ``left.compose(right)`` mean :math:`left\circ right`.
+Descriptor parameters are automatically carried through substitution unchanged:
+
+.. math::
+
+   f(q,p;k)\circ g(q,p;k) = f(g_q(q,p;k),g_p(q,p;k);k).
+
+.. code-block:: python
+
+   left = TpsaMap([q + k, p], descriptor=d)
+   right = TpsaMap([2*q, p], descriptor=d)
+   combined = left << right          # (2*q + k, p)
+   translated = left.translate((1., 0.))  # left(q + 1, p; k)
+   observable = q**2 + p
+   transformed = right.pullback(observable)  # observable composed with right
+
+Translation shifts the **inputs** rather than adding to the outputs. Native
+MAD-NG translation is used for parameter-free descriptors; with parameters,
+composition with their identity substitutions preserves symbolic dependence.
+
+Inversion
+---------
+
+.. code-block:: python
+
+   m = TpsaMap([q + p**2, p], descriptor=d)
+   m_inv = m.inverse()
+   partly_inverted = m.partial_inverse((True, False))
+
+These use the native formal inverse around an expansion point with zero
+*constant coefficients*. The required linear block must be invertible. Note
+that zero numerical constant coefficients do not exclude parameter-dependent
+terms; parameters are treated symbolically. Inversion is not a general-purpose
+numerical solver at an arbitrary point.
+
+Hamiltonian fields and Lie maps
+-------------------------------
+
+Hamiltonian operations assume an **even** number of descriptor variables,
+ordered in canonical pairs ``(q1, p1, q2, p2, ...)``. Names are not checked for
+physical meaning. Descriptor parameters are not canonical named_components.
+
+.. code-block:: python
+
+   f = k * q**3 / 3
+   lie_map = TpsaMap(d).exp_poisson(f)
+   field = TpsaVectorField.from_generator(f)
+   same_lie_map = TpsaMap(d).exp_fgrad(field)
+   logarithmic_field = lie_map.log_fgrad()
+   logarithmic_scalar = lie_map.log_poisson()
+
+``exp_poisson()`` and ``log_fgrad()`` act on the corresponding Lie operators.
+The native logarithm uses an iterative algorithm and is principally intended
+for maps close to the identity. A normal return from MAD-NG does **not** prove
+that it converged.
+
+By default, ``log_fgrad(validate=True)`` checks the **full retained TPSA
+coefficient map** after re-exponentiating the returned vector field. The
+comparison uses ``atol=1e-12`` and ``rtol=1e-10`` by default, and raises
+``ValueError`` if the map cannot be reconstructed at those tolerances. The
+check does not require symplecticity or even a Hamiltonian vector field.
+
+.. code-block:: python
+
+   field = lie_map.log_fgrad()  # Checks exp_poisson(field) == lie_map
+   unchecked = lie_map.log_fgrad(validate=False)
+
+Use ``validate=False`` to override this; make sure the usage performs its
+**own** higher-level map reconstruction or tolerance and order comparison.
+It avoids a potentially expensive extra exponential, but the caller then
+owns convergence assessment. We deliberately keep ``validate=True`` as the
+public API default, including in ``log_poisson()``, which *also* checks
+Hamiltonian integrability. Passing an ``initial_guess`` supplies the native
+iteration with a vector-field guess, not a reference coordinate map.
+
+Truncation can prevent exact generator recovery; a successful numerical
+round trip is not a proof of existence or uniqueness of a global logarithm.
+
+A TPSA map known to order :math:`N` generally allows verification of its
+symplectic condition only through order :math:`N-1` because derivatives lower
+polynomial order. ``TpsaMap`` supplies the algebraic primitives for normal-form
+work, not eigenvector normalisation, resonance classification, or RDT extraction.
+
+Subclass behaviour
+------------------
+
+Generic map operations may produce a base ``TpsaVector`` or ``TpsaTensor``
+instead of preserving an arbitrary subclass whose auxiliary state has no
+defined transformation.
+
+
+Canonical sign convention and composition operators
+----------------------------------------------------
+
+For canonical coordinate pairs ``(q1, p1, q2, p2, ...)``, define the
+antisymmetric matrix ``S`` as block-diagonal copies of ``[[0, 1], [-1, 0]]``.
+
+``M << N`` means ``M.compose(N)`` (ordinary composition), while ``M >> N``
+means ``N.compose(M)`` (Dragt's reversed ordering). For an arbitrary-rank
+TPSA tensor ``T`` or a scalar observable ``f``, the following are equivalent:
+
+.. code-block:: python
+
+   T << M  # T.compose(M)
+   M >> T  # T.compose(M)
+   f << M  # M.pullback(f), i.e. f composed with M
+   M >> f  # M.pullback(f), i.e. f composed with M
+
+The operators represent **ordinary substitution**, never an implicit inverse
+pullback. ``f >> M`` is unsupported; use ``M.inverse().pullback(f)`` explicitly
+when an inverse pullback is intended.
+
+``M ^ n`` is n-fold composition with ``n >= 0``; it is **not** a
+componentwise polynomial power. ``@`` denotes tensor matrix multiplication.
+
+
+API reference
+-------------
+
+.. autoclass:: madng_tpsa.map.TpsaMap
+   :members:
+   :inherited-members:
+   :special-members: __getitem__, __setitem__, __getattr__, __len__, __iter__, __contains__, __neg__, __add__, __sub__, __mul__, __truediv__, __matmul__, __lshift__, __rshift__, __xor__
