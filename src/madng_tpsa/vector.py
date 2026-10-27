@@ -776,6 +776,33 @@ class TpsaVectorField(TpsaVector[TpsaSeriesT]):
     # === TPSA Operations ===
     # =======================
 
+    def act_on(self, other: Tpsa | ComplexTpsa) -> Tpsa | ComplexTpsa:
+        """Apply the directional derivative on ``other``: F^i ∂_i f."""
+        if not isinstance(other, (Tpsa, ComplexTpsa)):
+            err_mess = 'Can only apply directional derivative on scalar field!'
+            raise ValueError(err_mess)
+        left, right, complex_needed = _align_descriptors(
+            self, other, extend_left=True, extend_right=False
+        )
+        if complex_needed:
+            result = self.descriptor.complex_zero(order=self.descriptor.order)
+            protected_func = lib.madng_ctpsa_protected_map_scalar_pair_call
+            func = lib.mad_ctpsa_fgrad
+        else:
+            result = self.descriptor.zero(order=self.descriptor.order)
+            protected_func = lib.madng_tpsa_protected_map_scalar_pair_call
+            func = lib.mad_tpsa_fgrad
+        status = protected_func(
+            func,
+            left.num_vars,
+            left.pointer_array,
+            right.ptr,
+            result.ptr,
+        )
+        if status:
+            left.flat[0]._raise_mad_error()
+        return result
+
     def lie_bracket(
         self, other: TpsaVectorField[MapSeriesT]
     ) -> TpsaVectorField[Tpsa] | TpsaVectorField[ComplexTpsa]:
@@ -808,10 +835,13 @@ class TpsaVectorField(TpsaVector[TpsaSeriesT]):
         )
         if status:
             self.flat[0]._raise_mad_error()
-        return TpsaVectorField(result)
+        return cast('TpsaVectorField[Tpsa] | TpsaVectorField[ComplexTpsa]', self._new_like(result))
+
+    # TODO: G.lie_transform(F) = exp(lie_bracket(F, .)) G
 
     def compose(self, other: TpsaMap[MapSeriesT]) -> TpsaVector[Tpsa] | TpsaVector[ComplexTpsa]:
         """Component substitution of a vector field with a map."""
+        # NEED to return a TpsaVector as this is substitution, not composition
         return TpsaVector(super().compose(other).flat)
 
     # ====================

@@ -101,6 +101,10 @@ class TpsaMap(TpsaVector[TpsaSeriesT]):
     __slots__ = '_params'
     _params: tuple[TpsaSeries, ...]
 
+    # ===================================
+    # === Construction and Access API ===
+    # ===================================
+
     @staticmethod
     def _scalar_component(
         descriptor: Descriptor, index: int | str, value: Scalar
@@ -113,10 +117,18 @@ class TpsaMap(TpsaVector[TpsaSeriesT]):
             params = tuple(ComplexTpsa.from_tpsa(t) for t in params)
         self._params = params
 
+    # ==================
+    # === Attributes ===
+    # ==================
+
     @property
     def pointer_array_with_params(self) -> ffi.CData:
         """Return a full C array of pointers to the map's TPSAs, including parameters."""
         return ffi.new('void*[]', [t.ptr for t in (*self.flat, *self._params)])
+
+    # ======================
+    # === Map Operations ===
+    # ======================
 
     def non_symplectic_residual(
         self,
@@ -165,10 +177,6 @@ class TpsaMap(TpsaVector[TpsaSeriesT]):
                 )
 
         return result
-
-    def compose(self, other: TpsaMap[MapSeriesT]) -> TpsaMap[Tpsa] | TpsaMap[ComplexTpsa]:
-        """Compose full coordinate maps, preserving the TpsaMap result type."""
-        return cast('TpsaMap[Tpsa] | TpsaMap[ComplexTpsa]', super().compose(other))
 
     # We define the composition operators here, because every composition
     # always involves a map. We use << (lshift) to represent regular
@@ -540,3 +548,11 @@ class TpsaMap(TpsaVector[TpsaSeriesT]):
     def to_complex(self) -> TpsaMap[ComplexTpsa]:
         """Promote the components, preserving the TpsaMap container. Only for typing."""
         return cast('TpsaMap[ComplexTpsa]', super().to_complex())
+
+    # ====================
+    # === Typing Casts ===
+    # ====================
+
+    def compose(self, other: TpsaMap[MapSeriesT]) -> TpsaMap[Tpsa] | TpsaMap[ComplexTpsa]:
+        """Compose full coordinate maps, preserving the TpsaMap result type."""
+        return cast('TpsaMap[Tpsa] | TpsaMap[ComplexTpsa]', super().compose(other))

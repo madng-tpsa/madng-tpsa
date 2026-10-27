@@ -133,6 +133,14 @@ int madng_tpsa_protected_map_to_scalar_call(
     tpsa_t *c
 ) {MADNG_PROTECTED_CALL(function(na, ma, c));}
 
+int madng_tpsa_protected_map_scalar_pair_call(
+    madng_tpsa_map_scalar_pair_fn function,
+    ssz_t na,
+    const tpsa_t *ma[],
+    const tpsa_t *b,
+    tpsa_t *c
+) {MADNG_PROTECTED_CALL(function(na, ma, b, c));}
+
 int madng_tpsa_protected_map_translate_call(
     madng_tpsa_map_translate_fn function,
     ssz_t na,
@@ -198,6 +206,14 @@ int madng_ctpsa_protected_map_to_scalar_call(
     const ctpsa_t *ma[],
     ctpsa_t *c
 ) {MADNG_PROTECTED_CALL(function(na, ma, c));}
+
+int madng_ctpsa_protected_map_scalar_pair_call(
+    madng_ctpsa_map_scalar_pair_fn function,
+    ssz_t na,
+    const ctpsa_t *ma[],
+    const ctpsa_t *b,
+    ctpsa_t *c
+) {MADNG_PROTECTED_CALL(function(na, ma, b, c));}
 
 int madng_ctpsa_protected_map_translate_call(
     madng_ctpsa_map_translate_fn function,

@@ -102,6 +102,20 @@ typedef void (*madng_ctpsa_map_to_scalar_fn)(
     ctpsa_t *c
 );
 
+/* fgrad */
+typedef void (*madng_tpsa_map_scalar_pair_fn)(
+    ssz_t na,
+    const tpsa_t *ma[],
+    const tpsa_t *b,
+    tpsa_t *c
+);
+typedef void (*madng_ctpsa_map_scalar_pair_fn)(
+    ssz_t na,
+    const ctpsa_t *ma[],
+    const ctpsa_t *b,
+    ctpsa_t *c
+);
+
 /* translate */
 typedef void (*madng_tpsa_map_translate_fn)(
     ssz_t na,
@@ -198,6 +212,13 @@ int madng_tpsa_protected_map_to_scalar_call(
     const tpsa_t *ma[],
     tpsa_t *c
 );
+int madng_tpsa_protected_map_scalar_pair_call(
+    madng_tpsa_map_scalar_pair_fn function,
+    ssz_t na,
+    const tpsa_t *ma[],
+    const tpsa_t *b,
+    tpsa_t *c
+);
 int madng_tpsa_protected_map_translate_call(
     madng_tpsa_map_translate_fn function,
     ssz_t na,
@@ -254,6 +275,13 @@ int madng_ctpsa_protected_map_to_scalar_call(
     madng_ctpsa_map_to_scalar_fn function,
     ssz_t na,
     const ctpsa_t *ma[],
+    ctpsa_t *c
+);
+int madng_ctpsa_protected_map_scalar_pair_call(
+    madng_ctpsa_map_scalar_pair_fn function,
+    ssz_t na,
+    const ctpsa_t *ma[],
+    const ctpsa_t *b,
     ctpsa_t *c
 );
 int madng_ctpsa_protected_map_translate_call(

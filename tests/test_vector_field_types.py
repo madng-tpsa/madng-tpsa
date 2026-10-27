@@ -205,3 +205,11 @@ def test_descriptor_extension_distinguishes_map_and_field():
     # Field: newly introduced outputs are zero.
     assert field2.y.is_zero()
     assert field2.py.is_zero()
+
+
+def test_act_on():
+    desc = Descriptor(variables=['x', 'px'], parameters=['k'], order=3, param_order=3)
+    x, px = desc.vars()
+    field = TpsaVectorField.from_generator(px - x**2 + 3 * x * px)
+    f = field.act_on(7 * px**2 - 3 * x**3 + 2 * x * px)
+    assert f == -2 * px + 5 * x**2 - 28 * x * px + 42 * px**2 + 27 * x**3

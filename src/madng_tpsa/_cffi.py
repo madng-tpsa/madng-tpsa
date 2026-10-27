@@ -188,6 +188,7 @@ CDEF = """
      */
     void mad_tpsa_vec2fld(int na, const void* a, void* mc[]);
     void mad_tpsa_fld2vec(int na, const void* ma[], void* c);
+    void mad_tpsa_fgrad(int na, const void* ma[], const void* b, void* c);
     void mad_tpsa_liebra(int na, const void* ma[], const void* mb[], void* mc[]);
     void mad_tpsa_exppb(int na, const void* ma[], int nb, const void* mb[], void* mc[]);
     void mad_tpsa_logpb(int na, const void* ma[], const void* mb[], void* mc[]);
@@ -202,6 +203,7 @@ CDEF = """
     /* Native complex map operations. */
     void mad_ctpsa_vec2fld(int na, const void* a, void* mc[]);
     void mad_ctpsa_fld2vec(int na, const void* ma[], void* c);
+    void mad_ctpsa_fgrad(int na, const void* ma[], const void* b, void* c);
     void mad_ctpsa_liebra(int na, const void* ma[], const void* mb[], void* mc[]);
     void mad_ctpsa_exppb(int na, const void* ma[], int nb, const void* mb[], void* mc[]);
     void mad_ctpsa_logpb(int na, const void* ma[], const void* mb[], void* mc[]);
@@ -256,6 +258,12 @@ CDEF = """
     typedef void (*madng_ctpsa_map_to_scalar_fn)(int na, const void* ma[], void* c);
     int madng_tpsa_protected_map_to_scalar_call(madng_tpsa_map_to_scalar_fn function, int na, const void* ma[], void* c);
     int madng_ctpsa_protected_map_to_scalar_call(madng_ctpsa_map_to_scalar_fn function, int na, const void* ma[], void* c);
+
+    /* fgrad */
+    typedef void (*madng_tpsa_map_scalar_pair_fn)(int na, const void* ma[], const void* b, void* c);
+    typedef void (*madng_ctpsa_map_scalar_pair_fn)(int na, const void* ma[], const void* b, void* c);
+    int madng_tpsa_protected_map_scalar_pair_call(madng_tpsa_map_scalar_pair_fn function, int na, const void* ma[], const void* b, void* c);
+    int madng_ctpsa_protected_map_scalar_pair_call(madng_ctpsa_map_scalar_pair_fn function, int na, const void* ma[], const void* b, void* c);
 
     /* translate */
     typedef void (*madng_tpsa_map_translate_fn)(int na, const void* ma[], int nb, const double tb[], void* mc[]);
