@@ -13,6 +13,7 @@ from typing import Any
 
 import cffi
 
+from ._generated_cdef import CDEF as GENERATED_CDEF
 from .paths import core_library
 
 CDEF = """
@@ -186,32 +187,24 @@ CDEF = """
      * MAD-NG's ssz_t and idx_t are both int32_t. The bindings already use
      * plain int for these ABI arguments.
      */
-    void mad_tpsa_vec2fld(int na, const void* a, void* mc[]);
     void mad_tpsa_fld2vec(int na, const void* ma[], void* c);
     void mad_tpsa_fgrad(int na, const void* ma[], const void* b, void* c);
-    void mad_tpsa_liebra(int na, const void* ma[], const void* mb[], void* mc[]);
     void mad_tpsa_exppb(int na, const void* ma[], int nb, const void* mb[], void* mc[]);
     void mad_tpsa_logpb(int na, const void* ma[], const void* mb[], void* mc[]);
     unsigned char mad_tpsa_mord(int na, const void* ma[], _Bool hi);
     double mad_tpsa_mnrm(int na, const void* ma[]);
-    void mad_tpsa_minv(int na, const void* ma[], int nb, void* mc[]);
     void mad_tpsa_pminv(int na, const void* ma[], int nb, void* mc[], int select[]);
-    void mad_tpsa_compose(int na, const void* ma[], int nb, const void* mb[], void* mc[]);
     void mad_tpsa_translate(int na, const void* ma[], int nb, const double tb[], void* mc[]);
     void mad_tpsa_eval(int na, const void* ma[], int nb, const double tb[], double tc[]);
 
     /* Native complex map operations. */
-    void mad_ctpsa_vec2fld(int na, const void* a, void* mc[]);
     void mad_ctpsa_fld2vec(int na, const void* ma[], void* c);
     void mad_ctpsa_fgrad(int na, const void* ma[], const void* b, void* c);
-    void mad_ctpsa_liebra(int na, const void* ma[], const void* mb[], void* mc[]);
     void mad_ctpsa_exppb(int na, const void* ma[], int nb, const void* mb[], void* mc[]);
     void mad_ctpsa_logpb(int na, const void* ma[], const void* mb[], void* mc[]);
     unsigned char mad_ctpsa_mord(int na, const void* ma[], _Bool hi);
     double mad_ctpsa_mnrm(int na, const void* ma[]);
-    void mad_ctpsa_minv(int na, const void* ma[], int nb, void* mc[]);
     void mad_ctpsa_pminv(int na, const void* ma[], int nb, void* mc[], int select[]);
-    void mad_ctpsa_compose(int na, const void* ma[], int nb, const void* mb[], void* mc[]);
     void mad_ctpsa_translate(int na, const void* ma[], int nb, const double _Complex tb[], void* mc[]);
     void mad_ctpsa_eval(int na, const void* ma[], int nb, const double _Complex tb[], double _Complex tc[]);
 
@@ -286,4 +279,5 @@ CDEF = """
 
 ffi = cffi.FFI()
 ffi.cdef(CDEF)
+ffi.cdef(GENERATED_CDEF)
 lib: Any = ffi.dlopen(core_library())

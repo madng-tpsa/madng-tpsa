@@ -23,6 +23,7 @@ import numpy as np
 from ._cffi import ffi, lib
 from ._typing import TpsaSeriesT
 from .complex_tpsa import ComplexTpsa
+from .madng_calls import MINV, new_components
 from .tensor import TpsaTensor, _align_descriptors
 from .tpsa import Tpsa
 from .vector import TpsaVector, TpsaVectorField
@@ -124,6 +125,8 @@ class TpsaMap(TpsaVector[TpsaSeriesT]):
     @property
     def pointer_array_with_params(self) -> ffi.CData:
         """Return a full C array of pointers to the map's TPSAs, including parameters."""
+        if not self.num_params:
+            return self.pointer_array
         return ffi.new('void*[]', [t.ptr for t in (*self.flat, *self._params)])
 
     # ======================
@@ -283,31 +286,19 @@ class TpsaMap(TpsaVector[TpsaSeriesT]):
         if np.linalg.matrix_rank(jac) < self.num_vars:
             err_mess = 'Cannot invert map: the linear Jacobian is singular'
             raise ValueError(err_mess)
+        result = new_components(self, self.num_vars)
+        # MAD-NG receives parameter entries as well as variable entries.
+        target_params = list(self.descriptor.params())
         if self.is_complex:
-            result = [
-                self.descriptor.complex_zero(order=self.descriptor.order)
-                for _ in range(self.num_vars)
-            ]
-            target_params = [ComplexTpsa.from_tpsa(t) for t in self.descriptor.params()]
-            protected_func = lib.madng_ctpsa_protected_map_inverse_call
-            func = lib.mad_ctpsa_minv
-        else:
-            result = [
-                self.descriptor.zero(order=self.descriptor.order) for _ in range(self.num_vars)
-            ]
-            target_params = list(self.descriptor.params())
-            protected_func = lib.madng_tpsa_protected_map_inverse_call
-            func = lib.mad_tpsa_minv
+            target_params = [ComplexTpsa.from_tpsa(t) for t in target_params]
         output = (*result, *target_params)
-        status = protected_func(
-            func,
+        MINV.call_native(
+            self,
             self.num_vars + self.num_params,
             self.pointer_array_with_params,
             self.num_vars,
             ffi.new('void*[]', [t.ptr for t in output]),
         )
-        if status:
-            self.flat[0]._raise_mad_error()
         return cast('TpsaMap[TpsaSeriesT]', self._new_like(result))
 
     def partial_inverse(self, select: Sequence[SelectionValue]) -> TpsaMap[TpsaSeriesT]:

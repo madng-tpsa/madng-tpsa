@@ -309,4 +309,6 @@ int madng_ctpsa_protected_map_eval_call(
 const char *madng_tpsa_last_error_location(void);
 const char *madng_tpsa_last_error_message(void);
 
+#include "madng_panic_generated.h" // auto-generated wrapper declarations
+
 #endif // _MADNG_PANIC_H

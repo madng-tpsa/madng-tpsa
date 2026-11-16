@@ -13,6 +13,9 @@ src/madng_tpsa/lib/*.so
 src/madng_tpsa/lib/*.so.*
 src/madng_tpsa/lib/*.dylib
 src/madng_tpsa/_version.py
+src/madng_tpsa/_generated_cdef.py
+native/madng_panic_generated.h
+native/madng_panic_generated.inc
 __pycache__/
 *.py[cod]
 *.sw[op]

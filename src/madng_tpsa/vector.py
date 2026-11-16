@@ -30,6 +30,7 @@ from ._typing import TpsaSeriesT
 from .complex_tpsa import ComplexTpsa
 from .descriptor import Descriptor
 from .formatting import format_coord, format_polynomial
+from .madng_calls import LIEBRA, VEC2FLD
 from .tensor import TpsaTensor, _align_descriptors
 from .tpsa import Tpsa
 
@@ -666,24 +667,7 @@ class TpsaVectorField(TpsaVector[TpsaSeriesT]):
         if descriptor.num_vars % 2:
             err_mess = 'Hamiltonian fields require an even number of variables'
             raise ValueError(err_mess)
-        if isinstance(generator, ComplexTpsa):
-            output = [
-                descriptor.complex_zero(order=descriptor.order) for _ in range(descriptor.num_vars)
-            ]
-            protected_func = lib.madng_ctpsa_protected_scalar_to_map_call
-            func = lib.mad_ctpsa_vec2fld
-        else:
-            output = [descriptor.zero(order=descriptor.order) for _ in range(descriptor.num_vars)]
-            protected_func = lib.madng_tpsa_protected_scalar_to_map_call
-            func = lib.mad_tpsa_vec2fld
-        status = protected_func(
-            func,
-            descriptor.num_vars,
-            generator.ptr,
-            ffi.new('void*[]', [t.ptr for t in output]),
-        )
-        if status:
-            generator._raise_mad_error()
+        output = VEC2FLD.fast_call(generator, na=descriptor.num_vars)
         return cast('TpsaVectorField[Tpsa] | TpsaVectorField[ComplexTpsa]', TpsaVectorField(output))
 
     def to_generator(
@@ -810,31 +794,7 @@ class TpsaVectorField(TpsaVector[TpsaSeriesT]):
         if not isinstance(other, TpsaVectorField):
             err_mess = f'Can only take Lie bracket with another TpsaVectorField! Got {type(other)}'
             raise TypeError(err_mess)
-        left, right, complex_needed = _align_descriptors(
-            self, other, extend_left=True, extend_right=True
-        )
-        if complex_needed:
-            result = [
-                left.descriptor.complex_zero(order=left.descriptor.order)
-                for _ in range(left.num_vars)
-            ]
-            protected_func = lib.madng_ctpsa_protected_map_pair_call
-            func = lib.mad_ctpsa_liebra
-        else:
-            result = [
-                left.descriptor.zero(order=left.descriptor.order) for _ in range(left.num_vars)
-            ]
-            protected_func = lib.madng_tpsa_protected_map_pair_call
-            func = lib.mad_tpsa_liebra
-        status = protected_func(
-            func,
-            left.num_vars,
-            left.pointer_array,
-            right.pointer_array,
-            ffi.new('void*[]', [t.ptr for t in result]),
-        )
-        if status:
-            self.flat[0]._raise_mad_error()
+        result = LIEBRA.fast_call(self, other)
         return cast('TpsaVectorField[Tpsa] | TpsaVectorField[ComplexTpsa]', self._new_like(result))
 
     # TODO: G.lie_transform(F) = exp(lie_bracket(F, .)) G

@@ -1,0 +1,439 @@
+"""Compile and execute the generated C wrappers through CFFI.
+
+These tests use a deliberately small fake TPSA native library; they do not
+exercise the MAD-NG algorithms themselves.
+"""
+# ruff: noqa
+
+from __future__ import annotations
+
+import subprocess
+import textwrap
+from pathlib import Path
+
+import cffi
+import pytest
+
+from madng_tpsa.madng_function import MadngFunction, generate_headers
+
+HEADERS = [
+    'void mad_tpsa_logxdy(const tpsa_t *x, const tpsa_t *y, tpsa_t *r);',
+    'void mad_tpsa_liebra(ssz_t na, const tpsa_t *ma[], const tpsa_t *mb[], tpsa_t *mc[]);',
+    'void mad_tpsa_compose(ssz_t na, const tpsa_t *ma[], ssz_t nb, const tpsa_t *mb[], tpsa_t *mc[]);',
+    'void mad_tpsa_translate(ssz_t na, const tpsa_t *ma[], ssz_t nb, const num_t tb[], tpsa_t *mc[]);',
+    'void mad_tpsa_eval(ssz_t na, const tpsa_t *ma[], ssz_t nb, const num_t tb[], num_t tc[]);',
+    'ord_t mad_tpsa_mord(ssz_t na, const tpsa_t *ma[], log_t hi);',
+    'void mad_tpsa_axpsqrtbpcx2(const tpsa_t *x, num_t a, num_t b, num_t c, tpsa_t *r);',
+    'void mad_tpsa_minv(ssz_t na, const tpsa_t *ma[], ssz_t nb, tpsa_t *mc[]);',
+]
+
+
+def build_native(tmp: Path):
+    prototypes = [MadngFunction(s) for s in HEADERS]
+    cdef, header, source = generate_headers(prototypes)
+    ffi = cffi.FFI()
+    ffi.cdef(
+        cdef
+        + """
+        void *make_tpsa(double v);
+        void *make_ctpsa(double v);
+        double get_tpsa(const void *p);
+        void free_tpsa(void *p);
+        const char *madng_tpsa_last_error_location(void);
+        const char *madng_tpsa_last_error_message(void);
+    """
+    )
+    code = textwrap.dedent(r"""
+        #include <setjmp.h>
+        #include <stdlib.h>
+        typedef int ssz_t;
+        typedef int idx_t;
+        typedef _Bool log_t;
+        typedef unsigned char ord_t;
+        typedef double num_t;
+        typedef struct { double value; } tpsa_t;
+        typedef struct { double value; } ctpsa_t;
+        typedef void(*handler_t)(const char*,const char*);
+        static _Thread_local handler_t current_handler;
+        static _Thread_local handler_t madng_panic_previous_error_handler;
+        static _Thread_local jmp_buf madng_panic_environment;
+        static handler_t madng_tpsa_set_error_handler(handler_t h) {
+            handler_t old=current_handler; current_handler=h; return old;
+        }
+        static void madng_panic_restore_error_handler(void) {
+            madng_tpsa_set_error_handler(madng_panic_previous_error_handler);
+        }
+        static void madng_panic_longjmp(const char *location, const char *message) {
+            (void)location; (void)message;
+            longjmp(madng_panic_environment,1);
+        }
+        const char *madng_tpsa_last_error_location(void) {return "test";}
+        const char *madng_tpsa_last_error_message(void) {return "deliberately failed";}
+        void *make_tpsa(double v) {tpsa_t *p=malloc(sizeof(*p));p->value=v;return p;}
+        void *make_ctpsa(double v) {ctpsa_t *p=malloc(sizeof(*p));p->value=v;return p;}
+        double get_tpsa(const void *p) {return ((const tpsa_t *)p)->value;}
+        void free_tpsa(void *p) {free(p);}
+        #define MADNG_PROTECTED_CALL(call)                                                           \
+        do {                                                                                         \
+            /* Always restore the caller's handler, whether MAD-NG returns or panics. */             \
+            madng_panic_previous_error_handler = madng_tpsa_set_error_handler(madng_panic_longjmp);  \
+            if (setjmp(madng_panic_environment) == 0) {                                              \
+                call;                                                                                \
+                madng_panic_restore_error_handler();                                                 \
+                return 0;                                                                            \
+            }                                                                                        \
+            madng_panic_restore_error_handler();                                                     \
+            return 1;                                                                                \
+        } while (0)
+    """)
+    code += (
+        '\n'
+        + header
+        + '\n'
+        + textwrap.dedent("""
+        void mad_tpsa_logxdy(const tpsa_t *x, const tpsa_t *y, tpsa_t *r) {
+            r->value = x->value - y->value;
+        }
+        void mad_ctpsa_logxdy(const ctpsa_t *x, const ctpsa_t *y, ctpsa_t *r) {
+            r->value = 100 + x->value - y->value;
+        }
+        void mad_tpsa_liebra(ssz_t n, const tpsa_t *a[], const tpsa_t *b[], tpsa_t *c[]) {
+            for(int i=0;i<n;i++) c[i]->value=a[i]->value-b[i]->value;
+        }
+        void mad_ctpsa_liebra(ssz_t n, const ctpsa_t *a[], const ctpsa_t *b[], ctpsa_t *c[]) {
+            for(int i=0;i<n;i++) c[i]->value=100+a[i]->value-b[i]->value;
+        }
+        void mad_tpsa_compose(ssz_t na, const tpsa_t *a[], ssz_t nb, const tpsa_t *b[], tpsa_t *c[]) {
+            for(int i=0;i<na;i++) c[i]->value=a[i]->value+b[i%nb]->value;
+        }
+        void mad_ctpsa_compose(ssz_t na, const ctpsa_t *a[], ssz_t nb, const ctpsa_t *b[], ctpsa_t *c[]) {
+            for(int i=0;i<na;i++) c[i]->value=100+a[i]->value+b[i%nb]->value;
+        }
+        void mad_tpsa_translate(ssz_t na, const tpsa_t *a[], ssz_t nb, const num_t tb[], tpsa_t *c[]) {
+            for(int i=0;i<na;i++) c[i]->value=a[i]->value+tb[i%nb];
+        }
+        void mad_ctpsa_translate(ssz_t na, const ctpsa_t *a[], ssz_t nb, const num_t tb[], ctpsa_t *c[]) {
+            for(int i=0;i<na;i++) c[i]->value=100+a[i]->value+tb[i%nb];
+        }
+        void mad_tpsa_eval(ssz_t na, const tpsa_t *a[], ssz_t nb, const num_t tb[], num_t tc[]) {
+            for(int i=0;i<na;i++) tc[i]=a[i]->value+tb[i%nb];
+        }
+        void mad_ctpsa_eval(ssz_t na, const ctpsa_t *a[], ssz_t nb, const num_t tb[], num_t tc[]) {
+            for(int i=0;i<na;i++) tc[i]=100+a[i]->value+tb[i%nb];
+        }
+        ord_t mad_tpsa_mord(ssz_t na, const tpsa_t *a[], log_t hi) { (void)a; return na+hi; }
+        ord_t mad_ctpsa_mord(ssz_t na, const ctpsa_t *a[], log_t hi) { (void)a; return na+hi+100; }
+        void mad_tpsa_axpsqrtbpcx2(const tpsa_t *x, num_t a, num_t b, num_t c, tpsa_t *r) {
+            if(a<0) current_handler("here","bad input");
+            r->value=x->value+a+b+c;
+        }
+        void mad_ctpsa_axpsqrtbpcx2(const ctpsa_t *x, num_t a, num_t b, num_t c, ctpsa_t *r) {
+            if(a<0) current_handler("here","bad input");
+            r->value=100+x->value+a+b+c;
+        }
+        void mad_tpsa_minv(ssz_t na, const tpsa_t *a[], ssz_t nb, tpsa_t *c[]) {
+            for(int i=0;i<nb;i++) c[i]->value=-a[i%na]->value;
+        }
+        void mad_ctpsa_minv(ssz_t na, const ctpsa_t *a[], ssz_t nb, ctpsa_t *c[]) {
+            for(int i=0;i<nb;i++) c[i]->value=-100-a[i%na]->value;
+        }
+    """)
+    )
+    code += '\n' + source + '\n'
+    source_path = Path(tmp, 'test.c')
+    source_path.write_text(code)
+    library_path = Path(tmp, 'libtest.so')
+    subprocess.run(
+        [
+            'cc',
+            '-std=c11',
+            '-O2',
+            '-Wall',
+            '-Werror',
+            '-shared',
+            '-fPIC',
+            str(source_path),
+            '-o',
+            str(library_path),
+        ],
+        check=True,
+    )
+    lib = ffi.dlopen(str(library_path))
+    functions = {
+        MadngFunction(s).name: MadngFunction(
+            s,
+            ffi=ffi,
+            lib=lib,
+            array_sizes={'mc': 'na'}
+            if 'compose' in s
+            else (
+                {'mc': 'na'}
+                if 'translate' in s
+                else ({'tc': 'na'} if 'mad_tpsa_eval' in s else None)
+            ),
+        )
+        for s in HEADERS
+    }
+    return ffi, lib, functions
+
+
+@pytest.fixture(scope='module')
+def native(tmp_path_factory):
+    return build_native(tmp_path_factory.mktemp('compiled'))
+
+
+class Descriptor:
+    def __init__(self, ffi, lib, *, variables=('x', 'px'), parameters=(), order=4):
+        self.ffi, self.lib = ffi, lib
+        self.variables, self.parameters, self.order = variables, parameters, order
+        self.union_calls = 0
+
+    def zero(self, *, order=None):
+        assert order is None or order <= self.order
+        return Tpsa(self.ffi.gc(self.lib.make_tpsa(0), self.lib.free_tpsa), self)
+
+    def complex_zero(self, *, order=None):
+        assert order is None or order <= self.order
+        return ComplexTpsa(self.ffi.gc(self.lib.make_ctpsa(0), self.lib.free_tpsa), self)
+
+    def union(self, other):
+        self.union_calls += 1
+        params = tuple(dict.fromkeys(self.parameters + other.parameters))
+        return Descriptor(
+            self.ffi,
+            self.lib,
+            variables=self.variables,
+            parameters=params,
+            order=max(self.order, other.order),
+        )
+
+
+class Tpsa:
+    def __init__(self, ptr, descriptor):
+        self.ptr = ptr
+        self.descriptor = descriptor
+
+    def change_descriptor(self, descriptor):
+        # Our fake TPSA has no coefficient-copy function. This test only
+        # checks descriptor choice and promotion, not numeric conservation.
+        return descriptor.zero(order=descriptor.order)
+
+
+class ComplexTpsa(Tpsa):
+    def change_descriptor(self, descriptor):
+        return descriptor.complex_zero(order=descriptor.order)
+
+
+class TpsaTensor:
+    def __init__(self, values, ffi):
+        self.flat = tuple(values)
+        self.descriptor = values[0].descriptor
+        self.size = len(values)
+        self.is_complex = isinstance(values[0], ComplexTpsa)
+        self._pointer_array = ffi.new('void*[]', [x.ptr for x in values])
+        self.ffi = ffi
+        self.pointer_reads = 0
+
+    @property
+    def pointer_array(self):
+        self.pointer_reads += 1
+        return self._pointer_array
+
+    def change_descriptor(self, descriptor):
+        return TpsaTensor([x.change_descriptor(descriptor) for x in self.flat], self.ffi)
+
+    def to_complex(self):
+        values = [x if isinstance(x, ComplexTpsa) else self._complex_from(x) for x in self.flat]
+        return TpsaTensor(values, self.ffi)
+
+    @staticmethod
+    def _complex_from(x):
+        d = x.descriptor
+        # Preserve scalar value across fake promotion.
+        # Copying the value is not important for our alignment test.
+        return d.complex_zero()
+
+
+def make_series(native, vals, *, descriptor=None, _complex=False):
+    ffi, lib, _ = native
+    if descriptor is None:
+        descriptor = Descriptor(ffi, lib)
+    make = lib.make_ctpsa if _complex else lib.make_tpsa
+    cls = ComplexTpsa if _complex else Tpsa
+    return [cls(ffi.gc(make(v), lib.free_tpsa), descriptor) for v in vals]
+
+
+def get_values(native, series):
+    _, lib, _ = native
+    return [lib.get_tpsa(x.ptr) for x in series]
+
+
+def test_generated_c_deduplicates_signatures():
+    fs = [MadngFunction(x) for x in HEADERS]
+    cffi_header, native_header, native_source = generate_headers(fs)
+    assert cffi_header.count('mad_ctpsa_logxdy(') == 1
+    # logxdy and a dozen similar binary TPSA functions share 1 typedef and wrapper.
+    test = MadngFunction('void mad_tpsa_other(const tpsa_t *x, const tpsa_t *y, tpsa_t *r);')
+    _, header2, source2 = generate_headers([fs[0], test])
+    assert source2.count('int madng_protected_sig_') == 2  # real and complex
+    assert header2.count('typedef') == 2
+    assert 'MADNG_PROTECTED_CALL' in native_source
+    ffi = cffi.FFI()
+    ffi.cdef(cffi_header)
+
+
+def test_scalar_real_complex_dispatch(native):
+    ffi, lib, fs = native
+    a, b = make_series(native, [5, 2])
+    real = fs['mad_tpsa_logxdy'](a, b)
+    assert type(real) is Tpsa
+    assert get_values(native, [real]) == [3]
+    ca, cb = make_series(native, [5, 2], _complex=True)
+    complex_result = fs['mad_tpsa_logxdy'](ca, cb)
+    assert type(complex_result) is ComplexTpsa
+    assert get_values(native, [complex_result]) == [103]
+
+
+def test_tensor_fast_path_and_allocation(native):
+    ffi, lib, fs = native
+    d = Descriptor(ffi, lib)
+    left = TpsaTensor(make_series(native, [10, 20], descriptor=d), ffi)
+    right = TpsaTensor(make_series(native, [1, 2], descriptor=d), ffi)
+    result = fs['mad_tpsa_liebra'](left, right)
+    assert len(result) == 2
+    assert get_values(native, result) == [9, 18]
+    assert d.union_calls == 0
+    assert left.pointer_reads == 1 and right.pointer_reads == 1
+    wrong = TpsaTensor(make_series(native, [1], descriptor=d), ffi)
+    with pytest.raises(ValueError, match='length'):
+        fs['mad_tpsa_liebra'](left, wrong)
+
+
+def test_descriptor_union_and_complex_promotion(native):
+    ffi, lib, fs = native
+    left_d = Descriptor(ffi, lib, parameters=('k',))
+    right_d = Descriptor(ffi, lib, parameters=('q',))
+    left = TpsaTensor(make_series(native, [1, 2], descriptor=left_d), ffi)
+    right = TpsaTensor(make_series(native, [1, 2], descriptor=right_d, _complex=True), ffi)
+    result = fs['mad_tpsa_liebra'](left, right)
+    assert len(result) == 2
+    assert all(type(x) is ComplexTpsa for x in result)
+    assert result[0].descriptor.parameters == ('k', 'q')  # FAIL only k
+    assert left_d.union_calls == 1
+    assert left.is_complex is False  # Original inputs not mutated
+    assert right.is_complex is True
+
+
+def test_compose_two_different_dimensions(native):
+    ffi, lib, fs = native
+    d = Descriptor(ffi, lib)
+    ma = TpsaTensor(make_series(native, [10, 20, 30], descriptor=d), ffi)
+    mb = TpsaTensor(make_series(native, [1, 2], descriptor=d), ffi)
+    result = fs['mad_tpsa_compose'](ma, mb)
+    assert len(result) == 3
+    assert get_values(native, result) == [11, 22, 31]
+    invalid = make_series(native, [0, 0], descriptor=d)
+    with pytest.raises(ValueError, match='length'):
+        fs['mad_tpsa_compose'](ma, mb, invalid)
+
+
+def test_shared_dimension_output_and_numeric(native):
+    ffi, lib, fs = native
+    d = Descriptor(ffi, lib)
+    ma = TpsaTensor(make_series(native, [10, 20, 30], descriptor=d), ffi)
+    out = fs['mad_tpsa_eval'](ma, [0.5, 1.5])
+    assert out == [10.5, 21.5, 30.5]
+    np = pytest.importorskip('numpy')
+    tb = np.array([0.5, 1.5], dtype=np.float64)
+    tc = np.zeros(3, dtype=np.float64)
+    res = fs['mad_tpsa_eval'](ma, tb, tc)
+    assert res is tc
+    np.testing.assert_array_equal(tc, [10.5, 21.5, 30.5])
+
+
+def test_nonvoid_and_error(native):
+    ffi, lib, fs = native
+    d = Descriptor(ffi, lib)
+    ma = TpsaTensor(make_series(native, [1, 2, 3], descriptor=d), ffi)
+    assert fs['mad_tpsa_mord'](ma, True) == 4
+    x = make_series(native, [3], descriptor=d)[0]
+    fn = fs['mad_tpsa_axpsqrtbpcx2']
+    with pytest.raises(RuntimeError, match='deliberately failed'):
+        fn(x, -1, 0, 0)
+    assert get_values(native, [fn(x, 1, 2, 3)]) == [9]
+
+
+def test_override_size_and_output_types(native):
+    ffi, lib, fs = native
+    d = Descriptor(ffi, lib)
+    ma = TpsaTensor(make_series(native, [5, 6], descriptor=d), ffi)
+    fn = MadngFunction(HEADERS[-1], ffi=ffi, lib=lib, size_defaults={'nb': 'na'})
+    out = fn(ma)
+    assert get_values(native, out) == [-5, -6]
+    fn2 = fs['mad_tpsa_liebra']
+    complex_right = TpsaTensor(make_series(native, [1, 2], descriptor=d, _complex=True), ffi)
+    wrong_output = make_series(native, [0, 0], descriptor=d)
+    with pytest.raises(TypeError, match='wrong real/complex'):
+        fn2(ma, complex_right, wrong_output)
+
+
+def test_parses_original_examples():
+    more = """
+        void mad_tpsa_vec2fld(ssz_t na, const tpsa_t *a, tpsa_t *mc[]);
+        void mad_tpsa_fld2vec(ssz_t na, const tpsa_t *ma[], tpsa_t *c);
+        void mad_tpsa_exppb(ssz_t na, const tpsa_t *ma[], ssz_t nb, const tpsa_t *mb[], tpsa_t *mc[]);
+        void mad_tpsa_pminv(ssz_t na, const tpsa_t *ma[], ssz_t nb, tpsa_t *mc[], idx_t select[]);
+        void mad_tpsa_mconv(ssz_t na, const tpsa_t *ma[], ssz_t nc, tpsa_t *mc[], ssz_t n, idx_t t2r_[], int pb);
+    """
+    for declaration in more.split(';'):
+        if declaration.strip():
+            MadngFunction(
+                declaration + ';',
+                directions={'select': 'in'}
+                if 'select[]' in declaration
+                else ({'t2r_': 'in'} if 't2r_' in declaration else None),
+            )
+
+
+def test_mixed_flavours_with_same_descriptor(native):
+    ffi, lib, fs = native
+    descriptor = Descriptor(ffi, lib)
+    real = TpsaTensor(make_series(native, [7, 8], descriptor=descriptor), ffi)
+    complex_tensor = TpsaTensor(
+        make_series(native, [1, 2], descriptor=descriptor, _complex=True), ffi
+    )
+    out = fs['mad_tpsa_liebra'](real, complex_tensor)
+    assert all(isinstance(item, ComplexTpsa) for item in out)
+    assert all(item.descriptor is descriptor for item in out)
+    assert not real.is_complex
+
+
+def test_forced_complex_promotes_even_when_both_inputs_real(native):
+    ffi, lib, fs = native
+    descriptor = Descriptor(ffi, lib)
+    left = TpsaTensor(make_series(native, [1, 2], descriptor=descriptor), ffi)
+    right = TpsaTensor(make_series(native, [1, 2], descriptor=descriptor), ffi)
+    result = fs['mad_tpsa_liebra'](left, right, complex_needed=True)
+    assert all(isinstance(item, ComplexTpsa) for item in result)
+
+
+def test_preallocated_output_descriptor_must_match(native):
+    ffi, lib, fs = native
+    first = Descriptor(ffi, lib)
+    other = Descriptor(ffi, lib)
+    left = TpsaTensor(make_series(native, [1, 2], descriptor=first), ffi)
+    right = TpsaTensor(make_series(native, [1, 2], descriptor=first), ffi)
+    wrong = TpsaTensor(make_series(native, [0, 0], descriptor=other), ffi)
+    with pytest.raises(ValueError, match='wrong descriptor'):
+        fs['mad_tpsa_liebra'](left, right, wrong)
+
+
+def test_generic_fallback(native):
+    ffi, lib, _ = native
+    descriptor = Descriptor(ffi, lib)
+    left = TpsaTensor(make_series(native, [2, 3], descriptor=descriptor), ffi)
+    right = TpsaTensor(make_series(native, [1, 1], descriptor=descriptor), ffi)
+    fn = MadngFunction(HEADERS[1], ffi=ffi, lib=lib, specialise=False)
+    assert not fn.is_specialised
+    result = fn(left, right)
+    assert get_values(native, result) == [1, 2]
