@@ -43,6 +43,11 @@ HEADERS = [
 ]
 
 
+COMPLEX_EVAL = (
+    'void mad_ctpsa_eval(ssz_t na, const ctpsa_t *ma[], ssz_t nb, const cpx_t tb[], cpx_t tc[]);'
+)
+
+
 EXTRA_HEADERS = [
     'void mad_tpsa_three(const tpsa_t *x, const tpsa_t *y, const tpsa_t *z, tpsa_t *r);',
     'void mad_tpsa_scale(num_t a, tpsa_t *x);',
@@ -56,7 +61,10 @@ EXTRA_HEADERS = [
 
 
 def build_native(tmp: Path):
-    prototypes = [MadngFunction(s) for s in HEADERS + EXTRA_HEADERS]
+    prototypes = [
+        MadngFunction(s, complex_declaration=COMPLEX_EVAL if 'mad_tpsa_eval' in s else None)
+        for s in HEADERS + EXTRA_HEADERS
+    ]
     cdef, header, source = generate_headers(prototypes)
     ffi = cffi.FFI()
     ffi.cdef(
@@ -78,6 +86,7 @@ def build_native(tmp: Path):
         typedef _Bool log_t;
         typedef unsigned char ord_t;
         typedef double num_t;
+        typedef double _Complex cpx_t;
         typedef struct { double value; } tpsa_t;
         typedef struct { double value; } ctpsa_t;
         typedef void(*handler_t)(const char*,const char*);
@@ -145,7 +154,7 @@ def build_native(tmp: Path):
         void mad_tpsa_eval(ssz_t na, const tpsa_t *a[], ssz_t nb, const num_t tb[], num_t tc[]) {
             for(int i=0;i<na;i++) tc[i]=a[i]->value+tb[i%nb];
         }
-        void mad_ctpsa_eval(ssz_t na, const ctpsa_t *a[], ssz_t nb, const num_t tb[], num_t tc[]) {
+        void mad_ctpsa_eval(ssz_t na, const ctpsa_t *a[], ssz_t nb, const cpx_t tb[], cpx_t tc[]) {
             for(int i=0;i<na;i++) tc[i]=100+a[i]->value+tb[i%nb];
         }
         ord_t mad_tpsa_mord(ssz_t na, const tpsa_t *a[], log_t hi) { (void)a; return na+hi; }
@@ -223,6 +232,7 @@ def build_native(tmp: Path):
             ffi=ffi,
             lib=lib,
             aligner=mock_aligner,
+            complex_declaration=COMPLEX_EVAL if 'mad_tpsa_eval' in s else None,
             array_sizes={'mc': 'na'}
             if 'compose' in s
             else (
@@ -470,6 +480,16 @@ def test_shared_dimension_output_and_numeric(native):
     res = fs['mad_tpsa_eval'](ma, tb, tc)
     assert res is tc
     np.testing.assert_array_equal(tc, [10.5, 21.5, 30.5])
+
+    cm = TpsaTensor(make_series(native, [10, 20, 30], descriptor=d, _complex=True), ffi)
+    point = np.array([0.5 + 2j, 1.5 - 0.25j], dtype=np.complex128)
+    output = np.empty(3, dtype=np.complex128)
+    assert fs['mad_tpsa_eval'](cm, point, output) is output
+    np.testing.assert_allclose(output, [110.5 + 2j, 121.5 - 0.25j, 130.5 + 2j])
+    assert fs['mad_tpsa_eval'](cm, list(point)) == list(output)
+
+    with pytest.raises(TypeError, match='correct type'):
+        fs['mad_tpsa_eval'](cm, point, np.zeros(3, dtype=np.float64))
 
 
 def test_nonvoid_and_error(native):

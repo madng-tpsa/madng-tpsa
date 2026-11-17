@@ -29,11 +29,11 @@ from warnings import warn
 
 import numpy as np
 
-from ._cffi import ffi, lib
+from ._cffi import ffi
 from .complex_tpsa import ComplexTpsa
 from .descriptor import Descriptor
 from .formatting import format_polynomial
-from .madng_definitions import COMPOSE
+from .madng_definitions import COMPOSE, EVAL
 from .tpsa import Tpsa
 
 
@@ -919,34 +919,32 @@ class TpsaTensor(Generic[TpsaSeriesT]):
             warn(warn_mess, UserWarning, stacklevel=2)
 
         if self.is_complex:
-            in_array = ffi.new('double _Complex[]', [complex(value) for value in point])
-            out_array = ffi.new('double _Complex[]', self.size)
+            point_array = np.asarray(point, dtype=np.complex128)
+            result = np.empty(self.shape, dtype=np.complex128)
         else:
-            in_array = ffi.new('double[]', [complex(value).real for value in point])
-            out_array = ffi.new('double[]', self.size)
-
-        # MAD-NG's map_eval enforces an exact length (num_vars) so we batch the call
-        pointers = self.pointer_array
-        batch_size = self.num_vars
-        for start in range(0, self.size, batch_size):
-            count = min(batch_size, self.size - start)
-            args = (
-                count,
-                pointers[start : start + count],
-                len(point),
-                in_array,
-                ffi.addressof(out_array, start),
+            # Avoid ComplexWarning for complex values with zero imaginary part.
+            point_array = np.fromiter(
+                (complex(value).real for value in point),
+                dtype=np.float64,
+                count=len(point),
             )
-            if self.is_complex:
-                status = lib.madng_ctpsa_protected_map_eval_call(lib.mad_ctpsa_eval, *args)
-            else:
-                status = lib.madng_tpsa_protected_map_eval_call(lib.mad_tpsa_eval, *args)
-            if status:
-                self.flat[0]._raise_mad_error()
+            result = np.empty(self.shape, dtype=np.float64)
 
-        if self.is_complex:
-            return np.asarray([complex(vv) for vv in out_array]).reshape(self.shape)
-        return np.asarray([float(vv) for vv in out_array]).reshape(self.shape)
+        # Native eval uses compose, which requires na <= descriptor.num_vars.
+        # Arbitrary tensors can be larger, so retain batching.
+        pointers = self.pointer_array
+        flat_output = result.reshape(-1)
+        for start in range(0, self.size, self.num_vars):
+            stop = min(start + self.num_vars, self.size)
+            EVAL(
+                pointers[start:stop],
+                point_array,
+                flat_output[start:stop],
+                na=stop - start,
+                complex_needed=self.is_complex,
+            )
+
+        return result
 
     def compose(self, other: TpsaMap[MapSeriesT]) -> TpsaTensor[Tpsa] | TpsaTensor[ComplexTpsa]:
         """Return the composition ``self ∘ other``.

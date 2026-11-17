@@ -196,7 +196,6 @@ CDEF = """
     double mad_tpsa_mnrm(int na, const void* ma[]);
     void mad_tpsa_pminv(int na, const void* ma[], int nb, void* mc[], int select[]);
     void mad_tpsa_translate(int na, const void* ma[], int nb, const double tb[], void* mc[]);
-    void mad_tpsa_eval(int na, const void* ma[], int nb, const double tb[], double tc[]);
 
     /* Native complex map operations. */
     void mad_ctpsa_fld2vec(int na, const void* ma[], void* c);
@@ -207,7 +206,6 @@ CDEF = """
     double mad_ctpsa_mnrm(int na, const void* ma[]);
     void mad_ctpsa_pminv(int na, const void* ma[], int nb, void* mc[], int select[]);
     void mad_ctpsa_translate(int na, const void* ma[], int nb, const double _Complex tb[], void* mc[]);
-    void mad_ctpsa_eval(int na, const void* ma[], int nb, const double _Complex tb[], double _Complex tc[]);
 
     /* protected calls for unary, binary, and two-output functions */
     typedef void (*madng_tpsa_unary_fn)(const void* input, void* output);

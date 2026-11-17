@@ -12,7 +12,8 @@ by replacing ``tpsa_t`` with ``ctpsa_t``. Pass ``auto_complex=False`` when
 there is no complex counterpart, ``complex_name`` to override its symbol,
 or ``complex_declaration`` to provide an explicit counterpart. The latter
 must currently have the same argument structure and return convention;
-complex numeric scalars/arrays with a different ABI need additional support.
+complex numeric arrays can use cpx_t in an explicit complex declaration;
+complex numeric scalars and return values still need additional support.
 
 Calling a wrapper
 -----------------
@@ -184,6 +185,11 @@ LIEBRA = MadngFunction(
     return_like='ma',
 )
 VEC2FLD = MadngFunction('void mad_tpsa_vec2fld(ssz_t na, const tpsa_t *a, tpsa_t *mc[]);')
+EVAL = MadngFunction(
+    'void mad_tpsa_eval(ssz_t na, const tpsa_t *ma[], ssz_t nb, const num_t tb[], num_t tc[]);',
+    complex_declaration='void mad_ctpsa_eval(ssz_t na, const ctpsa_t *ma[], ssz_t nb, const cpx_t tb[], cpx_t tc[]);',
+    array_sizes={'tc': 'na'},
+)
 # fmt: on
 
 # Each declaration is registered automatically; no second list of names.

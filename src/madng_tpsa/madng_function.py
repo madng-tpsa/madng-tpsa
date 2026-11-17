@@ -25,6 +25,7 @@ _C_TYPES = {
     'idx_t': 'int',
     'int': 'int',
     'num_t': 'double',
+    'cpx_t': 'double _Complex',
     'ord_t': 'unsigned char',
     'log_t': '_Bool',
     'tpsa_t': 'void',
@@ -38,6 +39,7 @@ _TYPE_TAGS = {
     'idx_t': 'i',
     'int': 'n',
     'num_t': 'd',
+    'cpx_t': 'z',
     'ord_t': 'o',
     'log_t': 'b',
     'tpsa_t': 'r',
@@ -372,6 +374,9 @@ class MadngFunction:
                 raise ValueError(err_mess)
             for a, b in zip(real.args, other.args, strict=True):
                 expected = 'ctpsa_t' if a.base == 'tpsa_t' else a.base
+                # Complex numeric arrays require an explicit complex prototype.
+                if a.base == 'num_t' and a.array and b.base == 'cpx_t':
+                    expected = 'cpx_t'
                 if (b.base, b.const, b.pointer, b.array, b.direction) != (
                     expected,
                     a.const,
@@ -635,7 +640,7 @@ class MadngFunction:
             values[i] = obj
         return complex_needed
 
-    def _convert_array(self, arg: Argument, obj: Any) -> Any:
+    def _convert_array(self, arg: Argument, obj: Any, *, complex_needed: bool = False) -> Any:
         if arg.is_series:
             try:
                 return obj.pointer_array  # Cached and zero-copy for TpsaTensor.
@@ -643,6 +648,9 @@ class MadngFunction:
                 if not isinstance(obj, (tuple, list)):
                     return obj  # Explicit CFFI array/pointer.
                 return self.ffi.new('void*[]', [_pointer(item) for item in obj])
+        ctype = _C_TYPES[arg.base]
+        if complex_needed and self.complex is not None:
+            ctype = _C_TYPES[self.complex.args[self._names[arg.name]].base]
         if not isinstance(obj, (tuple, list)):
             try:
                 typ = self.ffi.typeof(obj)
@@ -650,9 +658,13 @@ class MadngFunction:
                     return obj
             except TypeError:
                 pass
-            fmt = {'double': 'd', 'int': 'i', 'unsigned char': 'B', '_Bool': '?'}[
-                _C_TYPES[arg.base]
-            ]
+            fmt = {
+                'double': 'd',
+                'double _Complex': 'Zd',
+                'int': 'i',
+                'unsigned char': 'B',
+                '_Bool': '?',
+            }[ctype]
             try:
                 view = memoryview(obj)
             except TypeError:
@@ -666,7 +678,7 @@ class MadngFunction:
             ):
                 const = 'const ' if arg.const else ''
                 return self.ffi.from_buffer(
-                    f'{const}{_C_TYPES[arg.base]}[]',
+                    f'{const}{ctype}[]',
                     obj,
                     require_writable=arg.direction != 'in',
                 )
@@ -676,7 +688,7 @@ class MadngFunction:
                     'of the correct type'
                 )
                 raise TypeError(err_mess)
-        return self.ffi.new(f'{_C_TYPES[arg.base]}[]', list(obj))
+        return self.ffi.new(f'{ctype}[]', list(obj))
 
     def _output_with_params(
         self, arg: Argument, obj: Any, reference: Any, *, complex_needed: bool
@@ -984,12 +996,17 @@ class MadngFunction:
                     put(f'{name} = {value}', 2)
                 else:
                     ctype = _C_TYPES[arg.base]
-                    expr = (
-                        f'_ffi.new({ctype + "[]"!r}, {size})'
-                        if arg.array
-                        else (f'_ffi.new({ctype + " *"!r})')
+                    complex_ctype = (
+                        _C_TYPES[self.complex.args[i].base] if self.complex is not None else ctype
                     )
-                    put(f'{name} = {expr}', 2)
+                    suffix = '[]' if arg.array else ' *'
+                    native_type = (
+                        repr(ctype + suffix)
+                        if complex_ctype == ctype
+                        else f'({(complex_ctype + suffix)!r} if _complex else {(ctype + suffix)!r})'
+                    )
+                    size_arg = f', {size}' if arg.array else ''
+                    put(f'{name} = _ffi.new({native_type}{size_arg})', 2)
                 if arg.is_series and c_name not in self.output_factory:
                     put('else:')
                     put(
@@ -1019,7 +1036,10 @@ class MadngFunction:
                 else:
                     put(f'_c_{name} = {name}.pointer_array_with_params')
             elif arg.array:
-                put(f'_c_{name} = _self._convert_array(_by_name[{arg.name!r}], {name})')
+                put(
+                    f'_c_{name} = _self._convert_array('
+                    f'_by_name[{arg.name!r}], {name}, complex_needed=_complex)'
+                )
             elif arg.is_series:
                 put(f'_c_{name} = _pointer({name})')
             elif arg.pointer:
