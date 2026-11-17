@@ -43,8 +43,20 @@ HEADERS = [
 ]
 
 
+EXTRA_HEADERS = [
+    'void mad_tpsa_three(const tpsa_t *x, const tpsa_t *y, const tpsa_t *z, tpsa_t *r);',
+    'void mad_tpsa_scale(num_t a, tpsa_t *x);',
+    'void mad_tpsa_init(num_t a, tpsa_t *r);',
+    'void mad_mock_axpy(ssz_t n, const num_t x[], num_t y[]);',
+    'num_t mad_mock_sum(ssz_t n, const num_t x[], idx_t *count);',
+    'num_t mad_mock_scalar(const num_t *x);',
+    'void mad_mock_fill(ssz_t na, ssz_t nb, num_t out[]);',
+    'void mad_mock_keyword(num_t from, num_t *class);',
+]
+
+
 def build_native(tmp: Path):
-    prototypes = [MadngFunction(s) for s in HEADERS]
+    prototypes = [MadngFunction(s) for s in HEADERS + EXTRA_HEADERS]
     cdef, header, source = generate_headers(prototypes)
     ffi = cffi.FFI()
     ffi.cdef(
@@ -162,6 +174,29 @@ def build_native(tmp: Path):
         }
     """)
     )
+    code += textwrap.dedent("""
+        void mad_tpsa_three(const tpsa_t *x, const tpsa_t *y, const tpsa_t *z, tpsa_t *r) {
+            r->value=x->value+y->value+z->value;
+        }
+        void mad_ctpsa_three(const ctpsa_t *x, const ctpsa_t *y, const ctpsa_t *z, ctpsa_t *r) {
+            r->value=100+x->value+y->value+z->value;
+        }
+        void mad_tpsa_scale(num_t a, tpsa_t *x) {x->value*=a;}
+        void mad_ctpsa_scale(num_t a, ctpsa_t *x) {x->value=100+a*x->value;}
+        void mad_tpsa_init(num_t a, tpsa_t *r) {r->value=a;}
+        void mad_ctpsa_init(num_t a, ctpsa_t *r) {r->value=100+a;}
+        void mad_mock_axpy(ssz_t n, const num_t x[], num_t y[]) {
+            for(int i=0;i<n;i++) y[i]+=x[i];
+        }
+        num_t mad_mock_sum(ssz_t n, const num_t x[], idx_t *count) {
+            num_t sum=0; for(int i=0;i<n;i++) sum+=x[i]; *count=n; return sum;
+        }
+        num_t mad_mock_scalar(const num_t *x) {return *x;}
+        void mad_mock_fill(ssz_t na, ssz_t nb, num_t out[]) {
+            for(int i=0;i<nb;i++) out[i]=na+i;
+        }
+        void mad_mock_keyword(num_t from, num_t *class) {*class=from+1;}
+    """)
     code += '\n' + source + '\n'
     source_path = Path(tmp, 'test.c')
     source_path.write_text(code)
@@ -514,20 +549,22 @@ def test_preallocated_output_descriptor_must_match(native):
         fs['mad_tpsa_liebra'](left, right, wrong)
 
 
-def test_generic_fallback(native):
+def test_explicit_binding(native):
     ffi, lib, _ = native
     descriptor = Descriptor(ffi, lib)
     left = TpsaTensor(make_series(native, [2, 3], descriptor=descriptor), ffi)
     right = TpsaTensor(make_series(native, [1, 1], descriptor=descriptor), ffi)
-    fn = MadngFunction(HEADERS[1], ffi=ffi, lib=lib, specialise=False)
-    assert not fn.is_specialised
+    fn = MadngFunction(HEADERS[1])
+    with pytest.raises(RuntimeError, match='bind'):
+        fn(left, right)
+    fn.bind(ffi, lib)
+    assert fn.is_specialised
     result = fn(left, right)
     assert get_values(native, result) == [1, 2]
 
 
-@pytest.mark.parametrize('specialise', [True, False])
 @pytest.mark.parametrize('complex_needed', [False, True])
-def test_parameter_aware_layouts(native, specialise, complex_needed):
+def test_parameter_aware_layouts(native, complex_needed):
     ffi, lib, _ = native
     d = Descriptor(ffi, lib, parameters=('k',))
     a = TpsaTensor(make_series(native, [10, 20, 30], descriptor=d, _complex=complex_needed), ffi)
@@ -536,7 +573,6 @@ def test_parameter_aware_layouts(native, specialise, complex_needed):
         HEADERS[2],
         ffi=ffi,
         lib=lib,
-        specialise=specialise,
         array_sizes={'mc': 'na'},
         native_sizes={'na': NativeSize(sign=-1), 'nb': NativeSize(params_from='mb')},
         parameter_arrays=('mb',),
@@ -550,7 +586,6 @@ def test_parameter_aware_layouts(native, specialise, complex_needed):
         HEADERS[-1],
         ffi=ffi,
         lib=lib,
-        specialise=specialise,
         size_aliases={'nb': 'na'},
         native_sizes={'na': NativeSize(params_from='ma')},
         parameter_arrays=('ma', 'mc'),
@@ -569,3 +604,123 @@ def test_wrapper_tags_are_stable():
     assert fn.real.tag == 'v_s_krpa_s_rpa'
     assert fn.complex is not None
     assert fn.complex.tag == 'v_s_kcpa_s_cpa'
+
+
+def test_three_operand_alignment(native):
+    ffi, lib, _ = native
+    ds = [Descriptor(ffi, lib, parameters=(name,)) for name in ('k', 'q', 'r')]
+    x, y, z = [
+        make_series(native, [i + 1], descriptor=d, _complex=i == 1)[0] for i, d in enumerate(ds)
+    ]
+    fn = MadngFunction(EXTRA_HEADERS[0], ffi=ffi, lib=lib)
+    result = fn(x, y, z)
+    assert type(result) is ComplexTpsa
+    assert result.descriptor.parameters == ('k', 'q', 'r')
+    assert get_values(native, [result]) == [106]
+    assert x.descriptor is ds[0] and z.descriptor is ds[2]
+    with pytest.raises(ValueError, match='complex'):
+        fn(x, y, z, complex_needed=False)
+
+
+def test_output_factory(native):
+    ffi, lib, _ = native
+    d = Descriptor(ffi, lib)
+    x = make_series(native, [3], descriptor=d)[0]
+    calls = []
+
+    def factory(size, context):
+        assert size is None
+        assert context == {'x': x, 'a': 1, 'b': 2, 'c': 3}
+        calls.append(context)
+        return d.zero(order=2)
+
+    fn = MadngFunction(HEADERS[6], ffi=ffi, lib=lib, output_factory={'r': factory})
+    assert get_values(native, [fn(x, 1, 2, 3)]) == [9]
+    out = d.zero()
+    assert fn(x, 1, 2, 3, out) is out
+    assert len(calls) == 1
+
+
+def test_series_inout_and_output_only(native):
+    ffi, lib, _ = native
+    d = Descriptor(ffi, lib)
+    x = make_series(native, [3], descriptor=d)[0]
+    scale = MadngFunction(EXTRA_HEADERS[1], ffi=ffi, lib=lib, directions={'x': 'inout'})
+    assert scale(2, x) is x
+    assert get_values(native, [x]) == [6]
+    cx = x.to_complex()
+    assert scale(2, cx) is cx
+    assert get_values(native, [cx]) == [112]
+    init = MadngFunction(
+        EXTRA_HEADERS[2], ffi=ffi, lib=lib, output_factory={'r': lambda n, ctx: d.zero()}
+    )
+    assert get_values(native, [init(7)]) == [7]
+    out = d.complex_zero()
+    assert init(8, out, complex_needed=True) is out
+    assert get_values(native, [out]) == [108]
+
+
+def test_numeric_only_inout(native):
+    ffi, lib, _ = native
+    fn = MadngFunction(EXTRA_HEADERS[3], ffi=ffi, lib=lib, directions={'y': 'inout'})
+    assert fn([1.0, 2.0], [3.0, 4.0]) == [4.0, 6.0]
+    np = pytest.importorskip('numpy')
+    out = np.array([3.0, 4.0])
+    assert fn([1.0, 2.0], out) is out
+    np.testing.assert_array_equal(out, [4.0, 6.0])
+    with pytest.raises(TypeError, match='writable contiguous'):
+        fn([1.0, 2.0], np.zeros(4)[::2])
+    out.flags.writeable = False
+    with pytest.raises(TypeError, match='writable contiguous'):
+        fn([1.0, 2.0], out)
+
+
+def test_scalar_pointers_and_return_value(native):
+    ffi, lib, _ = native
+    fn = MadngFunction(EXTRA_HEADERS[4], ffi=ffi, lib=lib)
+    assert fn([1.0, 2.0, 3.0]) == (6.0, 3)
+    count = ffi.new('int *')
+    assert fn([1.0, 2.0], count) == (3.0, 2)
+    assert count[0] == 2
+    scalar = MadngFunction(EXTRA_HEADERS[5], ffi=ffi, lib=lib)
+    assert scalar(3.5) == 3.5
+    assert scalar(ffi.new('double *', 2.5)) == 2.5
+
+
+def test_size_resolution_and_python_aliases(native):
+    ffi, lib, _ = native
+    fn = MadngFunction(EXTRA_HEADERS[6], ffi=ffi, lib=lib, size_defaults={'na': 'nb'})
+    assert fn(nb=3) == [3.0, 4.0, 5.0]
+    assert fn([0.0, 0.0]) == [2.0, 3.0]
+    assert fn(na=1, nb=3) == [1.0, 2.0, 3.0]
+    alias = MadngFunction(EXTRA_HEADERS[6], ffi=ffi, lib=lib, size_aliases={'na': 'nb'})
+    assert alias(na=3) == [3.0, 4.0, 5.0]
+    with pytest.raises(ValueError, match='must equal'):
+        alias(na=3, nb=2)
+    with pytest.raises(TypeError, match='integer'):
+        alias(na=2.0, nb=2)
+    with pytest.raises(TypeError, match='integer'):
+        alias(na=True, nb=1)
+    keyword = MadngFunction(EXTRA_HEADERS[7], ffi=ffi, lib=lib)
+    assert keyword(from_arg=3) == 4.0
+
+
+def test_explicit_raw_complex_pointers(native):
+    ffi, lib, _ = native
+    d = Descriptor(ffi, lib)
+    a, b = make_series(native, [4, 1], descriptor=d, _complex=True)
+    out = d.complex_zero()
+    fn = MadngFunction(HEADERS[0], ffi=ffi, lib=lib, align=False)
+    assert fn(a.ptr, b.ptr, out, complex_needed=True) is out
+    assert get_values(native, [out]) == [103]
+    ta = TpsaTensor([a, b], ffi)
+    tb = TpsaTensor([b, a], ffi)
+    tc = TpsaTensor([d.complex_zero(), d.complex_zero()], ffi)
+    liebra = MadngFunction(HEADERS[1], ffi=ffi, lib=lib, align=False)
+    assert (
+        liebra(
+            ffi.cast('void **', ta.pointer_array), tb.pointer_array, tc, na=2, complex_needed=True
+        )
+        is tc
+    )
+    assert get_values(native, tc.flat) == [103, 97]

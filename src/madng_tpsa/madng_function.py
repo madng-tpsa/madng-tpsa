@@ -12,6 +12,7 @@ from __future__ import annotations
 import keyword
 import re
 from dataclasses import dataclass
+from operator import index
 from typing import TYPE_CHECKING, Any, Literal
 
 if TYPE_CHECKING:
@@ -268,11 +269,10 @@ def _promote(obj: Any) -> Any:
 
 
 def _pointer(obj: Any) -> Any:
-    # Current TpsaMap branch uses .ptr; old integrations used .ref.
     try:
         return obj.ptr
     except AttributeError:
-        return obj.ref
+        return getattr(obj, 'ref', obj)
 
 
 def _array_length(obj: Any) -> int | None:
@@ -286,6 +286,22 @@ def _array_length(obj: Any) -> int | None:
             return len(obj)
         except TypeError:
             return None
+
+
+def _size_int(value: Any) -> int:
+    """Accept integral sizes without silently truncating floats."""
+    if isinstance(value, bool):
+        err_mess = 'Size must be an integer, not bool'
+        raise TypeError(err_mess)
+    return index(value)
+
+
+def _array_result(obj: Any, converted: Any) -> Any:
+    """Convert temporary numeric output buffers; retain borrowed raw pointers."""
+    if isinstance(obj, (list, tuple)) or obj is converted:
+        n = _array_length(obj)
+        return obj if n is None else [converted[j] for j in range(n)]
+    return obj
 
 
 @dataclass(frozen=True, slots=True)
@@ -336,7 +352,6 @@ class MadngFunction:
         size_aliases: Mapping[str, str] | None = None,
         parameter_arrays: tuple[str, ...] = (),
         return_like: str | None = None,
-        specialise: bool = True,
         check_lengths: bool = True,
     ) -> None:
         real = _parse(declaration, directions)
@@ -385,7 +400,6 @@ class MadngFunction:
         self.check_lengths = check_lengths
         self.output_factory = dict(output_factory or {})
         self._pair_aligner = aligner
-        self._specialise = specialise
         self.return_like = return_like
         self._names = {a.name: i for i, a in enumerate(self.arguments)}
         self._size_indexes = tuple(i for i, a in enumerate(real.args) if a.is_size)
@@ -450,6 +464,9 @@ class MadngFunction:
             if size_name not in size_lookup:
                 err_mess = f'{size_name!r} is not a size argument'
                 raise ValueError(err_mess)
+        if any(real.args[i].name not in mapped for i in self._parameter_arrays):
+            err_mess = 'Parameter-inclusive arrays require a logical array size'
+            raise ValueError(err_mess)
         self.array_sizes = mapped
         self._array_size_pairs = tuple(
             (self._names[arr], size_lookup[dim]) for arr, dim in mapped.items()
@@ -487,8 +504,9 @@ class MadngFunction:
 
         self._native_real: tuple[Any, Any] | None = None
         self._native_complex: tuple[Any, Any] | None = None
-        self.fast_call: Callable[..., Any] = self._call_generic
+        self.fast_call: Callable[..., Any] = self._unbound
         self.is_specialised = False
+        self.call_source: str | None = None
         if ffi is not None and lib is not None:
             self.bind(ffi, lib)
 
@@ -497,9 +515,12 @@ class MadngFunction:
         self.ffi, self.lib = ffi, lib
         self._native_real = self._resolve(self.real)
         self._native_complex = self._resolve(self.complex) if self.complex else None
-        hot = self._build_specialised_call() if self._specialise else None
-        self.fast_call = hot if hot is not None else self._call_generic
-        self.is_specialised = hot is not None
+        self.fast_call = self._build_call()
+        self.is_specialised = True
+
+    def _unbound(self, *_args: Any, **_kwargs: Any) -> Any:
+        err_mess = f'{self.name}: bind the native library before calling'
+        raise RuntimeError(err_mess)
 
     def _resolve(self, sig: Signature) -> tuple[Any, Any] | None:
         try:
@@ -556,7 +577,11 @@ class MadngFunction:
         ):
             return complex_needed  # Hot path: no descriptor union, no TPSA copies.
 
-        if self._pair_aligner is None and __package__ == 'madng_tpsa':
+        if (
+            len(indexes) == len(known) == 2
+            and self._pair_aligner is None
+            and __package__ == 'madng_tpsa'
+        ):
             # Only import the alignment function if we're in the main package context.
             # This allows to run MadngFunction in standalone to generate the C source.
             from .tensor import _align_descriptors
@@ -645,6 +670,12 @@ class MadngFunction:
                     obj,
                     require_writable=arg.direction != 'in',
                 )
+            if view is not None and arg.direction != 'in':
+                err_mess = (
+                    f'Output {arg.name} requires a writable contiguous 1D buffer '
+                    'of the correct type'
+                )
+                raise TypeError(err_mess)
         return self.ffi.new(f'{_C_TYPES[arg.base]}[]', list(obj))
 
     def _output_with_params(
@@ -662,66 +693,13 @@ class MadngFunction:
             raise TypeError(err_mess)
         return self.ffi.new('void*[]', [_pointer(t) for t in (*components, *params)]), params
 
-    def _convert(self, arg: Argument, obj: Any) -> Any:
-        if arg.array:
-            return self._convert_array(arg, obj)
-        if arg.is_series:
-            return _pointer(obj)
-        if arg.pointer:
-            try:
-                self.ffi.typeof(obj)
-                return obj
-            except TypeError:
-                return self.ffi.new(f'{_C_TYPES[arg.base]} *', None if obj is None else obj)
-        if arg.base in _INT:
-            return obj if type(obj) is int else int(obj)
-        if arg.base == 'num_t':
-            return obj if type(obj) is float else float(obj)
-        err_mess = f'Unsupported value for {arg.name}'
-        raise TypeError(err_mess)
-
-    def _allocate_output(self, index: int, values: list[Any], *, complex_needed: bool) -> Any:
-        arg = self.arguments[index]
-        factory = self.output_factory.get(arg.name)
-        if factory is not None:
-            sizes = {
-                self.arguments[i].name: values[i]
-                for i in self._size_indexes
-                if values[i] is not _MISSING
-            }
-            context = {
-                a.name: v for a, v in zip(self.arguments, values, strict=True) if v is not _MISSING
-            }
-            dim = self.array_sizes.get(arg.name)
-            return factory(sizes.get(dim), context)
-        if not arg.is_series:
-            if arg.array:
-                dim = self.array_sizes.get(arg.name)
-                if dim is None or values[self._names[dim]] is _MISSING:
-                    err_mess = f'Cannot infer length of output {arg.name}; pass it explicitly'
-                    raise TypeError(err_mess)
-                return self.ffi.new(f'{_C_TYPES[arg.base]}[]', values[self._names[dim]])
-            if arg.pointer:
-                return self.ffi.new(f'{_C_TYPES[arg.base]} *')
-            err_mess = f'Cannot allocate {arg.name}'
-            raise TypeError(err_mess)
-        series = next(
-            (values[i] for i in self._input_series if hasattr(values[i], 'descriptor')), None
-        )
-        if series is None:
-            err_mess = f'Cannot infer descriptor for output {arg.name}'
-            raise TypeError(err_mess)
-        descriptor = series.descriptor
-        zero = descriptor.complex_zero if complex_needed else descriptor.zero
-        order = descriptor.order if self.output_order is None else self.output_order
-        if not arg.array:
-            return zero(order=order)
-        dim_name = self.array_sizes.get(arg.name)
-        if dim_name is None or values[self._names[dim_name]] is _MISSING:
-            err_mess = f'Cannot infer length of output {arg.name}; pass it explicitly'
-            raise TypeError(err_mess)
-        n = values[self._names[dim_name]]
-        return [zero(order=order) for _ in range(n)]
+    def _convert_pointer(self, arg: Argument, obj: Any) -> Any:
+        """Convert a non-TPSA scalar pointer, retaining CFFI buffers."""
+        try:
+            self.ffi.typeof(obj)
+        except TypeError:
+            return self.ffi.new(f'{_C_TYPES[arg.base]} *', obj)
+        return obj
 
     def _check_output_type(
         self, index: int, obj: Any, *, complex_needed: bool, descriptor: Any = None
@@ -762,217 +740,316 @@ class MadngFunction:
         err_mess = f'{self.name}: MAD-NG error at {loc}: {msg}'
         raise RuntimeError(err_mess)
 
-    def _build_specialised_call(self) -> Callable[..., Any] | None:
-        """Compile a Python call plan once, with a natural Python signature.
-
-        This is an optimisation, not another handwritten wrapper. The emitted
-        function is specialised to its C prototype. Unsupported signatures
-        retain the fully checked generic call().
-        """
+    def _build_call(self) -> Callable[..., Any]:
+        """Emit one Python call plan; only the stages needed by this signature run."""
         args = self.arguments
-        if (
-            not self._input_series
-            or len(self._input_series) > 2
-            or any(a.direction == 'inout' for a in args)
-            or any(a.pointer and not a.is_series for a in args)
-            or set(self.output_factory)
-        ):
-            return None
-        all_names = [a.name for a in args]
-        if any(keyword.iskeyword(name) or name == 'complex_needed' for name in all_names):
-            return None
-        inputs = [args[i].name for i in self._positionals if args[i].direction != 'out']
-        outputs = [args[i].name for i in self._positionals if args[i].direction == 'out']
-        sizes = [args[i].name for i in self._size_indexes]
-        positional = inputs + [name + '=None' for name in outputs]
-        keywords = [name + '=None' for name in sizes] + ['complex_needed=None']
-        signature = ', '.join(positional + (['*'] + keywords if keywords else []))
-        lines = [f'def _hot({signature}):']
+        c_names = [a.name for a in args]
+        # Preserve C names where possible. Keywords and names which would shadow
+        # the generated implementation receive a unique Python argument name.
+        reserved = {
+            'complex_needed',
+            'range',
+            'getattr',
+            'isinstance',
+            'len',
+            'type',
+            'bool',
+            'int',
+            'float',
+            'list',
+            'tuple',
+            'ValueError',
+            'TypeError',
+            'RuntimeError',
+        }
+        occupied = set(c_names) | reserved
+        names = c_names.copy()
+        for i, name in enumerate(c_names):
+            if (
+                not name.isidentifier()
+                or keyword.iskeyword(name)
+                or name.startswith('_')
+                or name in reserved
+            ):
+                base = name.lstrip('_')
+                alias = (base if base.isidentifier() else f'arg{i}') + '_arg'
+                while alias in occupied or keyword.iskeyword(alias):
+                    alias += '_'
+                names[i] = alias
+                occupied.add(alias)
+        inputs = [names[i] for i in self._positionals if args[i].direction != 'out']
+        outputs = [names[i] for i in self._positionals if args[i].direction == 'out']
+        sizes = [names[i] for i in self._size_indexes]
+        signature = ', '.join(
+            inputs
+            + [f'{n}=None' for n in outputs]
+            + ['*']
+            + [f'{n}=None' for n in sizes]
+            + ['complex_needed=None']
+        )
+        lines = [f'def _call({signature}):']
 
         def put(line: str, indent: int = 1) -> None:
             lines.append('    ' * indent + line)
 
-        names = [args[i].name for i in self._input_series]
-        first = names[0]
-        if len(names) == 2:
-            left, right = names
+        series = [names[i] for i in self._input_series]
+        first = series[0] if series else 'None'
+
+        def align_inputs(indent: int) -> None:
+            put(f'_vals = [_MISSING] * {len(args)}', indent)
+            for i in self._input_series:
+                put(f'_vals[{i}] = {names[i]}', indent)
+            put('_complex = _self._align_inputs(_vals, forced=complex_needed)', indent)
+            for i in self._input_series:
+                put(f'{names[i]} = _vals[{i}]', indent)
+
+        # Keep the common unary/binary path straight-line. The same aligner is
+        # used for slow paths and for functions with more than two TPSA inputs.
+        if len(series) == 2:
+            left, right = series
             put(f'_lc = _is_complex({left})')
             put(f'_rc = _is_complex({right})')
+            put(f'_d = getattr({left}, "descriptor", None)')
+            put(f'_rd = getattr({right}, "descriptor", None)')
             put(
-                f'if _self.align and ({left}.descriptor is not {right}.descriptor or '
-                f'_lc != _rc or (complex_needed is True and not (_lc and _rc))):'
+                'if _self.align and (_d is not _rd or _lc != _rc or '
+                '(complex_needed is True and not (_lc and _rc))):'
             )
-            put(f'_vals = [_MISSING] * {len(args)}', 2)
-            put(f'_vals[{self._input_series[0]}] = {left}', 2)
-            put(f'_vals[{self._input_series[1]}] = {right}', 2)
-            put('_complex = _self._align_inputs(_vals, forced=complex_needed)', 2)
-            put(f'{left} = _vals[{self._input_series[0]}]', 2)
-            put(f'{right} = _vals[{self._input_series[1]}]', 2)
+            align_inputs(2)
+            put(f'_d = getattr({left}, "descriptor", None)', 2)
+            put(f'if _d is None: _d = getattr({right}, "descriptor", None)', 2)
             put('else:')
             put('_complex = (_lc or _rc) if complex_needed is None else complex_needed', 2)
             put('if _complex is False and (_lc or _rc):', 2)
             put("raise ValueError('complex_needed=False conflicts with complex inputs')", 3)
-            put('if not _self.align and _complex and not (_lc and _rc):', 2)
+            put(
+                'if not _self.align and _complex and ('
+                '(_d is not None and not _lc) or (_rd is not None and not _rc)):',
+                2,
+            )
             put("raise TypeError('align=False cannot pass real TPSAs to a complex routine')", 3)
-        else:
+            put('if _d is None: _d = _rd', 2)
+        elif len(series) == 1:
             put(f'_detected = _is_complex({first})')
+            put(f'_d = getattr({first}, "descriptor", None)')
             put('_complex = _detected if complex_needed is None else complex_needed')
             put('if _detected and not _complex:')
             put("raise ValueError('complex_needed=False conflicts with complex inputs')", 2)
-            put('if _complex and not _detected:')
+            put('if _complex and not _detected and _d is not None:')
             put('if not _self.align:', 2)
             put("raise TypeError('align=False cannot pass real TPSAs to a complex routine')", 3)
-            put(f'_vals = [_MISSING] * {len(args)}', 2)
-            put(f'_vals[{self._input_series[0]}] = {first}', 2)
-            put('_complex = _self._align_inputs(_vals, forced=complex_needed)', 2)
-            put(f'{first} = _vals[{self._input_series[0]}]', 2)
+            align_inputs(2)
+            put(f'_d = getattr({first}, "descriptor", None)', 2)
+        elif series:
+            align_inputs(1)
+            put('_d = None')
+            for name in series:
+                put(f'if _d is None: _d = getattr({name}, "descriptor", None)')
+        else:
+            put('_complex = bool(complex_needed)')
+            put('_d = None')
+        if self.complex is None:
+            put('if _complex:')
+            put("raise TypeError('No complex variant configured')", 2)
         put('_native = _self._native_complex if _complex else _self._native_real')
         put('if _native is None:')
         put("raise RuntimeError('Complex or real native function/wrapper is unavailable')", 2)
         put('_fn, _protected = _native')
 
-        # Dimensions are derived from input arrays preferentially. Shared sizes
-        # incur one length check per additional array, unless disabled.
-        for index in self._size_indexes:
-            size = args[index].name
-            candidates = [
-                args[ia].name
-                for ia, idim in self._array_size_pairs
-                if idim == index and args[ia].direction != 'out'
-            ]
-            for candidate in candidates:
-                put(f'if {size} is None:')
+        # Infer from supplied arrays first, then apply defaults. Alias groups
+        # are resolved at generation time, so a native count is never confused
+        # with the logical length of its Python array.
+        for i in self._size_indexes:
+            size = names[i]
+            candidate_indexes = sorted(
+                (ai for ai, si in self._array_size_pairs if si == i),
+                key=lambda ai: args[ai].direction == 'out',
+            )
+            for ai in candidate_indexes:
+                candidate = names[ai]
+                put(f'if {size} is None and {candidate} is not None:')
                 put(f'{size} = _length({candidate})', 2)
-                break
-            default = dict(self._size_defaults).get(index)
-            if default is not None:
-                kind, value = default
-                value_expr = args[value].name if kind == 'ref' else repr(value)
-                put(f'if {size} is None:')
-                put(f'{size} = {value_expr}', 2)
-            output_candidates = [
-                args[ia].name
-                for ia, idim in self._array_size_pairs
-                if idim == index and args[ia].direction == 'out'
-            ]
-            if output_candidates:
-                put(f'if {size} is None and {output_candidates[0]} is not None:')
-                put(f'{size} = _length({output_candidates[0]})', 2)
+            put(f'if {size} is not None and type({size}) is not int:')
+            put(f'{size} = _size_int({size})', 2)
+        groups = [[i] for i in self._size_indexes]
+        for ai, bi in self._size_aliases:
+            a = next(g for g in groups if ai in g)
+            b = next(g for g in groups if bi in g)
+            if a is not b:
+                a.extend(b)
+                groups.remove(b)
+        alias_targets = {a for a, _ in self._size_aliases}
+        defaults = {i: d for i, d in self._size_defaults if i not in alias_targets}
+        done: set[int] = set()
+        visiting: set[int] = set()
+
+        def emit_size_group(group: list[int]) -> None:
+            key = group[0]
+            if key in done:
+                return
+            if key in visiting:
+                err_mess = 'Cyclic size defaults'
+                raise ValueError(err_mess)
+            visiting.add(key)
+            size = names[key]
+            for i in group[1:]:
+                other = names[i]
+                put(f'if {size} is None: {size} = {other}')
+                put(f'elif {other} is not None and {size} != {other}:')
+                put(f"raise ValueError('{size} must equal {other}')", 2)
+            for i in group:
+                if i not in defaults:
+                    continue
+                kind, value = defaults[i]
+                if kind == 'ref':
+                    emit_size_group(next(g for g in groups if value in g))
+                    value_expr = names[value]
+                else:
+                    value_expr = repr(value)
+                put(f'if {size} is None: {size} = {value_expr}')
             put(f'if {size} is None:')
             put(f"raise TypeError('Cannot infer {size}; pass it explicitly')", 2)
             put(f'if {size} < 0:')
             put(f"raise ValueError('{size} must be non-negative')", 2)
-        for ai, bi in self._size_aliases:
-            an, bn = args[ai].name, args[bi].name
-            put(f'if {an} != {bn}:')
-            put(f"raise ValueError('{an} must equal {bn}')", 2)
-        if self.check_lengths:
-            for ai, si in self._array_size_pairs:
-                arg = args[ai]
-                if arg.direction == 'out':
-                    continue
-                put(f'if _length({arg.name}) != {args[si].name}:')
-                put(
-                    f"raise ValueError('{arg.name} has a length inconsistent with "
-                    f"{args[si].name}')",
-                    2,
-                )
+            for i in group[1:]:
+                put(f'{names[i]} = {size}')
+            visiting.remove(key)
+            done.add(key)
+
+        for group in groups:
+            emit_size_group(group)
+
+        def check_length(i: int, size: str) -> None:
+            if not self.check_lengths:
+                return
+            name = names[i]
+            put(f'_n = _length({name})')
+            # Unbounded CFFI pointers have no Python length. They are the
+            # caller's responsibility; parameter-inclusive arrays are not raw.
+            condition = (
+                f'_n != {size}'
+                if i in self._parameter_arrays
+                else (f'_n is not None and _n != {size}')
+            )
+            put(f'if {condition}:')
+            put(f"raise ValueError('{name} has a length inconsistent with {size}')", 2)
+
+        for ai, si in self._array_size_pairs:
+            if args[ai].direction != 'out':
+                check_length(ai, names[si])
 
         if self.return_like is not None:
-            put(f'_allocate = {args[self._outputs[0]].name} is None')
-        put(f'_d = {first}.descriptor')
-        put('_order = _d.order if _self.output_order is None else _self.output_order')
-        put('_zero = _d.complex_zero if _complex else _d.zero')
+            put(f'_allocate = {names[self._outputs[0]]} is None')
         for i in self._outputs:
             arg = args[i]
-            name = arg.name
-            put(f'if {name} is None:')
-            if arg.is_series:
-                if arg.array:
-                    size = self.array_sizes.get(name)
-                    if size is None:
-                        return None  # Need per-output shape policy.
-                    put(f'{name} = [_zero(order=_order) for _ in range({size})]', 2)
+            name = names[i]
+            c_name = arg.name
+            dim = self.array_sizes.get(c_name)
+            size = names[self._names[dim]] if dim is not None else None
+            if arg.direction == 'out':
+                put(f'if {name} is None:')
+                if c_name in self.output_factory:
+                    # Rare custom allocations may inspect all supplied inputs,
+                    # resolved dimensions, and already allocated/supplied outputs.
+                    context = ', '.join(
+                        f'{a.name!r}: {n}' for a, n in zip(args, names, strict=True)
+                    )
+                    put(f'_context = {{{context}}}', 2)
+                    for j in self._outputs:
+                        if args[j].direction == 'out':
+                            put(f'if {names[j]} is None: _context.pop({args[j].name!r})', 2)
+                    put(
+                        f'{name} = _self.output_factory[{c_name!r}]({size or "None"}, _context)',
+                        2,
+                    )
+                elif arg.array and size is None:
+                    put(
+                        f"raise TypeError('Cannot infer length of output {name}; "
+                        "pass it explicitly')",
+                        2,
+                    )
+                elif arg.is_series:
+                    put('if _d is None:', 2)
+                    put(f"raise TypeError('Cannot infer descriptor for output {name}')", 3)
+                    put('_zero = _d.complex_zero if _complex else _d.zero', 2)
+                    put(
+                        '_order = _d.order if _self.output_order is None else _self.output_order',
+                        2,
+                    )
+                    value = (
+                        f'[_zero(order=_order) for _ in range({size})]'
+                        if arg.array
+                        else '_zero(order=_order)'
+                    )
+                    put(f'{name} = {value}', 2)
                 else:
-                    put(f'{name} = _zero(order=_order)', 2)
-            elif arg.array:
-                size = self.array_sizes.get(name)
-                if size is None:
-                    return None
-                put(f"{name} = _ffi.new('{_C_TYPES[arg.base]}[]', {size})", 2)
-            else:
-                return None
-            if arg.is_series:
-                put('else:')
+                    ctype = _C_TYPES[arg.base]
+                    expr = (
+                        f'_ffi.new({ctype + "[]"!r}, {size})'
+                        if arg.array
+                        else (f'_ffi.new({ctype + " *"!r})')
+                    )
+                    put(f'{name} = {expr}', 2)
+                if arg.is_series and c_name not in self.output_factory:
+                    put('else:')
+                    put(
+                        f'_self._check_output_type({i}, {name}, complex_needed=_complex, '
+                        'descriptor=_d)',
+                        2,
+                    )
+            if arg.is_series and (arg.direction == 'inout' or c_name in self.output_factory):
                 put(
-                    f'_self._check_output_type({i}, {name}, complex_needed=_complex, '
-                    f'descriptor=_d)',
-                    2,
+                    f'_self._check_output_type({i}, {name}, complex_needed=_complex, descriptor=_d)'
                 )
-            if self.check_lengths and arg.array:
-                put(f'if _length({name}) != {self.array_sizes[name]}:')
-                put(f"raise ValueError('Output {name} has inconsistent length')", 2)
+            if arg.array and size is not None and arg.direction == 'out':
+                check_length(i, size)
 
-        # Convert in native argument order. Tensor.pointer_array is reused
-        # without making an intermediate list or copying pointers.
         for i, arg in enumerate(args):
-            name = arg.name
+            name = names[i]
             if i in self._native_size_rules:
                 sign, source = self._native_size_rules[i]
-                expr = (
-                    name
-                    if source is None
-                    else f'{name} + {args[source].name}.descriptor.num_params'
-                )
+                expr = name if source is None else f'{name} + {names[source]}.descriptor.num_params'
                 put(f'_c_{name} = {sign} * ({expr})')
             elif i in self._parameter_arrays:
                 if arg.direction == 'out':
                     put(
                         f'_c_{name}, _owners_{name} = _self._output_with_params('
-                        f'_by_name[{name!r}], {name}, {first}, complex_needed=_complex)'
+                        f'_by_name[{arg.name!r}], {name}, {first}, complex_needed=_complex)'
                     )
                 else:
                     put(f'_c_{name} = {name}.pointer_array_with_params')
-            elif arg.is_series:
-                if arg.array:
-                    put(f'_c_{name} = _self._convert_array(_by_name[{name!r}], {name})')
-                else:
-                    put(f'_c_{name} = _pointer({name})')
             elif arg.array:
-                put(f'_c_{name} = _self._convert_array(_by_name[{name!r}], {name})')
+                put(f'_c_{name} = _self._convert_array(_by_name[{arg.name!r}], {name})')
+            elif arg.is_series:
+                put(f'_c_{name} = _pointer({name})')
+            elif arg.pointer:
+                put(f'_c_{name} = _self._convert_pointer(_by_name[{arg.name!r}], {name})')
+            elif arg.base in _INT:
+                put(f'_c_{name} = {name} if type({name}) is int else int({name})')
             else:
-                put(f'_c_{name} = {name}')
+                put(f'_c_{name} = {name} if type({name}) is float else float({name})')
+        params = ['_fn', *('_c_' + n for n in names)]
         if self.real.return_type != 'void':
             put(f"_return = _ffi.new('{_C_TYPES[self.real.return_type]} *')")
-        params = ', '.join('_c_' + a.name for a in args)
-        if self.real.return_type != 'void':
-            params += ', _return' if params else '_return'
-        put(f'_status = _protected(_fn{", " if params else ""}{params})')
-        put('if _status:')
+            params.append('_return')
+        put(f'if _protected({", ".join(params)}):')
         put(f'_self._raise_native_error({first})', 2)
-        result_exprs = []
-        if self.real.return_type != 'void':
-            result_exprs.append('_return[0]')
+
+        results = [] if self.real.return_type == 'void' else ['_return[0]']
         for i in self._outputs:
             arg = args[i]
-            name = arg.name
-            if arg.array and not arg.is_series:
-                put(f'if {name} is _c_{name} or isinstance({name}, (list,tuple)):')
-                put(f'_res_{name} = [_c_{name}[j] for j in range(_length({name}))]', 2)
-                put('else:')
-                put(f'_res_{name} = {name}', 2)
-                result_exprs.append('_res_' + name)
+            name = names[i]
+            if not arg.is_series and arg.array:
+                results.append(f'_array_result({name}, _c_{name})')
+            elif not arg.is_series and arg.pointer:
+                results.append(f'_c_{name}[0]')
             else:
-                result_exprs.append(name)
+                results.append(name)
         if self.return_like is not None:
             put('if _allocate:')
-            put(f'return {self.return_like}._new_like({args[self._outputs[0]].name})', 2)
-        if not result_exprs:
-            put('return None')
-        elif len(result_exprs) == 1:
-            put(f'return {result_exprs[0]}')
-        else:
-            put('return (' + ', '.join(result_exprs) + ')')
+            reference = names[self._names[self.return_like]]
+            put(f'return {reference}._new_like({names[self._outputs[0]]})', 2)
+        put('return ' + (', '.join(results) if results else 'None'))
 
         namespace: dict[str, Any] = {
             '_self': self,
@@ -980,167 +1057,24 @@ class MadngFunction:
             '_pointer': _pointer,
             '_is_complex': _series_is_complex,
             '_length': _array_length,
+            '_size_int': _size_int,
+            '_array_result': _array_result,
             '_MISSING': _MISSING,
             '_by_name': {a.name: a for a in args},
         }
         src = '\n'.join(lines)
+        self.call_source = src
         exec(compile(src, f'<MAD-NG call {self.name}>', 'exec'), namespace)
-        hot = namespace['_hot']
+        hot = namespace['_call']
         hot.__doc__ = f'Specialised {self.name} call; compiled once from its C signature.'
         return hot
 
-    def _call_generic(self, *args: Any, complex_needed: bool | None = None, **kwargs: Any) -> Any:
-        """Dispatch a generic call, used for signatures we cannot specialise.
-
-        Positional arguments omit ssz_t dimensions. All input arguments come
-        first; optional output arguments follow. Outputs may be omitted.
-        """
-        if self.ffi is None or self.lib is None:
-            err_mess = 'ffi and lib are required for runtime calls'
-            raise RuntimeError(err_mess)
-        if len(args) > len(self._positionals):
-            err_mess = f'{self.name}: too many arguments'
-            raise TypeError(err_mess)
-        values: list[Any] = [_MISSING] * len(self.arguments)
-        for pos, value in zip(self._positionals, args, strict=False):
-            values[pos] = value
-        if kwargs:
-            for key, value in kwargs.items():
-                idx = self._names.get(key)
-                if idx is None:
-                    err_mess = f'{self.name}: unknown argument {key}'
-                    raise TypeError(err_mess)
-                if values[idx] is not _MISSING:
-                    err_mess = f'{self.name}: duplicate argument {key}'
-                    raise TypeError(err_mess)
-                values[idx] = value
-        for i, arg in enumerate(self.arguments):
-            if arg.direction != 'out' and not arg.is_size and values[i] is _MISSING:
-                err_mess = f'{self.name}: missing input {arg.name}'
-                raise TypeError(err_mess)
-
-        need_complex = self._align_inputs(values, forced=complex_needed)
-        if need_complex and self.complex is None:
-            err_mess = f'{self.name}: no complex variant configured'
-            raise TypeError(err_mess)
-        native = self._native_complex if need_complex else self._native_real
-        if native is None:
-            variant = self.complex.name if need_complex and self.complex else self.real.name
-            err_mess = f'Native symbol or protected wrapper for {variant} is unavailable'
-            raise RuntimeError(err_mess)
-
-        # Infer and validate dimensions before allocating outputs. Pair order is
-        # compiled in the constructor, so there is no name lookup on the hot path.
-        for array_idx, size_idx in self._array_size_pairs:
-            value = values[array_idx]
-            if value is _MISSING:
-                continue
-            length = _array_length(value)
-            if length is None:
-                continue  # Raw CFFI pointer with unknown length.
-            current = values[size_idx]
-            if current is not _MISSING and current != length:
-                err_mess = f'{self.arguments[array_idx].name} has length {length}, '
-                err_mess += f'but {self.arguments[size_idx].name}={current}'
-                raise ValueError(err_mess)
-            values[size_idx] = length
-        for i, (kind, default) in self._size_defaults:
-            if values[i] is _MISSING:
-                values[i] = values[default] if kind == 'ref' else default
-        for i in self._size_indexes:
-            size = values[i]
-            if size is _MISSING:
-                err_mess = f'{self.name}: cannot infer {self.arguments[i].name}'
-                raise TypeError(err_mess)
-            if not isinstance(size, int) or isinstance(size, bool) or size < 0:
-                err_mess = f'{self.arguments[i].name} must be a non-negative integer'
-                raise TypeError(err_mess)
-        for ai, bi in self._size_aliases:
-            if values[ai] != values[bi]:
-                err_mess = f'{self.arguments[ai].name} must equal {self.arguments[bi].name}'
-                raise ValueError(err_mess)
-        primary_descriptor = next(
-            (values[i].descriptor for i in self._input_series if hasattr(values[i], 'descriptor')),
-            None,
-        )
-        allocate_like = self.return_like is not None and (
-            values[self._outputs[0]] is _MISSING or values[self._outputs[0]] is None
-        )
-        for i in self._outputs:
-            if values[i] is _MISSING or values[i] is None:
-                values[i] = self._allocate_output(i, values, complex_needed=need_complex)
-            self._check_output_type(
-                i, values[i], complex_needed=need_complex, descriptor=primary_descriptor
-            )
-        for array_idx, size_idx in self._array_size_pairs:
-            obj = values[array_idx]
-            length = _array_length(obj)
-            if length is not None and length != values[size_idx]:
-                err_mess = f'{self.arguments[array_idx].name} has length {length}, '
-                err_mess += f'expected {values[size_idx]}'
-                raise ValueError(err_mess)
-
-        ffi = self.ffi
-        converted = []
-        owners = []
-        for i, (arg, val) in enumerate(zip(self.arguments, values, strict=True)):
-            if i in self._native_size_rules:
-                sign, source = self._native_size_rules[i]
-                count = val if source is None else val + values[source].descriptor.num_params
-                converted.append(sign * count)
-            elif i in self._parameter_arrays:
-                if arg.direction == 'out':
-                    pointer, params = self._output_with_params(
-                        arg, val, values[self._input_series[0]], complex_needed=need_complex
-                    )
-                    owners.append(params)
-                    converted.append(pointer)
-                else:
-                    converted.append(val.pointer_array_with_params)
-            else:
-                converted.append(self._convert(arg, val))
-        ret = None
-        if self.real.return_type != 'void':
-            ret = ffi.new(f'{_C_TYPES[self.real.return_type]} *')
-            converted.append(ret)
-        function, protected = native
-        status = protected(function, *converted)
-        if status:
-            first = values[self._input_series[0]] if self._input_series else None
-            self._raise_native_error(first)
-
-        if self.return_like is not None and allocate_like:
-            return values[self._names[self.return_like]]._new_like(values[self._outputs[0]])
-        results = [] if ret is None else [ret[0]]
-        for i in self._outputs:
-            arg = self.arguments[i]
-            obj = values[i]
-            if not arg.is_series and arg.array:
-                c_obj = converted[i]
-                if isinstance(obj, (list, tuple)) or obj is c_obj:
-                    # For a Python list, CFFI operates on a temporary buffer;
-                    # auto-allocated native arrays also need Python conversion.
-                    n = _array_length(obj)
-                    if n is None:
-                        err_mess = f'Cannot determine length of output {arg.name}'
-                        raise TypeError(err_mess)
-                    results.append([c_obj[j] for j in range(n)])
-                else:
-                    results.append(obj)
-            elif not arg.is_series and arg.pointer:
-                results.append(converted[i][0])
-            else:
-                results.append(obj)
-        if not results:
-            return None
-        return results[0] if len(results) == 1 else tuple(results)
-
     def call(self, *args: Any, **kwargs: Any) -> Any:
-        """Invoke the precompiled (or generic fallback) call plan."""
+        """Invoke the precompiled call plan."""
         return self.fast_call(*args, **kwargs)
 
     def __call__(self, *args: Any, **kwargs: Any) -> Any:
-        """Invoke the precompiled (or generic fallback) call plan."""
+        """Invoke the precompiled call plan."""
         return self.fast_call(*args, **kwargs)
 
 

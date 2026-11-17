@@ -36,7 +36,7 @@ def _run_benchmark(tmp: Path):
     assert fn._native_real is not None
     scalar_fn, protected = fn._native_real
     scalar_fn, protected = fn._native_real
-    generic = MadngFunction(HEADERS[1], ffi=ffi, lib=lib, specialise=False)
+    generic = MadngFunction(HEADERS[1], ffi=ffi, lib=lib)
 
     print('Mock CFFI benchmark (µs per call; lower is faster)')  # noqa: T201
     for name, callable_ in (
