@@ -23,7 +23,7 @@ import numpy as np
 from ._cffi import ffi, lib
 from ._typing import TpsaSeriesT
 from .complex_tpsa import ComplexTpsa
-from .madng_calls import MINV, new_components
+from .madng_definitions import MINV
 from .tensor import TpsaTensor, _align_descriptors
 from .tpsa import Tpsa
 from .vector import TpsaVector, TpsaVectorField
@@ -99,8 +99,10 @@ class TpsaMap(TpsaVector[TpsaSeriesT]):
     TpsaVectorField : Infinitesimal generators of transformations.
     """
 
-    __slots__ = '_params'
+    __slots__ = ('_params', '_params_pointer_cache', '_params_pointer_version')
     _params: tuple[TpsaSeries, ...]
+    _params_pointer_cache: ffi.CData | None
+    _params_pointer_version: int
 
     # ===================================
     # === Construction and Access API ===
@@ -117,6 +119,8 @@ class TpsaMap(TpsaVector[TpsaSeriesT]):
         if self.is_complex:
             params = tuple(ComplexTpsa.from_tpsa(t) for t in params)
         self._params = params
+        self._params_pointer_cache = None
+        self._params_pointer_version = -1
 
     # ==================
     # === Attributes ===
@@ -124,10 +128,19 @@ class TpsaMap(TpsaVector[TpsaSeriesT]):
 
     @property
     def pointer_array_with_params(self) -> ffi.CData:
-        """Return a full C array of pointers to the map's TPSAs, including parameters."""
-        if not self.num_params:
+        """Return a cached pointer array including parameter identity TPSAs.
+
+        As with pointer_array, reacquire it after replacing components.
+        """
+        if not self._params:
             return self.pointer_array
-        return ffi.new('void*[]', [t.ptr for t in (*self.flat, *self._params)])
+        version = self._storage.version
+        if self._params_pointer_cache is None or self._params_pointer_version != version:
+            self._params_pointer_cache = ffi.new(
+                'void*[]', [*self.pointer_array, *(t.ptr for t in self._params)]
+            )
+            self._params_pointer_version = version
+        return self._params_pointer_cache
 
     # ======================
     # === Map Operations ===
@@ -286,20 +299,7 @@ class TpsaMap(TpsaVector[TpsaSeriesT]):
         if np.linalg.matrix_rank(jac) < self.num_vars:
             err_mess = 'Cannot invert map: the linear Jacobian is singular'
             raise ValueError(err_mess)
-        result = new_components(self, self.num_vars)
-        # MAD-NG receives parameter entries as well as variable entries.
-        target_params = list(self.descriptor.params())
-        if self.is_complex:
-            target_params = [ComplexTpsa.from_tpsa(t) for t in target_params]
-        output = (*result, *target_params)
-        MINV.call_native(
-            self,
-            self.num_vars + self.num_params,
-            self.pointer_array_with_params,
-            self.num_vars,
-            ffi.new('void*[]', [t.ptr for t in output]),
-        )
-        return cast('TpsaMap[TpsaSeriesT]', self._new_like(result))
+        return cast('TpsaMap[TpsaSeriesT]', MINV.fast_call(self))
 
     def partial_inverse(self, select: Sequence[SelectionValue]) -> TpsaMap[TpsaSeriesT]:
         """Invert selected variables, leaving other variables and parameters intact.

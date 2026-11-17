@@ -62,6 +62,9 @@ exclude = [
 ]
 include = [
     "CMakeLists.txt",
+    "tools/generate_madng_wrappers.py",
+    "src/madng_tpsa/madng_function.py",
+    "src/madng_tpsa/madng_definitions.py",
     "src/madng_tpsa/_version.py",
     "madng/COPYING",
     "madng/src/mad_*.c",

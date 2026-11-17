@@ -30,7 +30,7 @@ from ._typing import TpsaSeriesT
 from .complex_tpsa import ComplexTpsa
 from .descriptor import Descriptor
 from .formatting import format_coord, format_polynomial
-from .madng_calls import LIEBRA, VEC2FLD
+from .madng_definitions import LIEBRA, VEC2FLD
 from .tensor import TpsaTensor, _align_descriptors
 from .tpsa import Tpsa
 
@@ -794,8 +794,9 @@ class TpsaVectorField(TpsaVector[TpsaSeriesT]):
         if not isinstance(other, TpsaVectorField):
             err_mess = f'Can only take Lie bracket with another TpsaVectorField! Got {type(other)}'
             raise TypeError(err_mess)
-        result = LIEBRA.fast_call(self, other)
-        return cast('TpsaVectorField[Tpsa] | TpsaVectorField[ComplexTpsa]', self._new_like(result))
+        return cast(
+            'TpsaVectorField[Tpsa] | TpsaVectorField[ComplexTpsa]', LIEBRA.fast_call(self, other)
+        )
 
     # TODO: G.lie_transform(F) = exp(lie_bracket(F, .)) G
 

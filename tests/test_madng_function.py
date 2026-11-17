@@ -14,7 +14,22 @@ from pathlib import Path
 import cffi
 import pytest
 
-from madng_tpsa.madng_function import MadngFunction, generate_headers
+from madng_tpsa.madng_function import (
+    MadngFunction,
+    NativeSize,
+    generate_cffi_header,
+    unique_signatures,
+)
+
+
+def generate_headers(functions):
+    signatures = unique_signatures(functions)
+    return (
+        generate_cffi_header(functions),
+        '\n\n'.join(sig.native_header() for sig in signatures),
+        '\n\n'.join(sig.native_source() for sig in signatures),
+    )
+
 
 HEADERS = [
     'void mad_tpsa_logxdy(const tpsa_t *x, const tpsa_t *y, tpsa_t *r);',
@@ -104,10 +119,10 @@ def build_native(tmp: Path):
             for(int i=0;i<n;i++) c[i]->value=100+a[i]->value-b[i]->value;
         }
         void mad_tpsa_compose(ssz_t na, const tpsa_t *a[], ssz_t nb, const tpsa_t *b[], tpsa_t *c[]) {
-            for(int i=0;i<na;i++) c[i]->value=a[i]->value+b[i%nb]->value;
+            for(int i=0;i<abs(na);i++) c[i]->value=a[i]->value+b[i%nb]->value;
         }
         void mad_ctpsa_compose(ssz_t na, const ctpsa_t *a[], ssz_t nb, const ctpsa_t *b[], ctpsa_t *c[]) {
-            for(int i=0;i<na;i++) c[i]->value=100+a[i]->value+b[i%nb]->value;
+            for(int i=0;i<abs(na);i++) c[i]->value=100+a[i]->value+b[i%nb]->value;
         }
         void mad_tpsa_translate(ssz_t na, const tpsa_t *a[], ssz_t nb, const num_t tb[], tpsa_t *c[]) {
             for(int i=0;i<na;i++) c[i]->value=a[i]->value+tb[i%nb];
@@ -133,9 +148,17 @@ def build_native(tmp: Path):
         }
         void mad_tpsa_minv(ssz_t na, const tpsa_t *a[], ssz_t nb, tpsa_t *c[]) {
             for(int i=0;i<nb;i++) c[i]->value=-a[i%na]->value;
+            for(int i=nb;i<na;i++) {
+                if(a[i]->value!=1 || c[i]->value!=1) current_handler("minv","bad parameter tail");
+                c[i]->value=42;
+            }
         }
         void mad_ctpsa_minv(ssz_t na, const ctpsa_t *a[], ssz_t nb, ctpsa_t *c[]) {
             for(int i=0;i<nb;i++) c[i]->value=-100-a[i%na]->value;
+            for(int i=nb;i<na;i++) {
+                if(a[i]->value!=1 || c[i]->value!=1) current_handler("minv","bad parameter tail");
+                c[i]->value=42;
+            }
         }
     """)
     )
@@ -164,6 +187,7 @@ def build_native(tmp: Path):
             s,
             ffi=ffi,
             lib=lib,
+            aligner=mock_aligner,
             array_sizes={'mc': 'na'}
             if 'compose' in s
             else (
@@ -187,6 +211,16 @@ class Descriptor:
         self.ffi, self.lib = ffi, lib
         self.variables, self.parameters, self.order = variables, parameters, order
         self.union_calls = 0
+
+    @property
+    def num_params(self):
+        return len(self.parameters)
+
+    def params(self):
+        return [
+            Tpsa(self.ffi.gc(self.lib.make_tpsa(1), self.lib.free_tpsa), self)
+            for _ in self.parameters
+        ]
 
     def zero(self, *, order=None):
         assert order is None or order <= self.order
@@ -214,14 +248,20 @@ class Tpsa:
         self.descriptor = descriptor
 
     def change_descriptor(self, descriptor):
-        # Our fake TPSA has no coefficient-copy function. This test only
-        # checks descriptor choice and promotion, not numeric conservation.
-        return descriptor.zero(order=descriptor.order)
+        d = descriptor
+        value = self.descriptor.lib.get_tpsa(self.ptr)
+        make = d.lib.make_ctpsa if isinstance(self, ComplexTpsa) else d.lib.make_tpsa
+        return type(self)(d.ffi.gc(make(value), d.lib.free_tpsa), d)
+
+    def to_complex(self):
+        d = self.descriptor
+        value = d.lib.get_tpsa(self.ptr)
+        return ComplexTpsa(d.ffi.gc(d.lib.make_ctpsa(value), d.lib.free_tpsa), d)
 
 
 class ComplexTpsa(Tpsa):
-    def change_descriptor(self, descriptor):
-        return descriptor.complex_zero(order=descriptor.order)
+    def to_complex(self):
+        return self
 
 
 class TpsaTensor:
@@ -233,6 +273,19 @@ class TpsaTensor:
         self._pointer_array = ffi.new('void*[]', [x.ptr for x in values])
         self.ffi = ffi
         self.pointer_reads = 0
+        self._params = self.descriptor.params()
+        if self.is_complex:
+            self._params = [p.to_complex() for p in self._params]
+
+    @property
+    def pointer_array_with_params(self):
+        return self.ffi.new('void*[]', [t.ptr for t in (*self.flat, *self._params)])
+
+    def extend_descriptor(self, descriptor):
+        return self.change_descriptor(descriptor)
+
+    def _new_like(self, values):
+        return TpsaTensor(values, self.ffi)
 
     @property
     def pointer_array(self):
@@ -248,10 +301,42 @@ class TpsaTensor:
 
     @staticmethod
     def _complex_from(x):
-        d = x.descriptor
-        # Preserve scalar value across fake promotion.
-        # Copying the value is not important for our alignment test.
-        return d.complex_zero()
+        return x.to_complex()
+
+
+def mock_aligner(left, right, *, extend_left, extend_right, reorder_variables):
+    """Align mock objects; the real package aligner only accepts real package types."""
+    if left.descriptor.variables != right.descriptor.variables:
+        if not reorder_variables or set(left.descriptor.variables) != set(
+            right.descriptor.variables
+        ):
+            raise ValueError('Incompatible descriptor variables')
+    common = left.descriptor
+    if common is not right.descriptor:
+        common = common.union(right.descriptor)
+    if left.descriptor is not common:
+        left = (
+            left.extend_descriptor(common)
+            if extend_left and hasattr(left, 'extend_descriptor')
+            else left.change_descriptor(common)
+        )
+    if right.descriptor is not common:
+        right = (
+            right.extend_descriptor(common)
+            if extend_right and hasattr(right, 'extend_descriptor')
+            else right.change_descriptor(common)
+        )
+
+    def is_complex(obj):
+        return isinstance(obj, ComplexTpsa) or getattr(obj, 'is_complex', False)
+
+    complex_needed = is_complex(left) or is_complex(right)
+    if complex_needed:
+        if not is_complex(left):
+            left = left.to_complex()
+        if not is_complex(right):
+            right = right.to_complex()
+    return left, right, complex_needed
 
 
 def make_series(native, vals, *, descriptor=None, _complex=False):
@@ -313,12 +398,13 @@ def test_descriptor_union_and_complex_promotion(native):
     ffi, lib, fs = native
     left_d = Descriptor(ffi, lib, parameters=('k',))
     right_d = Descriptor(ffi, lib, parameters=('q',))
-    left = TpsaTensor(make_series(native, [1, 2], descriptor=left_d), ffi)
+    left = TpsaTensor(make_series(native, [3, 4], descriptor=left_d), ffi)
     right = TpsaTensor(make_series(native, [1, 2], descriptor=right_d, _complex=True), ffi)
     result = fs['mad_tpsa_liebra'](left, right)
     assert len(result) == 2
     assert all(type(x) is ComplexTpsa for x in result)
-    assert result[0].descriptor.parameters == ('k', 'q')  # FAIL only k
+    assert result[0].descriptor.parameters == ('k', 'q')
+    assert get_values(native, result) == [102, 102]
     assert left_d.union_calls == 1
     assert left.is_complex is False  # Original inputs not mutated
     assert right.is_complex is True
@@ -437,3 +523,49 @@ def test_generic_fallback(native):
     assert not fn.is_specialised
     result = fn(left, right)
     assert get_values(native, result) == [1, 2]
+
+
+@pytest.mark.parametrize('specialise', [True, False])
+@pytest.mark.parametrize('complex_needed', [False, True])
+def test_parameter_aware_layouts(native, specialise, complex_needed):
+    ffi, lib, _ = native
+    d = Descriptor(ffi, lib, parameters=('k',))
+    a = TpsaTensor(make_series(native, [10, 20, 30], descriptor=d, _complex=complex_needed), ffi)
+    b = TpsaTensor(make_series(native, [5, 7], descriptor=d, _complex=complex_needed), ffi)
+    compose = MadngFunction(
+        HEADERS[2],
+        ffi=ffi,
+        lib=lib,
+        specialise=specialise,
+        array_sizes={'mc': 'na'},
+        native_sizes={'na': NativeSize(sign=-1), 'nb': NativeSize(params_from='mb')},
+        parameter_arrays=('mb',),
+        return_like='ma',
+    )
+    result = compose(a, b)
+    extra = 100 if complex_needed else 0
+    assert get_values(native, result.flat) == [15 + extra, 27 + extra, 31 + extra]
+    assert result.size == 3
+    minv = MadngFunction(
+        HEADERS[-1],
+        ffi=ffi,
+        lib=lib,
+        specialise=specialise,
+        size_aliases={'nb': 'na'},
+        native_sizes={'na': NativeSize(params_from='ma')},
+        parameter_arrays=('ma', 'mc'),
+        return_like='ma',
+    )
+    result = minv(b)
+    assert result.size == 2
+    assert get_values(native, result.flat) == [-5 - extra, -7 - extra]
+    assert lib.get_tpsa(b._params[0].ptr) == 1  # input identities were not overwritten
+    with pytest.raises(ValueError, match='nb must equal na'):
+        minv(b, nb=1)
+
+
+def test_wrapper_tags_are_stable():
+    fn = MadngFunction(HEADERS[-1])
+    assert fn.real.tag == 'v_s_krpa_s_rpa'
+    assert fn.complex is not None
+    assert fn.complex.tag == 'v_s_kcpa_s_cpa'

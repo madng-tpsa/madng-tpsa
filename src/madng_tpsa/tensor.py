@@ -33,7 +33,7 @@ from ._cffi import ffi, lib
 from .complex_tpsa import ComplexTpsa
 from .descriptor import Descriptor
 from .formatting import format_polynomial
-from .madng_calls import COMPOSE, new_components
+from .madng_definitions import COMPOSE
 from .tpsa import Tpsa
 
 
@@ -962,28 +962,7 @@ class TpsaTensor(Generic[TpsaSeriesT]):
         if other.size != self.num_vars:
             err_mess = f'Expected a map with {self.num_vars} components, got {other.size}'
             raise ValueError(err_mess)
-        # Fast path: no descriptor union or promotion necessary.
-        if self.descriptor is other.descriptor and self.is_complex == other.is_complex:
-            left, right = self, other
-        else:
-            left, right, _ = _align_descriptors(
-                self,
-                other,
-                extend_left=False,
-                extend_right=True,
-                reorder_variables=True,
-            )
-        result = new_components(left, left.size)
-        COMPOSE.call_native(
-            left,
-            -left.size,
-            left.pointer_array,
-            right.size + right.num_params,
-            right.pointer_array_with_params,
-            ffi.new('void*[]', [t.ptr for t in result]),
-        )
-        # Real/complex promotion is dynamic, so the generic result needs a cast.
-        return cast('TpsaTensor[Tpsa] | TpsaTensor[ComplexTpsa]', left._new_like(result))
+        return cast('TpsaTensor[Tpsa] | TpsaTensor[ComplexTpsa]', COMPOSE.fast_call(self, other))
 
     # ========================
     # === Numpy Operations ===

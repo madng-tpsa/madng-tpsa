@@ -9,14 +9,13 @@ same translation unit as its static, thread-local setjmp helpers.
 
 from __future__ import annotations
 
-import hashlib
 import keyword
 import re
 from dataclasses import dataclass
 from typing import TYPE_CHECKING, Any, Literal
 
 if TYPE_CHECKING:
-    from collections.abc import Callable, Mapping
+    from collections.abc import Callable, Mapping, Sequence
 
 
 _C_TYPES = {
@@ -32,6 +31,17 @@ _C_TYPES = {
 }
 _INT = {'ssz_t', 'idx_t', 'int', 'ord_t', 'log_t'}
 _SERIES = {'tpsa_t', 'ctpsa_t'}
+_TYPE_TAGS = {
+    'void': 'v',
+    'ssz_t': 's',
+    'idx_t': 'i',
+    'int': 'n',
+    'num_t': 'd',
+    'ord_t': 'o',
+    'log_t': 'b',
+    'tpsa_t': 'r',
+    'ctpsa_t': 'c',
+}
 _MISSING = object()
 _IDENT = r'[A-Za-z_]\w*'
 _DECL = re.compile(
@@ -85,7 +95,12 @@ class Argument:
     def abi_key(self) -> str:
         """Return a string representing the ABI-relevant aspects of this argument."""
         # Names and Python-side directions are NOT part of the C ABI.
-        return f'{self.base}:{int(self.const)}:{int(self.pointer)}:{int(self.array)}'
+        return (
+            ('k' if self.const else '')
+            + _TYPE_TAGS[self.base]
+            + ('p' if self.pointer else '')
+            + ('a' if self.array else '')
+        )
 
 
 def _parse(declaration: str, directions: Mapping[str, str] | None = None) -> Signature:
@@ -146,8 +161,7 @@ class Signature:
     @property
     def tag(self) -> str:
         """Return a unique tag representing the ABI of this signature."""
-        key = self.return_type + '|' + '|'.join(a.abi_key() for a in self.args)
-        return hashlib.sha1(key.encode('ascii')).hexdigest()[:12]
+        return '_'.join((_TYPE_TAGS[self.return_type], *(a.abi_key() for a in self.args)))
 
     @property
     def function_type(self) -> str:
@@ -274,6 +288,19 @@ def _array_length(obj: Any) -> int | None:
             return None
 
 
+@dataclass(frozen=True, slots=True)
+class NativeSize:
+    """Convert a logical non-negative length to the native dimension argument."""
+
+    sign: Literal[1, -1] = 1
+    params_from: str | None = None
+
+    def __post_init__(self) -> None:
+        if self.sign not in (-1, 1):
+            err_mess = 'NativeSize.sign must be 1 or -1'
+            raise ValueError(err_mess)
+
+
 class MadngFunction:
     """Parse once and call both real and complex MAD-NG functions.
 
@@ -301,6 +328,14 @@ class MadngFunction:
         output_order: int | None = None,
         align: bool = True,
         extend_vectors: bool = True,
+        extend_left: bool | None = None,
+        extend_right: bool | None = None,
+        reorder_variables: bool = False,
+        aligner: Callable[..., Any] | None = None,
+        native_sizes: Mapping[str, NativeSize] | None = None,
+        size_aliases: Mapping[str, str] | None = None,
+        parameter_arrays: tuple[str, ...] = (),
+        return_like: str | None = None,
         specialise: bool = True,
         check_lengths: bool = True,
     ) -> None:
@@ -344,15 +379,58 @@ class MadngFunction:
         self.output_order = output_order
         self.align = align
         self.extend_vectors = extend_vectors
+        self.extend_left = extend_vectors if extend_left is None else extend_left
+        self.extend_right = extend_vectors if extend_right is None else extend_right
+        self.reorder_variables = reorder_variables
         self.check_lengths = check_lengths
         self.output_factory = dict(output_factory or {})
-        self._pair_aligner = None
+        self._pair_aligner = aligner
+        self._specialise = specialise
+        self.return_like = return_like
         self._names = {a.name: i for i, a in enumerate(self.arguments)}
         self._size_indexes = tuple(i for i, a in enumerate(real.args) if a.is_size)
         self._input_series = tuple(
             i for i, a in enumerate(real.args) if a.is_series and a.direction != 'out'
         )
         self._outputs = tuple(i for i, a in enumerate(real.args) if a.direction != 'in')
+        self._parameter_arrays: set[int] = set()
+        if parameter_arrays and not check_lengths:
+            err_mess = 'Parameter-inclusive arrays require length validation'
+            raise ValueError(err_mess)
+        for name in parameter_arrays:
+            i = self._names.get(name)
+            if i is None or not (real.args[i].array and real.args[i].is_series):
+                err_mess = f'{name!r} is not a TPSA array'
+                raise ValueError(err_mess)
+            if real.args[i].direction == 'inout':
+                err_mess = 'Parameter-inclusive inout arrays are not supported'
+                raise ValueError(err_mess)
+            self._parameter_arrays.add(i)
+        self._native_size_rules: dict[int, tuple[int, int | None]] = {}
+        for name, rule in (native_sizes or {}).items():
+            i = self._names.get(name)
+            if i is None or i not in self._size_indexes:
+                err_mess = f'{name!r} is not a size argument'
+                raise ValueError(err_mess)
+            source = None if rule.params_from is None else self._names.get(rule.params_from)
+            if rule.params_from is not None and source not in self._input_series:
+                err_mess = 'params_from must identify a TPSA input'
+                raise ValueError(err_mess)
+            self._native_size_rules[i] = (rule.sign, source)
+        if return_like is not None:
+            ref = self._names.get(return_like)
+            if (
+                ref is None
+                or ref not in self._input_series
+                or not real.args[ref].array
+                or len(self._outputs) != 1
+                or real.return_type != 'void'
+                or not real.args[self._outputs[0]].is_series
+                or not real.args[self._outputs[0]].array
+                or real.args[self._outputs[0]].direction != 'out'
+            ):
+                err_mess = 'return_like requires one TPSA array output and an array input'
+                raise ValueError(err_mess)
         inputs = [i for i, a in enumerate(real.args) if not a.is_size and a.direction != 'out']
         self._positionals = tuple(inputs + [i for i in self._outputs if i not in inputs])
 
@@ -376,7 +454,16 @@ class MadngFunction:
         self._array_size_pairs = tuple(
             (self._names[arr], size_lookup[dim]) for arr, dim in mapped.items()
         )
-        defaults = size_defaults or {}
+        defaults = dict(size_defaults or {})
+        aliases = dict(size_aliases or {})
+        if set(aliases) & set(defaults):
+            err_mess = 'A size cannot have both a default and an alias'
+            raise ValueError(err_mess)
+        defaults.update(aliases)
+        if set(aliases) - set(size_lookup) or set(aliases.values()) - set(size_lookup):
+            err_mess = 'Unknown size alias'
+            raise ValueError(err_mess)
+        self._size_aliases = tuple((size_lookup[a], size_lookup[b]) for a, b in aliases.items())
         if set(defaults) - set(size_lookup):
             err_mess = 'Unknown size_defaults key'
             raise ValueError(err_mess)
@@ -398,17 +485,20 @@ class MadngFunction:
             err_mess = 'Factory names must be output arguments'
             raise ValueError(err_mess)
 
-        # Eager native symbol lookup: no getattr(ffi/lib) or ffi.addressof in call().
-        self._native_real = self._resolve(real) if ffi is not None and lib is not None else None
-        self._native_complex = (
-            self._resolve(other) if other and ffi is not None and lib is not None else None
-        )
-        hot = (
-            self._build_specialised_call()
-            if specialise and ffi is not None and lib is not None
-            else None
-        )
-        self.fast_call: Callable[..., Any] = hot if hot is not None else self._call_generic
+        self._native_real: tuple[Any, Any] | None = None
+        self._native_complex: tuple[Any, Any] | None = None
+        self.fast_call: Callable[..., Any] = self._call_generic
+        self.is_specialised = False
+        if ffi is not None and lib is not None:
+            self.bind(ffi, lib)
+
+    def bind(self, ffi: Any, lib: Any) -> None:
+        """Resolve symbols and compile the call plan once the library is loaded."""
+        self.ffi, self.lib = ffi, lib
+        self._native_real = self._resolve(self.real)
+        self._native_complex = self._resolve(self.complex) if self.complex else None
+        hot = self._build_specialised_call() if self._specialise else None
+        self.fast_call = hot if hot is not None else self._call_generic
         self.is_specialised = hot is not None
 
     def _resolve(self, sig: Signature) -> tuple[Any, Any] | None:
@@ -421,15 +511,15 @@ class MadngFunction:
 
     def cffi_header(self) -> str:
         """Return the CFFI header for this function."""
-        return generate_headers([self])[0]
+        return generate_cffi_header([self])
 
     def native_header(self) -> str:
         """Return the native C header for this function."""
-        return generate_headers([self])[1]
+        return '\n\n'.join(sig.native_header() for sig in unique_signatures([self]))
 
     def native_source(self) -> str:
         """Return the native C source for this function."""
-        return generate_headers([self])[2]
+        return '\n\n'.join(sig.native_source() for sig in unique_signatures([self]))
 
     @property
     def wrapper_name(self) -> str:
@@ -477,8 +567,9 @@ class MadngFunction:
             left, right, already_complex = self._pair_aligner(
                 values[indexes[0]],
                 values[indexes[1]],
-                extend_left=self.extend_vectors,
-                extend_right=self.extend_vectors,
+                extend_left=self.extend_left,
+                extend_right=self.extend_right,
+                reorder_variables=self.reorder_variables,
             )
             if complex_needed and not already_complex:
                 if not _series_is_complex(left):
@@ -492,16 +583,25 @@ class MadngFunction:
         common = first
         for obj in known[1:]:
             if obj.descriptor is not common:
-                if obj.descriptor.variables != common.variables:
+                variables = obj.descriptor.variables
+                compatible = (
+                    set(variables) == set(common.variables)
+                    if self.reorder_variables
+                    else variables == common.variables
+                )
+                if not compatible:
                     err_mess = 'Incompatible descriptor variables or variable order'
                     raise ValueError(err_mess)
                 common = common.union(obj.descriptor)
-        for i in indexes:
+        for pos, i in enumerate(indexes):
             obj = values[i]
             if not hasattr(obj, 'descriptor'):
                 continue
             if obj.descriptor is not common:
-                if self.extend_vectors and hasattr(obj, 'extend_descriptor'):
+                extend = (
+                    (self.extend_left, self.extend_right)[pos] if pos < 2 else self.extend_vectors
+                )
+                if extend and hasattr(obj, 'extend_descriptor'):
                     obj = obj.extend_descriptor(common)
                 else:
                     obj = obj.change_descriptor(common)
@@ -546,6 +646,21 @@ class MadngFunction:
                     require_writable=arg.direction != 'in',
                 )
         return self.ffi.new(f'{_C_TYPES[arg.base]}[]', list(obj))
+
+    def _output_with_params(
+        self, arg: Argument, obj: Any, reference: Any, *, complex_needed: bool
+    ) -> tuple[Any, list[Any]]:
+        """Prepare writable parameter identities and retain them until the native call."""
+        params = list(reference.descriptor.params())
+        if complex_needed:
+            params = [_promote(p) for p in params]
+        if not params:
+            return self._convert_array(arg, obj), params
+        components = obj.flat if hasattr(obj, 'flat') else obj
+        if not isinstance(components, (tuple, list)):
+            err_mess = 'Parameter-inclusive outputs require a tensor or list of TPSAs'
+            raise TypeError(err_mess)
+        return self.ffi.new('void*[]', [_pointer(t) for t in (*components, *params)]), params
 
     def _convert(self, arg: Argument, obj: Any) -> Any:
         if arg.array:
@@ -614,28 +729,31 @@ class MadngFunction:
         arg = self.arguments[index]
         if not arg.is_series:
             return
-        if arg.array:
-            if hasattr(obj, 'is_complex'):
-                sample = obj
-            elif isinstance(obj, (list, tuple)) and obj:
-                sample = obj[0]
-            else:
-                return  # Raw CFFI pointers: responsibility of caller.
-        else:
-            sample = obj
-            if not hasattr(sample, 'descriptor'):
-                return
-        if _series_is_complex(sample) != complex_needed:
+        if arg.array and isinstance(obj, (list, tuple)):
+            for sample in obj:
+                if not hasattr(sample, 'descriptor'):
+                    err_mess = f'Output {arg.name} must contain TPSAs'
+                    raise TypeError(err_mess)
+                if _series_is_complex(sample) != complex_needed:
+                    err_mess = f'Output {arg.name} has the wrong real/complex TPSA type'
+                    raise TypeError(err_mess)
+                if descriptor is not None and sample.descriptor is not descriptor:
+                    err_mess = f'Output {arg.name} uses the wrong descriptor'
+                    raise ValueError(err_mess)
+            return
+        if not hasattr(obj, 'descriptor'):
+            return  # Raw CFFI pointers: responsibility of caller.
+        if _series_is_complex(obj) != complex_needed:
             err_mess = f'Output {arg.name} has the wrong real/complex TPSA type'
             raise TypeError(err_mess)
-        if descriptor is not None and sample.descriptor is not descriptor:
+        if descriptor is not None and obj.descriptor is not descriptor:
             err_mess = f'Output {arg.name} uses the wrong descriptor'
             raise ValueError(err_mess)
 
     def _raise_native_error(self, first: Any) -> None:
         method = getattr(first, '_raise_mad_error', None)
         if method is None and hasattr(first, 'flat'):
-            method = first.flat[0]._raise_mad_error
+            method = getattr(first.flat[0], '_raise_mad_error', None)
         if method is not None:
             method()
         ffi, lib = self.ffi, self.lib
@@ -742,6 +860,12 @@ class MadngFunction:
                 put(f'{size} = _length({output_candidates[0]})', 2)
             put(f'if {size} is None:')
             put(f"raise TypeError('Cannot infer {size}; pass it explicitly')", 2)
+            put(f'if {size} < 0:')
+            put(f"raise ValueError('{size} must be non-negative')", 2)
+        for ai, bi in self._size_aliases:
+            an, bn = args[ai].name, args[bi].name
+            put(f'if {an} != {bn}:')
+            put(f"raise ValueError('{an} must equal {bn}')", 2)
         if self.check_lengths:
             for ai, si in self._array_size_pairs:
                 arg = args[ai]
@@ -754,6 +878,8 @@ class MadngFunction:
                     2,
                 )
 
+        if self.return_like is not None:
+            put(f'_allocate = {args[self._outputs[0]].name} is None')
         put(f'_d = {first}.descriptor')
         put('_order = _d.order if _self.output_order is None else _self.output_order')
         put('_zero = _d.complex_zero if _complex else _d.zero')
@@ -789,9 +915,25 @@ class MadngFunction:
 
         # Convert in native argument order. Tensor.pointer_array is reused
         # without making an intermediate list or copying pointers.
-        for arg in args:
+        for i, arg in enumerate(args):
             name = arg.name
-            if arg.is_series:
+            if i in self._native_size_rules:
+                sign, source = self._native_size_rules[i]
+                expr = (
+                    name
+                    if source is None
+                    else f'{name} + {args[source].name}.descriptor.num_params'
+                )
+                put(f'_c_{name} = {sign} * ({expr})')
+            elif i in self._parameter_arrays:
+                if arg.direction == 'out':
+                    put(
+                        f'_c_{name}, _owners_{name} = _self._output_with_params('
+                        f'_by_name[{name!r}], {name}, {first}, complex_needed=_complex)'
+                    )
+                else:
+                    put(f'_c_{name} = {name}.pointer_array_with_params')
+            elif arg.is_series:
                 if arg.array:
                     put(f'_c_{name} = _self._convert_array(_by_name[{name!r}], {name})')
                 else:
@@ -822,6 +964,9 @@ class MadngFunction:
                 result_exprs.append('_res_' + name)
             else:
                 result_exprs.append(name)
+        if self.return_like is not None:
+            put('if _allocate:')
+            put(f'return {self.return_like}._new_like({args[self._outputs[0]].name})', 2)
         if not result_exprs:
             put('return None')
         elif len(result_exprs) == 1:
@@ -910,9 +1055,16 @@ class MadngFunction:
             if not isinstance(size, int) or isinstance(size, bool) or size < 0:
                 err_mess = f'{self.arguments[i].name} must be a non-negative integer'
                 raise TypeError(err_mess)
+        for ai, bi in self._size_aliases:
+            if values[ai] != values[bi]:
+                err_mess = f'{self.arguments[ai].name} must equal {self.arguments[bi].name}'
+                raise ValueError(err_mess)
         primary_descriptor = next(
             (values[i].descriptor for i in self._input_series if hasattr(values[i], 'descriptor')),
             None,
+        )
+        allocate_like = self.return_like is not None and (
+            values[self._outputs[0]] is _MISSING or values[self._outputs[0]] is None
         )
         for i in self._outputs:
             if values[i] is _MISSING or values[i] is None:
@@ -929,9 +1081,24 @@ class MadngFunction:
                 raise ValueError(err_mess)
 
         ffi = self.ffi
-        converted = [
-            self._convert(arg, val) for arg, val in zip(self.arguments, values, strict=True)
-        ]
+        converted = []
+        owners = []
+        for i, (arg, val) in enumerate(zip(self.arguments, values, strict=True)):
+            if i in self._native_size_rules:
+                sign, source = self._native_size_rules[i]
+                count = val if source is None else val + values[source].descriptor.num_params
+                converted.append(sign * count)
+            elif i in self._parameter_arrays:
+                if arg.direction == 'out':
+                    pointer, params = self._output_with_params(
+                        arg, val, values[self._input_series[0]], complex_needed=need_complex
+                    )
+                    owners.append(params)
+                    converted.append(pointer)
+                else:
+                    converted.append(val.pointer_array_with_params)
+            else:
+                converted.append(self._convert(arg, val))
         ret = None
         if self.real.return_type != 'void':
             ret = ffi.new(f'{_C_TYPES[self.real.return_type]} *')
@@ -942,6 +1109,8 @@ class MadngFunction:
             first = values[self._input_series[0]] if self._input_series else None
             self._raise_native_error(first)
 
+        if self.return_like is not None and allocate_like:
+            return values[self._names[self.return_like]]._new_like(values[self._outputs[0]])
         results = [] if ret is None else [ret[0]]
         for i in self._outputs:
             arg = self.arguments[i]
@@ -974,38 +1143,24 @@ class MadngFunction:
         """Invoke the precompiled (or generic fallback) call plan."""
         return self.fast_call(*args, **kwargs)
 
-    def call_native(self, reference: Any, /, *native_args: Any) -> None:
-        """Call a void MAD-NG function with prepared native arguments.
 
-        The caller is responsible for descriptor alignment, dimensions,
-        pointer validity, and the allocation and lifetime of outputs.
-        """
-        if self.real.return_type != 'void':
-            err_mess = 'call_native only supports void functions'
-            raise TypeError(err_mess)
-        native = self._native_complex if _series_is_complex(reference) else self._native_real
-        if native is None:
-            err_mess = f'Native function/wrapper unavailable: {self.name}'
-            raise RuntimeError(err_mess)
-        if native[1](native[0], *native_args):
-            self._raise_native_error(reference)
-
-
-def generate_headers(functions: list[MadngFunction]) -> tuple[str, str, str]:
-    """Return (ffi.cdef text, native header, native implementation).
-
-    Identical C signatures share exactly one generated protected wrapper,
-    regardless of how many MAD-NG functions use that signature.
-    """
-    symbols: dict[str, str] = {}
+def unique_signatures(functions: Sequence[MadngFunction]) -> tuple[Signature, ...]:
+    """Return the distinct native signatures, in definition order."""
     wrappers: dict[str, Signature] = {}
     for func in functions:
         for sig in (func.real, func.complex):
-            if sig is None:
-                continue
-            symbols[sig.name] = sig.cffi_symbol()
-            wrappers[sig.tag] = sig
-    cffi_text = '\n'.join((*symbols.values(), '', *(s.cffi_wrapper() for s in wrappers.values())))
-    native_header = '\n\n'.join(s.native_header() for s in wrappers.values())
-    native_code = '\n\n'.join(s.native_source() for s in wrappers.values())
-    return cffi_text, native_header, native_code
+            if sig is not None:
+                wrappers[sig.tag] = sig
+    return tuple(wrappers.values())
+
+
+def generate_cffi_header(functions: Sequence[MadngFunction]) -> str:
+    """Generate native symbols and deduplicated protected CFFI declarations."""
+    symbols = {
+        sig.name: sig.cffi_symbol()
+        for func in functions
+        for sig in (func.real, func.complex)
+        if sig is not None
+    }
+    wrappers = (sig.cffi_wrapper() for sig in unique_signatures(functions))
+    return '\n'.join((*symbols.values(), '', *wrappers))

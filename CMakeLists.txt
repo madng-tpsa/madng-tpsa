@@ -67,7 +67,24 @@ foreach(source_path IN LISTS MADNG_SOURCE_PATHS)
   list(APPEND MADNG_TPSA_SOURCES "${GTPSA_BUILD_SRC}/${relative_source_path}")
 endforeach()
 
+find_package(Python COMPONENTS Interpreter REQUIRED)
+set(WRAPPER_GENERATOR "${CMAKE_CURRENT_SOURCE_DIR}/tools/generate_madng_wrappers.py")
+set(WRAPPER_PACKAGE "${CMAKE_CURRENT_SOURCE_DIR}/src/madng_tpsa")
+set(WRAPPER_OUTPUT_DIR "${CMAKE_CURRENT_BINARY_DIR}/generated_wrappers")
+set(WRAPPER_HEADER "${WRAPPER_OUTPUT_DIR}/madng_panic_generated.h")
+set(WRAPPER_SOURCE "${WRAPPER_OUTPUT_DIR}/madng_panic_generated.inc")
+add_custom_command(
+  OUTPUT "${WRAPPER_HEADER}" "${WRAPPER_SOURCE}"
+  COMMAND "${CMAKE_COMMAND}" -E make_directory "${WRAPPER_OUTPUT_DIR}"
+  COMMAND "${Python_EXECUTABLE}" "${WRAPPER_GENERATOR}" --output-dir "${WRAPPER_OUTPUT_DIR}"
+  DEPENDS "${WRAPPER_GENERATOR}" "${WRAPPER_PACKAGE}/madng_definitions.py" "${WRAPPER_PACKAGE}/madng_function.py"
+  COMMENT "Generating MAD-NG protected wrappers"
+  VERBATIM
+)
+add_custom_target(generate_madng_wrappers DEPENDS "${WRAPPER_HEADER}" "${WRAPPER_SOURCE}")
+
 add_library(madng_tpsa SHARED ${MADNG_TPSA_SOURCES})
+add_dependencies(madng_tpsa generate_madng_wrappers)
 target_sources(madng_tpsa PRIVATE
   "${CMAKE_CURRENT_SOURCE_DIR}/native/madng_panic.c"
   "${CMAKE_CURRENT_SOURCE_DIR}/native/madng_tpsa.c"
@@ -88,6 +105,7 @@ set_source_files_properties("${GTPSA_BUILD_SRC}/mad_mem.c" PROPERTIES
 target_include_directories(madng_tpsa PRIVATE
   "${GTPSA_BUILD_SRC}"
   "${CMAKE_CURRENT_SOURCE_DIR}/src/madng_tpsa/include"
+  "${WRAPPER_OUTPUT_DIR}"
 )
 target_compile_options(madng_tpsa PRIVATE
   -include stdlib.h

@@ -13,7 +13,8 @@ from typing import Any
 
 import cffi
 
-from ._generated_cdef import CDEF as GENERATED_CDEF
+from .madng_definitions import FUNCTIONS
+from .madng_function import generate_cffi_header
 from .paths import core_library
 
 CDEF = """
@@ -277,7 +278,10 @@ CDEF = """
     int madng_tpsa_tpsa_single_monomial(const void* series, int monomial_length, unsigned char* monomial_orders);
 """
 
+CDEF += '\n' + generate_cffi_header(FUNCTIONS)
 ffi = cffi.FFI()
 ffi.cdef(CDEF)
-ffi.cdef(GENERATED_CDEF)
 lib: Any = ffi.dlopen(core_library())
+
+for function in FUNCTIONS:
+    function.bind(ffi, lib)
