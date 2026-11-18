@@ -174,8 +174,8 @@ class _TpsaBase(ABC, Generic[_Coefficient, _InputCoefficient]):
         self,
         descriptor: Descriptor,
         *,
-        variable_map: Mapping[builtins.str, builtins.str] | None = None,
-        parameter_map: Mapping[builtins.str, builtins.str] | None = None,
+        var_name_map: Mapping[builtins.str, builtins.str] | None = None,
+        param_name_map: Mapping[builtins.str, builtins.str] | None = None,
         truncate: bool = False,
     ) -> Self:
         """Convert this TPSA to a different descriptor.
@@ -187,13 +187,13 @@ class _TpsaBase(ABC, Generic[_Coefficient, _InputCoefficient]):
         when truncate=True.
         """
         old = self.descriptor
-        if descriptor is old and not variable_map and not parameter_map:
+        if descriptor is old and not var_name_map and not param_name_map:
             return self.copy()
 
         positions = [
-            *_match_labels(old.var_names, descriptor.var_names, variable_map),
+            *_match_labels(old.var_names, descriptor.var_names, var_name_map),
             *_match_labels(
-                old.param_names, descriptor.param_names, parameter_map, offset=descriptor.num_vars
+                old.param_names, descriptor.param_names, param_name_map, offset=descriptor.num_vars
             ),
         ]
 

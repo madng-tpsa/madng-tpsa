@@ -33,7 +33,7 @@ keyword components are set to zero. The descriptor can be inferred from TPSA
 inputs, or supplied explicitly for scalar-only construction.
 
 ``field.components`` returns the tuple of component TPSAs; ``field.component_names``
-returns the tuple of coordinates; ``field.named_components`` is a read-only
+returns the tuple of components; ``field.named_components`` is a read-only
 *mapping of names to mutable TPSA objects*. Use positional indexing
 (``field[0]``) or ``field.q`` for access. The names do not establish canonical
 conjugacy.
@@ -66,15 +66,15 @@ Evaluation, Jacobians, Hessians
 .. code-block:: python
 
    m = TpsaVectorField([q**2 + k*q + p, q*p + k], descriptor=d)
-   m.evaluate((2., 3.), parameters=(4.,))  # array([15., 10.])
-   m.evaluate_jacobian((2., 3.), parameters=(4.,))
+   m.evaluate((2., 3.), param_values=(4.,))  # array([15., 10.])
+   m.evaluate_jacobian((2., 3.), param_values=(4.,))
    # array([[8., 1.],
    #        [3., 2.]])
    J = m.jacobian(wrt='variables')  # Shape (2, 2), TPSA-valued
    print(J)
-   # TpsaTensor(shape=(2, 2), size=4, values=[2·q + k, 1, p, ...])
+   # TpsaTensor(shape=(2, 2), size=4, components=[2·q + k, 1, p, ...])
    H = m.hessian(wrt='all')         # Shape (2, 3, 3), TPSA-valued
-   values = m.evaluate_hessian((2., 3.), parameters=(4.,), wrt='all')
+   values = m.evaluate_hessian((2., 3.), param_values=(4.,), wrt='all')
 
 Each Jacobian and Hessian is evaluated in the original descriptor named_components.
 

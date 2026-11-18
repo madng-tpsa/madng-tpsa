@@ -20,6 +20,7 @@ if TYPE_CHECKING:
     # A bare all-integer sequence of full descriptor length denotes exponent orders.
     # For explicit numeric coordinate indices, use a nested (index, multiplicity) pair.
     DerivativeSpec: TypeAlias = int | str | Tpsa | Sequence[int | str | tuple[int | str, int]]
+    DerivativeGroup: TypeAlias = Literal['vars', 'params', 'all']
 
     T = TypeVar('T')
     Nested: TypeAlias = 'Sequence[T | Nested[T]]'

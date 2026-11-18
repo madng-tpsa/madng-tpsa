@@ -324,12 +324,6 @@ class Descriptor:
             max_orders=None if max_orders == defaults else max_orders,
         )
 
-    def _default_var_labels(self) -> tuple[str, ...]:
-        return tuple(f'v_{index}' for index in range(1, self.num_vars + 1))
-
-    def _default_param_labels(self) -> tuple[str, ...]:
-        return tuple(f'p_{index}' for index in range(1, self.num_params + 1))
-
     @property
     def ptr(self) -> Any:
         """Descriptor pointer."""
@@ -594,18 +588,18 @@ class Descriptor:
                 raise KeyError(parameter) from exc
         return int(parameter)
 
-    def var_or_param_index(self, variable: int | str) -> int:
-        """Return the 1-based combined variable/parameter index for ``variable``."""
-        if isinstance(variable, str):
-            if variable in self.var_names:
-                return self.var_names.index(variable) + 1
-            if variable in self.param_names:
-                return self.num_vars + self.param_names.index(variable) + 1
-            raise KeyError(variable)
+    def var_or_param_index(self, name_or_index: int | str) -> int:
+        """Return the 1-based combined variable/parameter index for ``name_or_index``."""
+        if isinstance(name_or_index, str):
+            if name_or_index in self.var_names:
+                return self.var_names.index(name_or_index) + 1
+            if name_or_index in self.param_names:
+                return self.num_vars + self.param_names.index(name_or_index) + 1
+            raise KeyError(name_or_index)
 
-        index = int(variable)
+        index = int(name_or_index)
         if index <= 0 or index > self.num_vars + self.num_params:
-            message = 'Variable index out of range'
+            message = 'Variable or parameter index out of range'
             raise ValueError(message)
 
         return index

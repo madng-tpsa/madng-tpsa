@@ -238,8 +238,8 @@ def test_copy_of_partial_view_is_independent_and_compact() -> None:
 @pytest.mark.parametrize('already_complex', [False, True])
 def test_to_complex_returns_deep_copy_even_when_already_complex(*, already_complex: bool) -> None:
     d = _descriptor()
-    values = [d.complex_zero(), d.complex_zero()] if already_complex else _components(d, 2)
-    tensor = TpsaTensor(values)
+    components = [d.complex_zero(), d.complex_zero()] if already_complex else _components(d, 2)
+    tensor = TpsaTensor(components)
     promoted = tensor.to_complex()
     assert promoted is not tensor
     assert promoted.is_complex
@@ -309,8 +309,8 @@ def test_complex_const_part_assignment_preserves_imaginary_part() -> None:
 
 def test_serialization_round_trip_of_partial_view() -> None:
     d = _descriptor(params=True)
-    values = _components(d, 6)
-    tensor = TpsaTensor(values, shape=(2, 3))
+    components = _components(d, 6)
+    tensor = TpsaTensor(components, shape=(2, 3))
     view = tensor[1]
     encoded = view.to_dict(tol=0)
     recreated = TpsaTensor.from_dict(encoded)
@@ -345,7 +345,7 @@ def test_change_descriptor_honours_explicit_remapping_with_same_descriptor() -> 
     tensor = TpsaTensor([t])
     swapped = tensor.change_descriptor(
         d,
-        variable_map={
+        var_name_map={
             'tensor_remap_x': 'tensor_remap_px',
             'tensor_remap_px': 'tensor_remap_x',
         },
@@ -375,20 +375,20 @@ def test_evaluate_with_parameters() -> None:
     g.set((0, 1, 0), -1)
     t = TpsaTensor([[f], [g]])
     np.testing.assert_allclose(
-        t.evaluate([5, 6], parameters=[7]),
+        t.evaluate([5, 6], param_values=[7]),
         [[31], [-6]],
     )
-    with pytest.raises(ValueError, match='[Pp]arameter'):
-        t.evaluate([5, 6], parameters=[1, 2])
-    with pytest.raises(ValueError, match='[Cc]oordinate'):
-        t.evaluate([5], parameters=[7])
+    with pytest.raises(ValueError, match='Expected 1 parameter values, got 2'):
+        t.evaluate([5, 6], param_values=[1, 2])
+    with pytest.raises(ValueError, match='Expected 2 variable values, got 1'):
+        t.evaluate([5], param_values=[7])
 
 
 def test_evaluate_complex_coordinates_without_mutating_real_tensor() -> None:
     d = _descriptor()
     x, px = d.vars()
     tensor = TpsaTensor([x * x, px])
-    with pytest.warns(UserWarning, match='Assigning complex coordinates to a real TpsaTensor'):
+    with pytest.warns(UserWarning, match='Assigning complex values to a real TpsaTensor'):
         result = tensor.evaluate([1 + 2j, 3.0])
     assert result.dtype.kind == 'c'
     np.testing.assert_allclose(result, [-3 + 4j, 3])
@@ -475,7 +475,7 @@ def test_compose_rank_two_with_params_and_complex_substitution() -> None:
     assert result.shape == (2, 2)
     assert result.is_complex
     np.testing.assert_allclose(
-        result.evaluate((2, 3), parameters=(4,)),
+        result.evaluate((2, 3), param_values=(4,)),
         [[7 + 1j, 3], [9 + 3j, 8 + 6j]],
     )
     assert not outer.is_complex
@@ -517,7 +517,7 @@ def test_evaluate_tensor_more_components_than_variables_with_params():
     assert tensor.size > d.num_vars
 
     np.testing.assert_allclose(
-        tensor.evaluate([2, 3], parameters=[4]),
+        tensor.evaluate([2, 3], param_values=[4]),
         [[6, 3, 5], [6, 4, 8]],
     )
 
@@ -538,7 +538,7 @@ def test_evaluate_partial_view_with_parameters():
 
     assert view.shape == (3,)
     np.testing.assert_allclose(
-        view.evaluate([2, 3], parameters=[4]),
+        view.evaluate([2, 3], param_values=[4]),
         [6, 4, 8],
     )
 

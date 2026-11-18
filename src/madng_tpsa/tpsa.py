@@ -246,32 +246,32 @@ class Tpsa(_TpsaBase[float, SupportsFloat]):
         lib.mad_tpsa_copy(self._ptr, result._ptr)
         return result
 
-    def integrate(self, variable: int | str | Tpsa) -> Tpsa:
-        """Return the formal integral with respect to ``variable``.
+    def integrate(self, wrt: int | str | Tpsa) -> Tpsa:
+        """Return the formal integral with respect to ``wrt``.
 
         Parameters
         ----------
-        variable
+        wrt
             May be a label, a 1-based variable/parameter index, or a TPSA identity
             variable with exactly one first-order monomial of coefficient 1. See
             :meth:`_resolve_single_monomial` for accepted inputs.
         """
-        variable_index = self._integration_index(variable)
+        variable_index = self._integration_index(wrt)
         result = self.descriptor.zero(order=self.truncation_order)
         lib.mad_tpsa_integ(self._ptr, result._ptr, variable_index)
         return result
 
-    def derivative(self, variable: int | str | tuple[int, ...] | Tpsa) -> Tpsa:
-        """Return a partial derivative with respect to ``variable``.
+    def derivative(self, wrt: int | str | tuple[int, ...] | Tpsa) -> Tpsa:
+        """Return a partial derivative with respect to ``wrt``.
 
         Parameters
         ----------
-        variable
+        wrt
             May be a label, a 1-based variable/parameter index, a monomial tuple,
             or a TPSA with exactly one non-constant coefficient equal to one. See
             :meth:`_resolve_single_monomial` for accepted inputs.
         """
-        monomial = self._resolve_single_monomial(variable)
+        monomial = self._resolve_single_monomial(wrt)
         if any(monomial[self.descriptor.num_vars :]):
             # MAD-NG's multi-index derivative omits parameter multiplicities.
             # Repeated first derivatives retain the correct factorial factors.

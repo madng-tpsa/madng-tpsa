@@ -45,9 +45,9 @@ def test_inverse_with_parameter_identity_and_no_operand_mutation() -> None:
     k = d.param('alg_k')
     mapping = TpsaMap([q + p + k, p])
     inv = mapping.inverse()
-    np.testing.assert_allclose(inv.evaluate((4, 3), parameters=(2,)), (-1, 3))
-    np.testing.assert_allclose(mapping.compose(inv).evaluate((4, 3), parameters=(2,)), (4, 3))
-    np.testing.assert_allclose(mapping.evaluate((4, 3), parameters=(2,)), (9, 3))
+    np.testing.assert_allclose(inv.evaluate((4, 3), param_values=(2,)), (-1, 3))
+    np.testing.assert_allclose(mapping.compose(inv).evaluate((4, 3), param_values=(2,)), (4, 3))
+    np.testing.assert_allclose(mapping.evaluate((4, 3), param_values=(2,)), (9, 3))
 
 
 def test_inverse_complex_map() -> None:
@@ -127,8 +127,8 @@ def test_translation_retains_parameters_and_promotes_complex() -> None:
     mapping = TpsaMap([q * q + k, p])
     result = mapping.translate((1j, 2))
     assert result.is_complex
-    np.testing.assert_allclose(result.evaluate((2, 3), parameters=(5,)), (8 + 4j, 5))
-    np.testing.assert_allclose(mapping.evaluate((2, 3), parameters=(5,)), (9, 3))
+    np.testing.assert_allclose(result.evaluate((2, 3), param_values=(5,)), (8 + 4j, 5))
+    np.testing.assert_allclose(mapping.evaluate((2, 3), param_values=(5,)), (9, 3))
     with pytest.raises(ValueError, match='offsets'):
         mapping.translate([1])
 
@@ -239,8 +239,8 @@ def test_pullback_polynomial_with_parameters() -> None:
     mapping = TpsaMap([q + p, 2 * p])
     function = q * q + k * p
     pulled = mapping.pullback(function)
-    np.testing.assert_allclose(TpsaTensor([pulled]).evaluate((2, 3), parameters=(4,)), [49])
-    np.testing.assert_allclose(TpsaTensor([function]).evaluate((2, 3), parameters=(4,)), [16])
+    np.testing.assert_allclose(TpsaTensor([pulled]).evaluate((2, 3), param_values=(4,)), [49])
+    np.testing.assert_allclose(TpsaTensor([function]).evaluate((2, 3), param_values=(4,)), [16])
 
 
 def test_pullback_complex_promotion_and_descriptor_validation() -> None:
@@ -310,8 +310,8 @@ def test_native_translation_shifts_inputs_not_outputs_and_keeps_parameter_terms(
     assert isinstance(translated, TpsaMap)
     assert translated.descriptor is d
     assert translated.is_complex is False
-    np.testing.assert_allclose(translated.evaluate((3, 4), parameters=(5,)), (75, 28))
-    np.testing.assert_allclose(mapping.evaluate((3, 4), parameters=(5,)), (49, 19))
+    np.testing.assert_allclose(translated.evaluate((3, 4), param_values=(5,)), (75, 28))
+    np.testing.assert_allclose(mapping.evaluate((3, 4), param_values=(5,)), (49, 19))
 
 
 def test_native_translation_agrees_with_explicit_polynomial_composition() -> None:
@@ -325,8 +325,8 @@ def test_native_translation_agrees_with_explicit_polynomial_composition() -> Non
 
     for point, param in [((0.0, 0.0), 2.0), ((2.0, 3.0), -1.0)]:
         np.testing.assert_allclose(
-            translated.evaluate(point, parameters=(param,)),
-            composed.evaluate(point, parameters=(param,)),
+            translated.evaluate(point, param_values=(param,)),
+            composed.evaluate(point, param_values=(param,)),
         )
 
 
@@ -337,7 +337,7 @@ def test_native_translation_preserves_two_independent_parameters() -> None:
     mapping = TpsaMap([q + k * ell, p + k])
     result = mapping.translate((1, 2))
 
-    np.testing.assert_allclose(result.evaluate((2, 3), parameters=(4, 5)), (23, 9))
+    np.testing.assert_allclose(result.evaluate((2, 3), param_values=(4, 5)), (23, 9))
     assert result.num_params == 2
 
 
@@ -351,9 +351,9 @@ def test_native_translation_promotes_complex_offsets_without_mutating_input() ->
 
     assert translated.is_complex
     assert all(isinstance(t, ComplexTpsa) for t in translated.flat)
-    np.testing.assert_allclose(translated.evaluate((2, 3), parameters=(5,)), (13 + 9j, 8))
+    np.testing.assert_allclose(translated.evaluate((2, 3), param_values=(5,)), (13 + 9j, 8))
     assert not mapping.is_complex
-    np.testing.assert_allclose(mapping.evaluate((2, 3), parameters=(5,)), (14, 8))
+    np.testing.assert_allclose(mapping.evaluate((2, 3), param_values=(5,)), (14, 8))
 
 
 def test_native_translation_accepts_array_offsets_and_complex_map() -> None:
@@ -364,7 +364,7 @@ def test_native_translation_accepts_array_offsets_and_complex_map() -> None:
     translated = mapping.translate(np.asarray([1, 2]))
 
     assert translated.is_complex
-    np.testing.assert_allclose(translated.evaluate((2, 3), parameters=(4,)), (5 + 12j, 5))
+    np.testing.assert_allclose(translated.evaluate((2, 3), param_values=(4,)), (5 + 12j, 5))
 
 
 def test_native_translation_rejects_bad_offset_count() -> None:
@@ -386,7 +386,7 @@ def test_hamiltonian_field_to_generator_roundtrip_discards_parameter_only_term()
     assert recovered.descriptor is d
     assert recovered.get((0, 0, 1)) == 0
     assert recovered.get((0, 0, 2)) == 0
-    np.testing.assert_allclose(TpsaTensor([recovered]).evaluate((2, 3), parameters=(4,)), (14,))
+    np.testing.assert_allclose(TpsaTensor([recovered]).evaluate((2, 3), param_values=(4,)), (14,))
     rebuilt = TpsaVectorField.from_generator(recovered)
     for original, restored in zip(field.flat, rebuilt.flat, strict=True):
         assert original == restored
@@ -404,7 +404,7 @@ def test_complex_hamiltonian_field_roundtrip_with_parameter() -> None:
     assert recovered.get((0, 0, 1)) == 0
     assert recovered.get((0, 0, 2)) == 0
     np.testing.assert_allclose(
-        TpsaTensor([recovered]).evaluate((2, 3), parameters=(4,)), (6 + 22j,)
+        TpsaTensor([recovered]).evaluate((2, 3), param_values=(4,)), (6 + 22j,)
     )
     for original, restored in zip(
         field.flat, TpsaVectorField.from_generator(recovered).flat, strict=True
@@ -425,7 +425,7 @@ def test_to_generator_clears_mixed_parameter_only_monomials() -> None:
     assert recovered.get((0, 0, 2, 0)) == 0
     assert recovered.get((0, 0, 0, 2)) == 0
     np.testing.assert_allclose(
-        TpsaTensor([recovered]).evaluate((2, 3), parameters=(4, 5)),
+        TpsaTensor([recovered]).evaluate((2, 3), param_values=(4, 5)),
         (6 + 8 + 15,),
     )
 
@@ -503,7 +503,7 @@ def test_align_descriptors_promotes_converted_operands() -> None:
     result = real.compose(complex_map)
     assert result.is_complex
     assert all(isinstance(tpsa, ComplexTpsa) for tpsa in result.flat)
-    np.testing.assert_allclose(result.evaluate((2, 3), parameters=(4,)), (6 + 3j, 3))
+    np.testing.assert_allclose(result.evaluate((2, 3), param_values=(4,)), (6 + 3j, 3))
 
 
 def test_scalar_generator_promotion_is_not_lost_by_descriptor_alignment() -> None:
@@ -560,7 +560,7 @@ def test_inverse_with_parameter_only_terms_has_formal_identities() -> None:
     _assert_coefficients_small(inverse.compose(mapping) - identity)
     for values, param in [((0.01, 0.02), 0.03), ((-0.02, 0.04), -0.02)]:
         np.testing.assert_allclose(
-            mapping.compose(inverse).evaluate(values, parameters=(param,)),
+            mapping.compose(inverse).evaluate(values, param_values=(param,)),
             values,
             atol=1e-9,
         )
@@ -608,24 +608,24 @@ def test_complex_descriptor_relabelling_with_reordered_variables_and_two_paramet
     )
     converted = mapping.change_descriptor(
         dst,
-        variable_map={'old_q': 'new_q', 'old_p': 'new_p'},
-        parameter_map={'old_a': 'new_a', 'old_b': 'new_b'},
+        var_name_map={'old_q': 'new_q', 'old_p': 'new_p'},
+        param_name_map={'old_a': 'new_a', 'old_b': 'new_b'},
     )
     assert converted.is_complex
-    before = mapping.evaluate((0.2, 0.3), parameters=(0.4, 0.5))
-    after = converted.evaluate((0.3, 0.2), parameters=(0.5, 0.4))
+    before = mapping.evaluate((0.2, 0.3), param_values=(0.4, 0.5))
+    after = converted.evaluate((0.3, 0.2), param_values=(0.5, 0.4))
     np.testing.assert_allclose(after, before[::-1])
     with pytest.raises(ValueError):
         mapping.change_descriptor(
             dst,
-            variable_map={'old_q': 'new_p', 'old_p': 'new_p'},
-            parameter_map={'old_a': 'new_a', 'old_b': 'new_b'},
+            var_name_map={'old_q': 'new_p', 'old_p': 'new_p'},
+            param_name_map={'old_a': 'new_a', 'old_b': 'new_b'},
         )
     with pytest.raises(ValueError, match='same target'):
         mapping.change_descriptor(
             dst,
-            variable_map={'old_q': 'new_q', 'old_p': 'new_p'},
-            parameter_map={'old_a': 'new_a', 'old_b': 'new_a'},
+            var_name_map={'old_q': 'new_q', 'old_p': 'new_p'},
+            param_name_map={'old_a': 'new_a', 'old_b': 'new_a'},
         )
 
 

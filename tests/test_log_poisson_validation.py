@@ -75,8 +75,8 @@ def test_parameter_dependent_lie_logarithm() -> None:
     logarithm = mapping.log_fgrad()
     _assert_maps_close(TpsaMap(d).exp_fgrad(logarithm), mapping, tol=1e-8)
     np.testing.assert_allclose(
-        TpsaMap(d).exp_fgrad(logarithm).evaluate((0.1, 0.2), parameters=(0.5,)),
-        mapping.evaluate((0.1, 0.2), parameters=(0.5,)),
+        TpsaMap(d).exp_fgrad(logarithm).evaluate((0.1, 0.2), param_values=(0.5,)),
+        mapping.evaluate((0.1, 0.2), param_values=(0.5,)),
         atol=1e-9,
     )
 

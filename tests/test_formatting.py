@@ -92,4 +92,4 @@ def test_max_terms_zero_and_negative_limits():
     assert format_polynomial(d.zero(), labels, style='unicode', max_terms=0) == '0'
     with pytest.raises(ValueError, match='max_terms'):
         format_polynomial(t, labels, style='unicode', max_terms=-1)
-    assert 'values=[, ...]' not in TpsaTensor([t]).str(max_tpsa=1, max_terms=0)
+    assert 'components=[, ...]' not in TpsaTensor([t]).str(max_tpsa=1, max_terms=0)

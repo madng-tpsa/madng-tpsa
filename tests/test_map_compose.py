@@ -31,7 +31,7 @@ def test_compose_full_real_map_with_parameter_identity() -> None:
     assert result.shape == (2,)
     assert result.descriptor is d
     np.testing.assert_allclose(
-        result.evaluate([3, 4], parameters=[1]),
+        result.evaluate([3, 4], param_values=[1]),
         [7, 5],
     )
     assert outer[0].descriptor is d
@@ -98,7 +98,7 @@ def test_compose_automatically_unions_parameter_sets() -> None:
     composed = outer.compose(inner)
     assert composed.descriptor.param_names == ('common_k',)
     np.testing.assert_allclose(
-        composed.evaluate([3, 4], parameters=[5]),
+        composed.evaluate([3, 4], param_values=[5]),
         [11, 4],
     )
 

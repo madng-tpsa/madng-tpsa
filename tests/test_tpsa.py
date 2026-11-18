@@ -580,7 +580,7 @@ def test_explicit_descriptor_conversion():
 
     y = x.change_descriptor(
         dy,
-        variable_map={'x': 'y', 'px': 'py'},
+        var_name_map={'x': 'y', 'px': 'py'},
     )
 
     assert y.descriptor is dy

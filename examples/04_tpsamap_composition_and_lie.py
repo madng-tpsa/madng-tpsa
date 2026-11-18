@@ -42,7 +42,7 @@ print()
 # TpsaMap(q = q + p - q²·k, p = p - q²·k)
 
 print('Evaluate for q=0.1, p=0.02, k=0.5:')
-print(one_step.evaluate([0.1, 0.02], parameters=[0.5]))
+print(one_step.evaluate([0.1, 0.02], param_values=[0.5]))
 print()
 # [0.115 0.015]
 

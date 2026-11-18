@@ -48,7 +48,7 @@ def test_change_descriptor_renames_variables(complex_series):
         t.set((1, 2), 4.0)
 
     converted = t.change_descriptor(
-        new, variable_map={'rename_x': 'rename_q', 'rename_px': 'rename_p'}
+        new, var_name_map={'rename_x': 'rename_q', 'rename_px': 'rename_p'}
     )
     assert converted.descriptor is new
     assert converted.get((1, 2)) == pytest.approx(4 - 1j if complex_series else 4.0)
@@ -156,11 +156,11 @@ def test_change_descriptor_rejects_bad_label_maps(complex_series):
     new = Descriptor(var_names=('mapping_q', 'mapping_p'), order=4)
     t = old.complex_zero() if complex_series else old.zero()
     with pytest.raises(ValueError, match='Unknown source'):
-        t.change_descriptor(new, variable_map={'missing': 'mapping_q'})
+        t.change_descriptor(new, var_name_map={'missing': 'mapping_q'})
     with pytest.raises(ValueError, match='Unknown target'):
-        t.change_descriptor(new, variable_map={'mapping_x': 'absent'})
+        t.change_descriptor(new, var_name_map={'mapping_x': 'absent'})
     with pytest.raises(ValueError, match='same target'):
-        t.change_descriptor(new, variable_map={'mapping_x': 'mapping_q', 'mapping_px': 'mapping_q'})
+        t.change_descriptor(new, var_name_map={'mapping_x': 'mapping_q', 'mapping_px': 'mapping_q'})
 
 
 @pytest.mark.parametrize('complex_series', [False, True], ids=['real', 'complex'])
@@ -199,7 +199,7 @@ def test_change_descriptor_explicit_parameter_rename(complex_series):
         t = old.zero()
         t.set((1, 1), 1.5)
 
-    u = t.change_descriptor(new, parameter_map={'pmap_old': 'pmap_new'})
+    u = t.change_descriptor(new, param_name_map={'pmap_old': 'pmap_new'})
     assert u.descriptor is new
     assert u.get((1, 1)) == pytest.approx(1 + 2j if complex_series else 1.5)
     assert t.descriptor is old

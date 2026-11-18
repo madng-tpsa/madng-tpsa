@@ -174,7 +174,7 @@ def test_parameter_augmented_jacobian_has_horizontal_shape():
     at_origin = m.evaluate_jacobian(wrt='all')
     assert at_origin.shape == (2, 3)
     np.testing.assert_allclose(at_origin, [[1, 2, 1], [0, 1, 0]])
-    at_point = m.evaluate_jacobian(coordinates=(2, 3), parameters=(4,), wrt='all')
+    at_point = m.evaluate_jacobian(var_values=(2, 3), param_values=(4,), wrt='all')
     assert at_point.shape == (2, 3)
     np.testing.assert_allclose(at_point, [[1, 2, 1], [4, 1, 2]])
 
@@ -211,7 +211,7 @@ def test_native_evaluate_and_composition_on_noncontiguous_view():
     q, p = d.vars()
     original = TpsaTensor([[q + p, p**2], [q**2, q - p]])
     noncontiguous = original.T
-    expected = noncontiguous.evaluate(coordinates=(2, 3))
+    expected = noncontiguous.evaluate(var_values=(2, 3))
     np.testing.assert_allclose(expected, [[5, 4], [9, -1]])
     substitutions = TpsaMap([q + 1, p + 2])
     composed = noncontiguous.compose(substitutions)

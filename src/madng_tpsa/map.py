@@ -134,13 +134,13 @@ class TpsaMap(TpsaVector[TpsaSeriesT]):
 
     def non_symplectic_residual(
         self,
-        coordinates: Sequence[Scalar] | np.ndarray | None = None,
+        var_values: Sequence[Scalar] | np.ndarray | None = None,
         *,
-        parameters: Sequence[Scalar] | np.ndarray | None = None,
+        param_values: Sequence[Scalar] | np.ndarray | None = None,
         norm: NormDefinition = 'max_abs',
     ) -> float:
         """Norm of J.T @ S @ J - S at a phase-space point."""
-        jj = self.evaluate_jacobian(coordinates=coordinates, parameters=parameters)
+        jj = self.evaluate_jacobian(var_values=var_values, param_values=param_values)
         ss = symplectic_unit_matrix(self.num_vars)
         res = jj.T @ ss @ jj - ss
         return _matrix_norm(res, norm)
@@ -543,7 +543,7 @@ class TpsaMap(TpsaVector[TpsaSeriesT]):
             err_mess = 'Pullback requires a scalar TPSA'
             raise TypeError(err_mess)
         left, right, _ = _align_descriptors(
-            self, function, extend_left=True, extend_right=False, reorder_vars=True
+            self, function, extend_left=True, extend_right=False, allow_var_reordering=True
         )
         return TpsaTensor([right]).compose(left).flat[0]
 

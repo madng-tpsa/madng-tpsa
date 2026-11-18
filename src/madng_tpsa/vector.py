@@ -15,9 +15,9 @@ from typing import TYPE_CHECKING, SupportsComplex, SupportsFloat, cast, overload
 if TYPE_CHECKING:
     import builtins  # To be able to define method 'str' on the class
     from collections.abc import Mapping, Sequence
-    from typing import Any, Literal, Self
+    from typing import Any, Self
 
-    from ._typing import MapSeriesT, Scalar, TpsaSeries
+    from ._typing import DerivativeGroup, MapSeriesT, Scalar, TpsaSeries
     from .map import TpsaMap
     from .tpsa import Tpsa
 
@@ -82,21 +82,23 @@ class TpsaVector(TpsaTensor[TpsaSeriesT]):
         """Initialise subclass-specific state after the TPSAs are constructed."""
 
     @overload
-    def __init__(self, descriptor: Descriptor, /, **coordinates: Scalar | TpsaSeriesT) -> None: ...
+    def __init__(
+        self, descriptor: Descriptor, /, **named_components: Scalar | TpsaSeriesT
+    ) -> None: ...
     @overload
     def __init__(
         self, components: Sequence[Scalar | TpsaSeriesT], descriptor: Descriptor | None = None
     ) -> None: ...
     @overload
     def __init__(
-        self, *, descriptor: Descriptor | None = None, **coordinates: Scalar | TpsaSeriesT
+        self, *, descriptor: Descriptor | None = None, **named_components: Scalar | TpsaSeriesT
     ) -> None: ...
 
     def __init__(
         self,
         components: Descriptor | Sequence[Scalar | TpsaSeriesT] | None = None,
         descriptor: Descriptor | None = None,
-        **coordinates: Scalar | TpsaSeriesT,
+        **named_components: Scalar | TpsaSeriesT,
     ) -> None:
         """Construct a TPSA vector from its components.
 
@@ -123,7 +125,7 @@ class TpsaVector(TpsaTensor[TpsaSeriesT]):
             order. If omitted, it is inferred from the supplied TPSA
             components.
 
-        **coordinates : TPSA or scalar
+        **named_components : TPSA or scalar
             Named vector components, using descriptor variable labels as
             keywords. Each value can be a TPSA or a numerical scalar.
 
@@ -167,8 +169,8 @@ class TpsaVector(TpsaTensor[TpsaSeriesT]):
             descriptor = components
             components = None
         if components is not None:
-            if coordinates:
-                err_mess = 'Cannot mix positional components with named coordinates'
+            if named_components:
+                err_mess = 'Cannot mix positional components with named components'
                 raise TypeError(err_mess)
             if not isinstance(components, Sequence):
                 err_mess = 'Components must be a sequence or a Descriptor'
@@ -179,7 +181,7 @@ class TpsaVector(TpsaTensor[TpsaSeriesT]):
             components = list(components)
 
         # Determine the descriptor
-        values = components if components is not None else coordinates.values()
+        values = components if components is not None else named_components.values()
         for value in values:
             if not isinstance(value, (Tpsa, ComplexTpsa)):
                 continue
@@ -189,24 +191,24 @@ class TpsaVector(TpsaTensor[TpsaSeriesT]):
             err_mess = 'Cannot infer the descriptor. Provide it explicitly.'
             raise ValueError(err_mess)
 
-        # Convert positional components to named coordinates
+        # Convert positional components to named named_components
         names = tuple(descriptor.var_names)
         if components is not None:
             if len(components) != len(names):
                 err_mess = f'Expected {len(names)} components, got {len(components)}'
                 raise ValueError(err_mess)
-            coordinates.update(dict(zip(names, components, strict=True)))
+            named_components.update(dict(zip(names, components, strict=True)))
 
         # Validate coordinate names
-        unknown = coordinates.keys() - names
+        unknown = named_components.keys() - names
         if unknown:
-            err_mess = f'Unknown coordinates: {sorted(unknown)}'
+            err_mess = f'Unknown named components: {sorted(unknown)}'
             raise ValueError(err_mess)
 
         # Construct components
         coords = []
         for nn in names:
-            value = coordinates.get(nn, 0.0)
+            value = named_components.get(nn, 0.0)
             if isinstance(value, (Tpsa, ComplexTpsa)):
                 coords.append(value)
             elif isinstance(value, (SupportsFloat, SupportsComplex)):
@@ -216,14 +218,14 @@ class TpsaVector(TpsaTensor[TpsaSeriesT]):
                 raise TypeError(err_mess)
 
         super().__init__(
-            values=cast('Sequence[TpsaSeriesT]', coords),
+            components=cast('Sequence[TpsaSeriesT]', coords),
             shape=(descriptor.num_vars,),
         )
         self._coord_names = names
         self._post_init()
 
-    def _new_like(self, values: Sequence[TpsaSeriesT]) -> Self:
-        return type(self)(values)
+    def _new_like(self, components: Sequence[TpsaSeriesT]) -> Self:
+        return type(self)(components)
 
     @classmethod
     def _parse_dict(
@@ -246,26 +248,26 @@ class TpsaVector(TpsaTensor[TpsaSeriesT]):
         self,
         descriptor: Descriptor,
         *,
-        variable_map: Mapping[builtins.str, builtins.str] | None = None,
-        parameter_map: Mapping[builtins.str, builtins.str] | None = None,
+        var_name_map: Mapping[builtins.str, builtins.str] | None = None,
+        param_name_map: Mapping[builtins.str, builtins.str] | None = None,
         truncate: bool = False,
     ) -> Self:
         """Convert a full vector, including its output-coordinate ordering."""
-        rename = variable_map or {}
+        rename = var_name_map or {}
         output_names = tuple(rename.get(name, name) for name in self.component_names)
         if len(set(output_names)) != len(output_names) or set(output_names) != set(
             descriptor.var_names
         ):
             err_mess = (
                 'Target variables must match the map outputs. '
-                'Use extend_descriptor() to add new coordinates.'
+                'Use extend_descriptor() to add new variables.'
             )
             raise ValueError(err_mess)
         converted = {
             rename.get(name, name): component.change_descriptor(
                 descriptor,
-                variable_map=variable_map,
-                parameter_map=parameter_map,
+                var_name_map=var_name_map,
+                param_name_map=param_name_map,
                 truncate=truncate,
             )
             for name, component in self.named_components.items()
@@ -293,13 +295,13 @@ class TpsaVector(TpsaTensor[TpsaSeriesT]):
             name: component.change_descriptor(descriptor)
             for name, component in self.named_components.items()
         }
-        values = [
+        components = [
             converted[name]
             if name in converted
             else self._scalar_component(descriptor, name, 0j if self.is_complex else 0.0)
             for name in descriptor.var_names
         ]
-        return self._new_like(cast('Sequence[TpsaSeriesT]', values))
+        return self._new_like(cast('Sequence[TpsaSeriesT]', components))
 
     def __getattr__(self, name: builtins.str) -> TpsaSeriesT:
         """Access the coordinate TPSAs by coordinate name."""
@@ -431,81 +433,77 @@ class TpsaVector(TpsaTensor[TpsaSeriesT]):
             err_mess = f'Unsupported TPSA component type: {type(component).__name__}'
             raise TypeError(err_mess)
 
-    def jacobian(
-        self, *, wrt: Literal['variables', 'parameters', 'all'] = 'variables'
-    ) -> TpsaTensor[TpsaSeriesT]:
+    def jacobian(self, *, wrt: DerivativeGroup = 'vars') -> TpsaTensor[TpsaSeriesT]:
         """Return the rank-two TPSA-valued Jacobian over selected inputs.
 
         The argument 'wrt' (with respect to) can be used to specify which
-        derivatives to include: variables', 'parameters', or 'all'.
+        derivatives to include: 'vars', 'params', or 'all'.
         """
         return self.derivative_tensor(1, wrt=wrt)
 
     def evaluate_jacobian(
         self,
-        coordinates: Sequence[Scalar] | np.ndarray | None = None,
+        var_values: Sequence[Scalar] | np.ndarray | None = None,
         *,
-        parameters: Sequence[Scalar] | np.ndarray | None = None,
-        wrt: Literal['variables', 'parameters', 'all'] = 'variables',
+        param_values: Sequence[Scalar] | np.ndarray | None = None,
+        wrt: DerivativeGroup = 'vars',
     ) -> np.ndarray:
         """Evaluate the map Jacobian at a numerical phase-space/parameter point.
 
-        By default evaluate at the origin (all coordinates and parameters zero).
+        By default evaluate at the origin (all variables and parameters zero).
         The result has shape ``(num_outputs, num_inputs)``. The argument 'wrt'
         (with respect to) can be used to specify which derivatives to include in
-        num_inputs: variables', 'parameters', or 'all'.
+        num_inputs: 'vars', 'params', or 'all'.
         """
-        if wrt == 'parameters' and self.num_params == 0:
+        if wrt == 'params' and self.num_params == 0:
             dtype = complex if self.is_complex else float
             return np.empty((len(self), 0), dtype=dtype)
-        if coordinates is None and parameters is None:
-            if wrt not in ('variables', 'parameters', 'all'):
+        if var_values is None and param_values is None:
+            if wrt not in ('vars', 'params', 'all'):
                 err_mess = 'Unknown differentiation direction'
                 raise ValueError(err_mess)
-            if wrt == 'variables':
+            if wrt == 'vars':
                 return np.asarray([tpsa.grad() for tpsa in self.components])
-            if wrt == 'parameters':
+            if wrt == 'params':
                 return np.asarray([tpsa.param_grad() for tpsa in self.components])
             return np.asarray(
                 [np.concatenate((tpsa.grad(), tpsa.param_grad())) for tpsa in self.components]
             )
-        if coordinates is None:
-            coordinates = [0.0] * self.num_vars
-        if parameters is None:
-            parameters = [0.0] * self.num_params
-        return self.jacobian(wrt=wrt).evaluate(coordinates=coordinates, parameters=parameters)
+        if var_values is None:
+            var_values = [0.0] * self.num_vars
+        if param_values is None:
+            param_values = [0.0] * self.num_params
+        return self.jacobian(wrt=wrt).evaluate(var_values=var_values, param_values=param_values)
 
-    def hessian(
-        self, *, wrt: Literal['variables', 'parameters', 'all'] = 'variables'
-    ) -> TpsaTensor[TpsaSeriesT]:
+    def hessian(self, *, wrt: DerivativeGroup = 'vars') -> TpsaTensor[TpsaSeriesT]:
         """Return the rank-three TPSA-valued Hessian over selected inputs.
 
         Entry ``[i, j, k]`` is the second derivative of output ``i`` with
         respect to inputs ``j`` and ``k`` (variables followed by parameters).
         The argument 'wrt' (with respect to) can be used to specify which
-        derivatives to include: variables', 'parameters', or 'all'.
+        derivatives to include: 'vars', 'params', or 'all'.
         """
         return self.derivative_tensor(2, wrt=wrt)
 
     def evaluate_hessian(
         self,
-        coordinates: Sequence[Scalar] | np.ndarray | None = None,
+        var_values: Sequence[Scalar] | np.ndarray | None = None,
         *,
-        parameters: Sequence[Scalar] | np.ndarray | None = None,
-        wrt: Literal['variables', 'parameters', 'all'] = 'variables',
+        param_values: Sequence[Scalar] | np.ndarray | None = None,
+        wrt: DerivativeGroup = 'vars',
     ) -> np.ndarray:
         """Evaluate the map Hessian at a numerical phase-space/parameter point.
 
-        By default evaluate at the origin (all coordinates and parameters zero).
+        By default evaluate at the origin (all variables and parameters zero).
         The result has shape ``(num_outputs, num_inputs, num_inputs)``. The
         argument 'wrt' (with respect to) can be used to specify which
-        derivatives to include in num_inputs: variables', 'parameters', or 'all'.
+        derivatives to include in num_inputs: 'vars', 'params', or 'all'.
         """
-        if coordinates is None:
-            coordinates = [0.0] * self.num_vars
-        if parameters is None:
-            parameters = [0.0] * self.num_params
-        return self.hessian(wrt=wrt).evaluate(coordinates=coordinates, parameters=parameters)
+        if var_values is None:
+            var_values = [0.0] * self.num_vars
+        if param_values is None:
+            param_values = [0.0] * self.num_params
+        return self.hessian(wrt=wrt).evaluate(var_values=var_values, param_values=param_values)
 
     def translate(
         self, offsets: Sequence[Scalar] | np.ndarray

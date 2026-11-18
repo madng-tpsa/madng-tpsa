@@ -74,7 +74,7 @@ components.
    data = tensor.to_dict()      # JSON-friendly coefficient payload
    restored = TpsaTensor.from_dict(data)
    complex_tensor = tensor.to_complex()
-   evaluated = tensor.evaluate((1., 2.), parameters=(3.,))
+   evaluated = tensor.evaluate((1., 2.), param_values=(3.,))
 
 ``const_part`` can be read or assigned using scalar broadcasting or a NumPy
 array matching ``shape``. ``homogeneous()``, ``truncate()`` and

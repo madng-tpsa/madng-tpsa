@@ -156,7 +156,7 @@ print('Tensor view assignment:', modifiable_tensor.const_part)
 print('Tensor complex promotion:', tensor.to_complex().is_complex)
 print('Tensor serialization:', TpsaTensor.from_dict(tensor.to_dict()).shape)
 print('Tensor descriptor conversion:', tensor.change_descriptor(d).shape)
-print('Tensor evaluation:', tensor.evaluate((1, 2), parameters=(3,)))
+print('Tensor evaluation:', tensor.evaluate((1, 2), param_values=(3,)))
 print('Tensor derivative:', tensor.partial_derivative(('q', 'k')).shape)
 print('Tensor Hessian shape:', tensor.derivative_tensor(2).shape)
 print('Tensor composition:', tensor.compose(TpsaMap(d)).shape)
@@ -180,7 +180,7 @@ print(
     map_.to_complex().is_complex,
 )
 print('Map descriptor conversion:', map_.change_descriptor(d).shape)
-print('Map translation:', map_.translate((1, 0)).evaluate((2, 3), parameters=(4,)))
+print('Map translation:', map_.translate((1, 0)).evaluate((2, 3), param_values=(4,)))
 print('Map pullback:', map_.pullback(q**2).get((0, 4, 0)))
 print('Map composition:', (map_ << identity))
 
@@ -200,8 +200,8 @@ field = TpsaVectorField.from_generator(generator)
 recovered = field.to_generator()
 lie_map = identity.exp_poisson(generator)
 np.testing.assert_allclose(
-    lie_map.evaluate((0.1, 0.2), parameters=(0.5,)),
-    identity.exp_fgrad(field).evaluate((0.1, 0.2), parameters=(0.5,)),
+    lie_map.evaluate((0.1, 0.2), param_values=(0.5,)),
+    identity.exp_fgrad(field).evaluate((0.1, 0.2), param_values=(0.5,)),
 )
 print('Generator round-trip:', recovered)
 print('Vector-field Lie bracket:', field.lie_bracket(field))

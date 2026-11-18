@@ -35,7 +35,7 @@ def test_identity_constructor_and_descriptor_order() -> None:
     assert m.rank == 1
     assert m.descriptor is d
     assert m.component_names == d.var_names
-    np.testing.assert_allclose(m.evaluate((3.0, 5.0), parameters=(7.0,)), (3.0, 5.0))
+    np.testing.assert_allclose(m.evaluate((3.0, 5.0), param_values=(7.0,)), (3.0, 5.0))
     assert m.named_components['maptest_x'] is m.flat[0]
     assert m.named_components['maptest_px'] is m.flat[1]
 
@@ -110,7 +110,7 @@ def test_rejects_missing_descriptor_for_numeric_components() -> None:
 
 
 def test_rejects_unknown_named_coordinate() -> None:
-    with pytest.raises(ValueError, match='Unknown coordinates'):
+    with pytest.raises(ValueError, match='Unknown named components'):
         TpsaMap(descriptor=_descriptor(), unrecognised_coordinate=1.0)
 
 
@@ -189,7 +189,7 @@ def test_to_complex_keeps_map_type_and_is_independent() -> None:
     assert all(isinstance(t, ComplexTpsa) for t in c.flat)
     c.flat[0].const_part = 1 + 2j
     assert not m.is_complex
-    np.testing.assert_allclose(c.evaluate((3, 4), parameters=(5,)), (4 + 2j, 4))
+    np.testing.assert_allclose(c.evaluate((3, 4), param_values=(5,)), (4 + 2j, 4))
 
 
 def test_serialise_round_trip_preserves_coordinates_and_parameter() -> None:
@@ -201,7 +201,7 @@ def test_serialise_round_trip_preserves_coordinates_and_parameter() -> None:
     assert isinstance(recreated, TpsaMap)
     assert recreated.descriptor is d
     assert recreated.component_names == d.var_names
-    np.testing.assert_allclose(recreated.evaluate((3, 4), parameters=(5,)), (8, 4))
+    np.testing.assert_allclose(recreated.evaluate((3, 4), param_values=(5,)), (8, 4))
     assert all(a is not b for a, b in zip(m.flat, recreated.flat, strict=True))
 
 
@@ -232,7 +232,7 @@ def test_extend_descriptor_new_variables_and_parameters_fills_identities() -> No
     assert extended.component_names == target.var_names
     assert extended.shape == (3,)
     np.testing.assert_allclose(
-        extended.evaluate((7, 3, 2), parameters=(5, 6)),
+        extended.evaluate((7, 3, 2), param_values=(5, 6)),
         (7, 3, 5),
     )
     assert source.descriptor is d
@@ -288,7 +288,7 @@ def test_compose_two_maps_returns_a_map_with_correct_labels() -> None:
 
     assert isinstance(composed, TpsaMap)
     assert composed.component_names == d.var_names
-    np.testing.assert_allclose(composed.evaluate((3, 4), parameters=(1,)), (7, 5))
+    np.testing.assert_allclose(composed.evaluate((3, 4), param_values=(1,)), (7, 5))
 
 
 def test_composition_does_not_mutate_either_operand() -> None:
@@ -317,7 +317,7 @@ def test_composition_reconciles_parameter_sets() -> None:
     result = outer.compose(inner)
 
     assert result.descriptor.param_names == ('union_map_k',)
-    np.testing.assert_allclose(result.evaluate((3, 4), parameters=(5,)), (11, 4))
+    np.testing.assert_allclose(result.evaluate((3, 4), param_values=(5,)), (11, 4))
 
 
 def test_descriptor_order_does_not_change_due_to_read_access() -> None:
@@ -344,7 +344,7 @@ def test_evaluate_tpsa_map_with_parameters():
 
     assert mapping.shape == (2,)
     np.testing.assert_allclose(
-        mapping.evaluate([2, 3], parameters=[4]),
+        mapping.evaluate([2, 3], param_values=[4]),
         [6, 6],
     )
 
@@ -420,29 +420,31 @@ def test_map_set_coefficient_real_and_complex_values() -> None:
 def test_jacobian_operator_variables_parameters_and_combined() -> None:
     mapping = _nonlinear_map_with_parameter()
     variables = mapping.jacobian()
-    parameters = mapping.jacobian(wrt='parameters')
+    parameters = mapping.jacobian(wrt='params')
     combined = mapping.jacobian(wrt='all')
 
     assert variables.shape == (2, 2)
     assert parameters.shape == (2, 1)
     assert combined.shape == (2, 3)
-    np.testing.assert_allclose(variables.evaluate([2, 3], parameters=[4]), [[8, 3], [4, 6]])
-    np.testing.assert_allclose(parameters.evaluate([2, 3], parameters=[4]), [[4], [7]])
-    np.testing.assert_allclose(combined.evaluate([2, 3], parameters=[4]), [[8, 3, 4], [4, 6, 7]])
+    np.testing.assert_allclose(variables.evaluate([2, 3], param_values=[4]), [[8, 3], [4, 6]])
+    np.testing.assert_allclose(parameters.evaluate([2, 3], param_values=[4]), [[4], [7]])
+    np.testing.assert_allclose(combined.evaluate([2, 3], param_values=[4]), [[8, 3, 4], [4, 6, 7]])
 
 
 def test_jacobians_at_origin_and_at_nonzero_point() -> None:
     mapping = _nonlinear_map_with_parameter()
     np.testing.assert_allclose(mapping.evaluate_jacobian(), [[0, 3], [0, 0]])
-    np.testing.assert_allclose(mapping.evaluate_jacobian(wrt='parameters'), [[2], [5]])
-    np.testing.assert_allclose(mapping.evaluate_jacobian([2, 3], parameters=[4]), [[8, 3], [4, 6]])
+    np.testing.assert_allclose(mapping.evaluate_jacobian(wrt='params'), [[2], [5]])
     np.testing.assert_allclose(
-        mapping.evaluate_jacobian([2, 3], parameters=[4], wrt='parameters'), [[4], [7]]
+        mapping.evaluate_jacobian([2, 3], param_values=[4]), [[8, 3], [4, 6]]
+    )
+    np.testing.assert_allclose(
+        mapping.evaluate_jacobian([2, 3], param_values=[4], wrt='params'), [[4], [7]]
     )
     # Supplying parameters but no coordinates means evaluation at zero coordinates.
-    np.testing.assert_allclose(mapping.evaluate_jacobian(parameters=[4]), [[4, 3], [4, 0]])
+    np.testing.assert_allclose(mapping.evaluate_jacobian(param_values=[4]), [[4, 3], [4, 0]])
     np.testing.assert_allclose(
-        mapping.evaluate_jacobian(parameters=[4], wrt='parameters'), [[2], [5]]
+        mapping.evaluate_jacobian(param_values=[4], wrt='params'), [[2], [5]]
     )
     np.testing.assert_allclose(mapping.evaluate_jacobian(np.asarray([2, 3])), [[4, 3], [0, 6]])
 

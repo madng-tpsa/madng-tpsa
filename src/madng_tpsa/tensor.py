@@ -17,9 +17,9 @@ from ._typing import TpsaSeriesT
 if TYPE_CHECKING:
     import builtins  # To be able to define method 'str' on the class
     from collections.abc import Iterator, Mapping
-    from typing import Any, Literal, Self
+    from typing import Any, Self
 
-    from ._typing import DerivativeSpec, MapSeriesT, Nested, Scalar, TpsaSeries
+    from ._typing import DerivativeGroup, DerivativeSpec, MapSeriesT, Nested, Scalar, TpsaSeries
     from .map import TpsaMap
 
 from math import prod
@@ -36,36 +36,36 @@ from .formatting import format_polynomial
 from .tpsa import Tpsa
 
 
-def _flatten_nested(values: Nested[TpsaSeries]) -> tuple[list[TpsaSeries], tuple[int, ...]]:
+def _flatten_nested(components: Nested[TpsaSeries]) -> tuple[list[TpsaSeries], tuple[int, ...]]:
     """Flatten nested TPSAs and infer a rectangular shape."""
-    if isinstance(values, (Tpsa, ComplexTpsa)):
-        return [values], ()
-    if isinstance(values, np.ndarray) and values.ndim == 0:
-        return _flatten_nested(values.item())
+    if isinstance(components, (Tpsa, ComplexTpsa)):
+        return [components], ()
+    if isinstance(components, np.ndarray) and components.ndim == 0:
+        return _flatten_nested(components.item())
 
-    if not isinstance(values, (Sequence, np.ndarray)) or isinstance(
-        values, (str, bytes, bytearray)
+    if not isinstance(components, (Sequence, np.ndarray)) or isinstance(
+        components, (str, bytes, bytearray)
     ):
         err_mess = 'Expected a TPSA or a sequence of TPSAs'
         raise TypeError(err_mess)
-    if len(values) == 0:
+    if len(components) == 0:
         err_mess = 'Empty dimensions are not supported'
         raise ValueError(err_mess)
 
     flat: list[TpsaSeries] = []
     child_shape: tuple[int, ...] | None = None
 
-    for i, item in enumerate(values):
-        components, shape = _flatten_nested(item)
+    for i, item in enumerate(components):
+        cc, shape = _flatten_nested(item)
         if child_shape is None:
             child_shape = shape
         elif shape != child_shape:
             err_mess = f'Ragged tensor at index {i}: expected {child_shape}, got {shape}'
             raise ValueError(err_mess)
-        flat.extend(components)
+        flat.extend(cc)
 
     assert child_shape is not None
-    return flat, (len(values), *child_shape)
+    return flat, (len(components), *child_shape)
 
 
 def _align_descriptors(
@@ -74,7 +74,7 @@ def _align_descriptors(
     *,
     extend_left: bool = False,
     extend_right: bool = False,
-    reorder_vars: bool = False,
+    allow_var_reordering: bool = False,
 ):
     """Reconcile descriptors and promote both operands to complex if needed.
 
@@ -91,7 +91,10 @@ def _align_descriptors(
     # can match equivalent sets of input variables by descriptor label.
     left_vars = left.descriptor.var_names
     right_vars = right.descriptor.var_names
-    compatible = set(left_vars) == set(right_vars) if reorder_vars else left_vars == right_vars
+    if allow_var_reordering:
+        compatible = set(left_vars) == set(right_vars)
+    else:
+        compatible = left_vars == right_vars
     if not compatible:
         err_mess = 'Incompatible descriptor variables or variable order'
         raise ValueError(err_mess)
@@ -135,16 +138,16 @@ def _c_strides(shape: Sequence[int]) -> tuple[int, ...]:
 class _TensorStorage(Generic[TpsaSeriesT]):
     """Shared TPSA references, native pointers, and replacement version."""
 
-    __slots__ = ('values', 'pointers', 'version')
+    __slots__ = ('components', 'pointers', 'version')
 
-    def __init__(self, values: list[TpsaSeriesT]) -> None:
-        self.values = values
-        self.pointers = ffi.new('void*[]', [value.ptr for value in values])
+    def __init__(self, components: list[TpsaSeriesT]) -> None:
+        self.components = components
+        self.pointers = ffi.new('void*[]', [value.ptr for value in components])
         self.version = 0
 
-    def replace(self, indices: Sequence[int], values: Sequence[TpsaSeriesT]) -> None:
-        for i, value in zip(indices, values, strict=True):
-            self.values[i] = value
+    def replace(self, indices: Sequence[int], components: Sequence[TpsaSeriesT]) -> None:
+        for i, value in zip(indices, components, strict=True):
+            self.components[i] = value
             self.pointers[i] = value.ptr
         self.version += 1
 
@@ -183,7 +186,7 @@ class TpsaTensor(Generic[TpsaSeriesT]):
     @property
     def _flat(self) -> list[TpsaSeriesT]:
         """Backing component list (not the logical view)."""
-        return self._storage.values
+        return self._storage.components
 
     @property
     def _pointer_array(self) -> ffi.CData:
@@ -194,7 +197,9 @@ class TpsaTensor(Generic[TpsaSeriesT]):
     # === Construction and Access API ===
     # ===================================
 
-    def __init__(self, values: Nested[TpsaSeriesT], *, shape: Sequence[int] | None = None) -> None:
+    def __init__(
+        self, components: Nested[TpsaSeriesT], *, shape: Sequence[int] | None = None
+    ) -> None:
         """Create a multidimensional tensor of TPSA components.
 
         A TpsaTensor stores a rectangular collection of TPSA series with an
@@ -207,7 +212,7 @@ class TpsaTensor(Generic[TpsaSeriesT]):
 
         Parameters
         ----------
-        values : nested sequence of Tpsa or ComplexTpsa
+        components : nested sequence of Tpsa or ComplexTpsa
             Components of the tensor, provided as a sequence of TPSA series.
             Nested sequences must be rectangular, with consistent dimensions
             at every level.
@@ -218,7 +223,7 @@ class TpsaTensor(Generic[TpsaSeriesT]):
         shape : sequence of int, optional
             Shape of the tensor, specified as a tuple or sequence of positive
             integers. If omitted, the shape is inferred from the nesting of
-            `values`.
+            `components`.
 
             An explicit shape allows a flat sequence of components to be
             interpreted as a multidimensional tensor. The product of the
@@ -265,8 +270,8 @@ class TpsaTensor(Generic[TpsaSeriesT]):
         >>> tensor.is_complex
         True
         """
-        # Infer the shape from the shape of values, if present
-        data, inferred_shape = _flatten_nested(values)
+        # Infer the shape from the shape of components, if present
+        data, inferred_shape = _flatten_nested(components)
         dims = inferred_shape if shape is None else tuple(shape)
 
         if not dims or any(
@@ -312,9 +317,9 @@ class TpsaTensor(Generic[TpsaSeriesT]):
         self._pointer_cache = None
         self._pointer_cache_version = -1
 
-    def _new_like(self, values: Sequence[TpsaSeriesT]) -> Self:
+    def _new_like(self, components: Sequence[TpsaSeriesT]) -> Self:
         """Create a new tensor with the same structure."""
-        return type(self)(values, shape=self.shape)
+        return type(self)(components, shape=self.shape)
 
     @classmethod
     def _parse_dict(
@@ -389,8 +394,8 @@ class TpsaTensor(Generic[TpsaSeriesT]):
         self,
         descriptor: Descriptor,
         *,
-        variable_map: Mapping[builtins.str, builtins.str] | None = None,
-        parameter_map: Mapping[builtins.str, builtins.str] | None = None,
+        var_name_map: Mapping[builtins.str, builtins.str] | None = None,
+        param_name_map: Mapping[builtins.str, builtins.str] | None = None,
         truncate: bool = False,
     ) -> Self:
         """Convert the TpsaTensor to a new descriptor."""
@@ -398,8 +403,8 @@ class TpsaTensor(Generic[TpsaSeriesT]):
             [
                 tpsa.change_descriptor(
                     descriptor,
-                    variable_map=variable_map,
-                    parameter_map=parameter_map,
+                    var_name_map=var_name_map,
+                    param_name_map=param_name_map,
                     truncate=truncate,
                 )
                 for tpsa in self.flat
@@ -545,7 +550,8 @@ class TpsaTensor(Generic[TpsaSeriesT]):
             components.append(tt)
         name = type(self).__name__
         return (
-            f'{name}(shape={self.shape}, size={self.size}, values=[{", ".join(components)}{end}])'
+            f'{name}(shape={self.shape}, size={self.size}, '
+            f'components=[{", ".join(components)}{end}])'
         )
 
     def show(self, *, max_tpsa: int | None = None, max_terms: int | None = None) -> None:
@@ -595,7 +601,7 @@ class TpsaTensor(Generic[TpsaSeriesT]):
         """
         if (
             self._offset == 0
-            and self.size == len(self._storage.values)
+            and self.size == len(self._storage.components)
             and self._strides == _c_strides(self.shape)
         ):
             return self._storage.pointers
@@ -679,13 +685,13 @@ class TpsaTensor(Generic[TpsaSeriesT]):
 
     def to_complex(self) -> TpsaTensor[ComplexTpsa]:
         """Return a tensor where each TPSA is cast as complex."""
-        values: list[ComplexTpsa] = []
+        components: list[ComplexTpsa] = []
 
         for tpsa in self.flat:
             if isinstance(tpsa, ComplexTpsa):
-                values.append(tpsa.copy())
+                components.append(tpsa.copy())
             elif isinstance(tpsa, Tpsa):
-                values.append(ComplexTpsa.from_tpsa(tpsa))
+                components.append(ComplexTpsa.from_tpsa(tpsa))
             else:
                 err_mess = f'Unsupported TPSA type: {type(tpsa).__name__}'
                 raise TypeError(err_mess)
@@ -694,7 +700,7 @@ class TpsaTensor(Generic[TpsaSeriesT]):
         # component type changes from TpsaSeriesT to ComplexTpsa.
         return cast(
             'TpsaTensor[ComplexTpsa]',
-            self._new_like(cast('Sequence[TpsaSeriesT]', values)),
+            self._new_like(cast('Sequence[TpsaSeriesT]', components)),
         )
 
     def homogeneous(self, degree: int) -> TpsaTensor[TpsaSeriesT]:
@@ -709,7 +715,7 @@ class TpsaTensor(Generic[TpsaSeriesT]):
         """Return a tensor where all TPSAs have order `degree` removed."""
         return self._new_like([tpsa.clear_order(degree) for tpsa in self.flat])
 
-    def _derivative_orders(self, spec: DerivativeSpec) -> tuple[int, ...]:
+    def _derivative_orders(self, wrt: DerivativeSpec) -> tuple[int, ...]:
         """Resolve one mixed-partial specification to descriptor exponent orders.
 
         Integer indices are 1-based across variables followed by parameters.
@@ -717,19 +723,19 @@ class TpsaTensor(Generic[TpsaSeriesT]):
         labels/indices and ``(coordinate, count)`` pairs names directions.
         """
         size = self.descriptor.monomial_length
-        if isinstance(spec, Tpsa):
+        if isinstance(wrt, Tpsa):
             # Preserve scalar TPSA's identity-monomial convention and checks.
-            return self.flat[0]._resolve_single_monomial(spec)
+            return self.flat[0]._resolve_single_monomial(wrt)
 
-        if isinstance(spec, str):
-            factors: tuple[int | builtins.str | tuple[int | builtins.str, int], ...] = (spec,)
-        elif isinstance(spec, Integral):
-            if isinstance(spec, (bool, np.bool_)):
+        if isinstance(wrt, str):
+            factors: tuple[int | builtins.str | tuple[int | builtins.str, int], ...] = (wrt,)
+        elif isinstance(wrt, Integral):
+            if isinstance(wrt, (bool, np.bool_)):
                 err_mess = 'Derivative coordinate must be a name or 1-based index'
                 raise TypeError(err_mess)
-            factors = (int(spec),)
-        elif isinstance(spec, Sequence) and not isinstance(spec, (bytes, bytearray)):
-            factors = tuple(spec)
+            factors = (int(wrt),)
+        elif isinstance(wrt, Sequence) and not isinstance(wrt, (bytes, bytearray)):
+            factors = tuple(wrt)
             if factors and all(isinstance(v, Integral) for v in factors):
                 if any(isinstance(v, (bool, np.bool_)) for v in factors):
                     err_mess = 'Derivative orders must be integers, not booleans'
@@ -777,10 +783,10 @@ class TpsaTensor(Generic[TpsaSeriesT]):
             raise ValueError(err_mess)
         return tuple(powers)
 
-    def partial_derivative(self, spec: DerivativeSpec) -> Self:
+    def partial_derivative(self, wrt: DerivativeSpec) -> Self:
         """Differentiate each TPSA without changing the tensor's shape or type.
 
-        ``spec`` accepts a 1-based descriptor index, a variable/parameter
+        ``wrt`` accepts a 1-based descriptor index, a variable/parameter
         name, an identity TPSA, a full exponent vector, or a sequence of
         names/indices and ``(coordinate, multiplicity)`` pairs.
 
@@ -790,7 +796,7 @@ class TpsaTensor(Generic[TpsaSeriesT]):
         ``d^3 tensor / dq^2 dk``; ``tensor.partial_derivative((2, 0, 1))``
         expresses the same derivative for descriptor ``(q, p; k)``.
         """
-        orders = self._derivative_orders(spec)
+        orders = self._derivative_orders(wrt)
         result: list[Tpsa | ComplexTpsa] = []
         for component in self.flat:
             if not isinstance(component, (Tpsa, ComplexTpsa)):
@@ -808,14 +814,14 @@ class TpsaTensor(Generic[TpsaSeriesT]):
         self,
         order: int,
         *,
-        wrt: Literal['variables', 'parameters', 'all'] = 'variables',
+        wrt: DerivativeGroup = 'vars',
         max_components: int | None = 1_000_000,
     ) -> TpsaTensor[TpsaSeriesT]:
         """Append ``order`` derivative axes to the existing tensor shape.
 
         Each new axis enumerates selected descriptor directions: variables
-        first (when ``wrt='variables'`` or ``wrt='all'``), then parameters
-        (when ``wrt='parameters'`` or ``wrt='all'``). Every component
+        first (when ``wrt='vars'`` or ``wrt='all'``), then parameters
+        (when ``wrt='params'`` or ``wrt='all'``). Every component
         contains the corresponding repeated/mixed partial derivative, still
         represented as a TPSA.
 
@@ -825,14 +831,13 @@ class TpsaTensor(Generic[TpsaSeriesT]):
         if isinstance(order, bool) or not isinstance(order, Integral) or order < 1:
             err_mess = 'Derivative order must be a positive integer'
             raise ValueError(err_mess)
-        if wrt not in ['variables', 'parameters', 'all']:
+        if wrt not in ['vars', 'params', 'all']:
             err_mess = (
-                "Derivative direction argument 'wrt' has to be one of "
-                "['variables', 'parameters', 'all']."
+                "Derivative direction argument 'wrt' has to be one of ['vars', 'params', 'all']."
             )
             raise TypeError(err_mess)
-        to_variables = wrt == 'variables' or wrt == 'all'
-        to_parameters = wrt == 'parameters' or wrt == 'all'
+        to_variables = wrt == 'vars' or wrt == 'all'
+        to_parameters = wrt == 'params' or wrt == 'all'
 
         indices = (tuple(range(self.num_vars)) if to_variables else ()) + (
             tuple(range(self.num_vars, self.num_vars + self.num_params)) if to_parameters else ()
@@ -898,25 +903,25 @@ class TpsaTensor(Generic[TpsaSeriesT]):
 
     def evaluate(
         self,
-        coordinates: Sequence[Scalar] | np.ndarray,
-        parameters: Sequence[Scalar] | np.ndarray | None = None,
+        var_values: Sequence[Scalar] | np.ndarray,
+        param_values: Sequence[Scalar] | np.ndarray | None = None,
     ) -> np.ndarray:
-        """Evaluate the map at numerical coordinates."""
+        """Evaluate the map at numerical values."""
         parameter_values: tuple[Scalar, ...] = (
-            (0.0,) * self.num_params if parameters is None else tuple(parameters)
+            (0.0,) * self.num_params if param_values is None else tuple(param_values)
         )
         if len(parameter_values) != self.num_params:
             err_mess = f'Expected {self.num_params} parameter values, got {len(parameter_values)}'
             raise ValueError(err_mess)
-        if len(coordinates) != self.num_vars:
-            err_mess = f'Expected {self.num_vars} coordinate values, got {len(coordinates)}'
+        if len(var_values) != self.num_vars:
+            err_mess = f'Expected {self.num_vars} variable values, got {len(var_values)}'
             raise ValueError(err_mess)
 
-        point = (*coordinates, *parameter_values)
+        point = (*var_values, *parameter_values)
         if not self.is_complex and any(complex(vv).imag != 0 for vv in point):
             self = self.to_complex()
             warn_mess = (
-                'Assigning complex coordinates to a real TpsaTensor. '
+                'Assigning complex values to a real TpsaTensor. '
                 'Used a temporary complex tensor for evaluation.'
             )
             warn(warn_mess, UserWarning, stacklevel=2)
@@ -967,7 +972,7 @@ class TpsaTensor(Generic[TpsaSeriesT]):
             raise ValueError(err_mess)
 
         left, right, complex_needed = _align_descriptors(
-            self, other, extend_left=False, extend_right=True, reorder_vars=True
+            self, other, extend_left=False, extend_right=True, allow_var_reordering=True
         )
 
         result = []
@@ -1241,8 +1246,8 @@ class TpsaTensor(Generic[TpsaSeriesT]):
 
     def __neg__(self) -> Self:
         """Negate every component and preserve the container type."""
-        values = [-cast('TpsaSeries', tpsa) for tpsa in self.flat]
-        return self._new_like(cast('Sequence[TpsaSeriesT]', values))
+        components = [-cast('TpsaSeries', tpsa) for tpsa in self.flat]
+        return self._new_like(cast('Sequence[TpsaSeriesT]', components))
 
     def _elementwise(
         self, other: object, operation: builtins.str, *, reverse: bool = False
@@ -1277,21 +1282,21 @@ class TpsaTensor(Generic[TpsaSeriesT]):
         typed_operands = cast('tuple[Any, ...]', tuple(operands))
         left_components = cast('tuple[Any, ...]', left.flat)
         if operation == 'add':
-            values = [
+            components = [
                 b + a if reverse else a + b
                 for a, b in zip(left_components, typed_operands, strict=True)
             ]
         elif operation == 'sub':
-            values = [
+            components = [
                 b - a if reverse else a - b
                 for a, b in zip(left_components, typed_operands, strict=True)
             ]
         elif operation == 'mul':
-            values = [a * b for a, b in zip(left_components, typed_operands, strict=True)]
+            components = [a * b for a, b in zip(left_components, typed_operands, strict=True)]
         else:
             error_message = 'Unsupported arithmetic operation'
             raise ValueError(error_message)
-        return cast('TpsaTensor[Tpsa] | TpsaTensor[ComplexTpsa]', left._new_like(values))
+        return cast('TpsaTensor[Tpsa] | TpsaTensor[ComplexTpsa]', left._new_like(components))
 
     def __add__(self, other: object) -> TpsaTensor[Tpsa] | TpsaTensor[ComplexTpsa]:
         """Add TPSAs componentwise after label-compatible descriptor alignment."""

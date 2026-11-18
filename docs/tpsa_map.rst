@@ -67,15 +67,15 @@ Evaluation, Jacobians, Hessians
 .. code-block:: python
 
    m = TpsaMap([q**2 + k*q + p, q*p + k], descriptor=d)
-   m.evaluate((2., 3.), parameters=(4.,))  # array([15., 10.])
-   m.evaluate_jacobian((2., 3.), parameters=(4.,))
+   m.evaluate((2., 3.), param_values=(4.,))  # array([15., 10.])
+   m.evaluate_jacobian((2., 3.), param_values=(4.,))
    # array([[8., 1.],
    #        [3., 2.]])
    J = m.jacobian(wrt='variables')  # Shape (2, 2), TPSA-valued
    print(J)
-   # TpsaTensor(shape=(2, 2), size=4, values=[2·q + k, 1, p, ...])
+   # TpsaTensor(shape=(2, 2), size=4, components=[2·q + k, 1, p, ...])
    H = m.hessian(wrt='all')         # Shape (2, 3, 3), TPSA-valued
-   values = m.evaluate_hessian((2., 3.), parameters=(4.,), wrt='all')
+   values = m.evaluate_hessian((2., 3.), param_values=(4.,), wrt='all')
 
 Each Jacobian and Hessian is evaluated in the original descriptor named_components.
 
