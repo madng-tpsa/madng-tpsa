@@ -209,8 +209,10 @@ class Descriptor:
     ) -> list[int]:
         resolved = [int(max_order) for max_order in max_orders]
         if len(resolved) != monomial_length:
-            message = 'Length of max_orders must have the length of vars + parameters '
-            message += f'({monomial_length}).'
+            message = (
+                'Length of max_orders must have the length of vars + parameters '
+                f'({monomial_length}).'
+            )
             raise ValueError(message)
 
         if any(max_order <= 0 for max_order in resolved):
@@ -242,8 +244,10 @@ class Descriptor:
             if len(live) == 1:
                 return live[0]
             if len(live) > 1:
-                err_mess = 'Ambiguous descriptor pointer: multiple labelled views exist. '
-                err_mess += 'Supply variables= and parameters= explicitly.'
+                err_mess = (
+                    'Ambiguous descriptor pointer: multiple labelled views exist. '
+                    'Supply variables= and parameters= explicitly.'
+                )
                 raise ValueError(err_mess)
             err_mess = 'Unknown descriptor pointer: supply variables= and parameters= explicitly.'
             raise ValueError(err_mess)
@@ -267,9 +271,11 @@ class Descriptor:
         native_po = ffi.new('unsigned char*')
         native_nv = lib.mad_desc_getnv(ptr, native_order, native_np, native_po)
         if len(var_labels) != native_nv or len(param_labels) != native_np[0]:
-            err_mess = f'Native descriptor requires {native_nv} variables and '
-            err_mess += f'{native_np[0]} parameters, got '
-            err_mess += f'{len(var_labels)} and {len(param_labels)} labels'
+            err_mess = (
+                f'Native descriptor requires {native_nv} variables and '
+                f'{native_np[0]} parameters, got '
+                f'{len(var_labels)} and {len(param_labels)} labels'
+            )
             raise ValueError(err_mess)
         if owner is None:
             owner = _NativeDescriptor(ptr)

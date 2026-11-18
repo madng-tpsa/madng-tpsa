@@ -256,8 +256,10 @@ class TpsaVector(TpsaTensor[TpsaSeriesT]):
         if len(set(output_names)) != len(output_names) or set(output_names) != set(
             descriptor.variables
         ):
-            err_mess = 'Target variables must match the map outputs. '
-            err_mess += 'Use extend_descriptor() to add new coordinates.'
+            err_mess = (
+                'Target variables must match the map outputs. '
+                'Use extend_descriptor() to add new coordinates.'
+            )
             raise ValueError(err_mess)
         converted = {
             rename.get(name, name): component.change_descriptor(

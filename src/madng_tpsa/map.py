@@ -47,8 +47,10 @@ def _matrix_norm(matrix: np.ndarray, norm: NormDefinition):
         return float(np.linalg.norm(matrix, ord='fro') / np.sqrt(matrix.shape[0]))
     if norm == 'spectral':
         return np.linalg.norm(matrix, ord=2)
-    err_mess = "Argument 'norm' needs to be one of ['max_abs', 'frobenius', "
-    err_mess += "'relative_frobenius', 'spectral']"
+    err_mess = (
+        "Argument 'norm' needs to be one of ['max_abs', 'frobenius', "
+        "'relative_frobenius', 'spectral']"
+    )
     raise ValueError(err_mess)
 
 

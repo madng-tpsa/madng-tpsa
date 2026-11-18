@@ -633,8 +633,10 @@ class TpsaTensor(Generic[TpsaSeriesT]):
         """Return the truncation order of the tensor."""
         orders = {tpsa.truncation_order for tpsa in self.flat}
         if len(orders) != 1:
-            err_mess = 'Tensor components have different truncation orders. '
-            err_mess += "Use 'truncation_orders' instead."
+            err_mess = (
+                'Tensor components have different truncation orders. '
+                "Use 'truncation_orders' instead."
+            )
             raise ValueError(err_mess)
         return orders.pop()
 
@@ -661,8 +663,10 @@ class TpsaTensor(Generic[TpsaSeriesT]):
         scalars = tuple(values.flat)
         if not self.is_complex:
             if any(complex(vv).imag != 0 for vv in scalars):
-                err_mess = 'Assigning complex coefficients to a real TpsaTensor. Please '
-                err_mess += 'promote the tensor to complex first.'
+                err_mess = (
+                    'Assigning complex coefficients to a real TpsaTensor. Please '
+                    'promote the tensor to complex first.'
+                )
                 raise ValueError(err_mess)
             scalars = tuple(float(complex(v).real) for v in scalars)
         for tpsa, scalar in zip(self.flat, scalars, strict=True):
@@ -826,8 +830,10 @@ class TpsaTensor(Generic[TpsaSeriesT]):
             err_mess = 'Derivative order must be a positive integer'
             raise ValueError(err_mess)
         if wrt not in ['variables', 'parameters', 'all']:
-            err_mess = "Derivative direction argument 'wrt' has to be one of "
-            err_mess += "['variables', 'parameters', 'all']."
+            err_mess = (
+                "Derivative direction argument 'wrt' has to be one of "
+                "['variables', 'parameters', 'all']."
+            )
             raise TypeError(err_mess)
         to_variables = wrt == 'variables' or wrt == 'all'
         to_parameters = wrt == 'parameters' or wrt == 'all'
@@ -913,8 +919,10 @@ class TpsaTensor(Generic[TpsaSeriesT]):
         point = (*coordinates, *parameter_values)
         if not self.is_complex and any(complex(vv).imag != 0 for vv in point):
             self = self.to_complex()
-            warn_mess = 'Assigning complex coordinates to a real TpsaTensor. '
-            warn_mess += 'Used a temporary complex tensor for evaluation.'
+            warn_mess = (
+                'Assigning complex coordinates to a real TpsaTensor. '
+                'Used a temporary complex tensor for evaluation.'
+            )
             warn(warn_mess, UserWarning, stacklevel=2)
 
         if self.is_complex:

@@ -77,6 +77,7 @@ build_info = "madng_tpsa.xobjects_hook:get_build_info"
 
 [tool.pytest]
 filterwarnings = ["error"]
+addopts = ["-ra"]
 
 [tool.coverage.run]
 branch = true

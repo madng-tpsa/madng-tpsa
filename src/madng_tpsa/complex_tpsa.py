@@ -97,8 +97,10 @@ class ComplexTpsa(_TpsaBase[complex, SupportsFloat | SupportsComplex]):
             return existing
 
         if not owns:
-            err_mess = 'No live TPSA wrapper exists for this pointer. '
-            err_mess += 'Use owns=True to adopt a newly allocated TPSA.'
+            err_mess = (
+                'No live TPSA wrapper exists for this pointer. '
+                'Use owns=True to adopt a newly allocated TPSA.'
+            )
             raise ValueError(err_mess)
 
         # From here onwards, the native allocation has no Python owner.

@@ -41,7 +41,8 @@ def _match_labels(
 ) -> list[int | None]:
     """Map old indices to new indices, or None if absent.
 
-    if res = _match_labels(old, new) then old = [new[i] for i in res]
+    With no renaming and no missing labels, this reduces to
+    `old_labels == [new_labels[i - offset] for i in res]`.
     """
     rename = dict(rename or {})
     if len(set(old_labels)) != len(old_labels):
@@ -132,8 +133,10 @@ class _TpsaBase(ABC, Generic[_Coefficient, _InputCoefficient]):
         desc = dct.get('descriptor')
         if desc is None:
             if descriptor is None:
-                err_mess = 'Descriptor is missing in the dictionary. Please provide it '
-                err_mess += "explicitly with the argument 'Descriptor'."
+                err_mess = (
+                    'Descriptor is missing in the dictionary. Please provide it '
+                    "explicitly with the argument 'Descriptor'."
+                )
                 raise ValueError(err_mess)
         else:
             desc = Descriptor.from_dict(desc)
@@ -205,8 +208,7 @@ class _TpsaBase(ABC, Generic[_Coefficient, _InputCoefficient]):
             for power, target in zip(monomial, positions, strict=True):
                 if target is None:
                     if power:
-                        err_mess = 'Cannot remove a variable or parameter on which the '
-                        err_mess += 'TPSA depends'
+                        err_mess = 'Cannot remove a variable or parameter on which the TPSA depends'
                         raise ValueError(err_mess)
                 else:
                     exponents[target] = power
