@@ -5,7 +5,7 @@ import numpy as np
 from madng_tpsa import Descriptor, TpsaMap
 
 descriptor = Descriptor(
-    variables=['x', 'px'],
+    var_names=['x', 'px'],
     order=4,
 )
 

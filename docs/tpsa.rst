@@ -4,8 +4,8 @@ Tpsa
 A :class:`~madng_tpsa.tpsa.Tpsa` is a real truncated multivariate Taylor
 series backed by MAD-NG's GTPSA implementation.
 
-Descriptors, variables and parameters
--------------------------------------
+Descriptors, variables, and parameters
+--------------------------------------
 
 Every TPSA belongs to one :class:`~madng_tpsa.descriptor.Descriptor`.
 The descriptor fixes the independent variables, optional external parameters,
@@ -14,9 +14,9 @@ and truncation orders.
 .. code-block:: python
 
    descriptor = Descriptor(
-       variables=['x', 'px'],
+       var_names=['x', 'px'],
        order=4,
-       parameters=['k1', 'k2'],
+       param_names=['k1', 'k2'],
        param_order=2,
    )
 
@@ -56,8 +56,8 @@ Coefficients
    print(f.to_dict())
    # {'__class__': 'Tpsa',
    #  'descriptor': {'__class__': 'Descriptor',
-   #   'variables': ('x', 'px'),
-   #   'parameters': ('k1', 'k2'),
+   #   'var_names': ('x', 'px'),
+   #   'param_names': ('k1', 'k2'),
    #   'order': 4,
    #   'param_order': 2,
    #   'max_orders': None},
@@ -113,7 +113,7 @@ For variables ordered ``(q1, p1, q2, p2, ...)``:
 
 .. code-block:: python
 
-   descriptor = Descriptor(variables=['q', 'p'], order=5)
+   descriptor = Descriptor(var_names=['q', 'p'], order=5)
    q, p = descriptor.vars()
    assert q.poisson_bracket(p).const_part == 1
 

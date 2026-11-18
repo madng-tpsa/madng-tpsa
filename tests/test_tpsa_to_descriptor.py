@@ -12,8 +12,8 @@ from madng_tpsa import Descriptor
 
 @pytest.mark.parametrize('complex_series', [False, True], ids=['real', 'complex'])
 def test_change_descriptor_reorders_variables_and_copies(complex_series):
-    source = Descriptor(variables=('swap_x', 'swap_px'), order=5)
-    target = Descriptor(variables=('swap_px', 'swap_x'), order=5)
+    source = Descriptor(var_names=('swap_x', 'swap_px'), order=5)
+    target = Descriptor(var_names=('swap_px', 'swap_x'), order=5)
     assert source.ptr == target.ptr and source is not target
     if complex_series:
         t = source.complex_zero()
@@ -38,8 +38,8 @@ def test_change_descriptor_reorders_variables_and_copies(complex_series):
 
 @pytest.mark.parametrize('complex_series', [False, True], ids=['real', 'complex'])
 def test_change_descriptor_renames_variables(complex_series):
-    old = Descriptor(variables=('rename_x', 'rename_px'), order=4)
-    new = Descriptor(variables=('rename_q', 'rename_p'), order=4)
+    old = Descriptor(var_names=('rename_x', 'rename_px'), order=4)
+    new = Descriptor(var_names=('rename_q', 'rename_p'), order=4)
     if complex_series:
         t = old.complex_zero()
         t.set((1, 2), (4 - 1j))
@@ -57,11 +57,11 @@ def test_change_descriptor_renames_variables(complex_series):
 @pytest.mark.parametrize('complex_series', [False, True], ids=['real', 'complex'])
 def test_change_descriptor_reorders_and_extends_parameters(complex_series):
     old = Descriptor(
-        variables=('lift_x', 'lift_px'), parameters=('lift_k',), order=5, param_order=2
+        var_names=('lift_x', 'lift_px'), param_names=('lift_k',), order=5, param_order=2
     )
     new = Descriptor(
-        variables=('lift_px', 'lift_y', 'lift_x'),
-        parameters=('lift_eps', 'lift_k'),
+        var_names=('lift_px', 'lift_y', 'lift_x'),
+        param_names=('lift_eps', 'lift_k'),
         order=5,
         param_order=2,
     )
@@ -82,8 +82,8 @@ def test_change_descriptor_reorders_and_extends_parameters(complex_series):
 
 @pytest.mark.parametrize('complex_series', [False, True], ids=['real', 'complex'])
 def test_change_descriptor_missing_unused_variable_is_allowed(complex_series):
-    old = Descriptor(variables=('drop_x', 'drop_unused'), order=4)
-    new = Descriptor(variables=('drop_x',), order=4)
+    old = Descriptor(var_names=('drop_x', 'drop_unused'), order=4)
+    new = Descriptor(var_names=('drop_x',), order=4)
     t = old.complex_zero() if complex_series else old.zero()
     t.set((2, 0), 3)
     u = t.change_descriptor(new)
@@ -93,8 +93,8 @@ def test_change_descriptor_missing_unused_variable_is_allowed(complex_series):
 @pytest.mark.parametrize('complex_series', [False, True], ids=['real', 'complex'])
 @pytest.mark.parametrize('truncate', [False, True])
 def test_change_descriptor_rejects_missing_used_variable(complex_series, truncate):
-    old = Descriptor(variables=('mustkeep_x', 'mustkeep_px'), order=4)
-    new = Descriptor(variables=('mustkeep_x',), order=4)
+    old = Descriptor(var_names=('mustkeep_x', 'mustkeep_px'), order=4)
+    new = Descriptor(var_names=('mustkeep_x',), order=4)
     t = old.complex_zero() if complex_series else old.zero()
     t.set((0, 1), 2)
     with pytest.raises(ValueError, match='remove|depend'):
@@ -104,8 +104,8 @@ def test_change_descriptor_rejects_missing_used_variable(complex_series, truncat
 @pytest.mark.parametrize('complex_series', [False, True], ids=['real', 'complex'])
 @pytest.mark.parametrize('truncate', [False, True])
 def test_change_descriptor_rejects_missing_used_parameter(complex_series, truncate):
-    old = Descriptor(variables=('param_x',), parameters=('param_k',), order=4, param_order=2)
-    new = Descriptor(variables=('param_x',), order=4)
+    old = Descriptor(var_names=('param_x',), param_names=('param_k',), order=4, param_order=2)
+    new = Descriptor(var_names=('param_x',), order=4)
     t = old.complex_zero() if complex_series else old.zero()
     t.set((1, 1), 2)
     with pytest.raises(ValueError, match='remove|depend'):
@@ -114,8 +114,8 @@ def test_change_descriptor_rejects_missing_used_parameter(complex_series, trunca
 
 @pytest.mark.parametrize('complex_series', [False, True], ids=['real', 'complex'])
 def test_change_descriptor_truncation_requires_opt_in(complex_series):
-    old = Descriptor(variables=('cut_x', 'cut_px'), order=5)
-    new = Descriptor(variables=('cut_x', 'cut_px'), order=2)
+    old = Descriptor(var_names=('cut_x', 'cut_px'), order=5)
+    new = Descriptor(var_names=('cut_x', 'cut_px'), order=2)
     t = old.complex_zero(order=5) if complex_series else old.zero(order=5)
     t.set((1, 0), 2)
     t.set((3, 0), 7)
@@ -132,9 +132,9 @@ def test_change_descriptor_truncation_requires_opt_in(complex_series):
 
 @pytest.mark.parametrize('complex_series', [False, True], ids=['real', 'complex'])
 def test_change_descriptor_per_variable_limit_requires_opt_in(complex_series):
-    old = Descriptor(variables=('cap_x', 'cap_px'), order=5)
+    old = Descriptor(var_names=('cap_x', 'cap_px'), order=5)
     new = Descriptor(
-        variables=('cap_x', 'cap_px'),
+        var_names=('cap_x', 'cap_px'),
         order=5,
         max_orders=(2, 5),
     )
@@ -152,8 +152,8 @@ def test_change_descriptor_per_variable_limit_requires_opt_in(complex_series):
 
 @pytest.mark.parametrize('complex_series', [False, True], ids=['real', 'complex'])
 def test_change_descriptor_rejects_bad_label_maps(complex_series):
-    old = Descriptor(variables=('mapping_x', 'mapping_px'), order=4)
-    new = Descriptor(variables=('mapping_q', 'mapping_p'), order=4)
+    old = Descriptor(var_names=('mapping_x', 'mapping_px'), order=4)
+    new = Descriptor(var_names=('mapping_q', 'mapping_p'), order=4)
     t = old.complex_zero() if complex_series else old.zero()
     with pytest.raises(ValueError, match='Unknown source'):
         t.change_descriptor(new, variable_map={'missing': 'mapping_q'})
@@ -165,7 +165,7 @@ def test_change_descriptor_rejects_bad_label_maps(complex_series):
 
 @pytest.mark.parametrize('complex_series', [False, True], ids=['real', 'complex'])
 def test_change_descriptor_same_descriptor_returns_independent_copy(complex_series):
-    d = Descriptor(variables=('copy_x', 'copy_px'), order=4)
+    d = Descriptor(var_names=('copy_x', 'copy_px'), order=4)
     t = d.complex_zero() if complex_series else d.zero()
     t.set((1, 0), 3)
 
@@ -181,14 +181,14 @@ def test_change_descriptor_same_descriptor_returns_independent_copy(complex_seri
 @pytest.mark.parametrize('complex_series', [False, True], ids=['real', 'complex'])
 def test_change_descriptor_explicit_parameter_rename(complex_series):
     old = Descriptor(
-        variables=('pmap_x',),
-        parameters=('pmap_old',),
+        var_names=('pmap_x',),
+        param_names=('pmap_old',),
         order=4,
         param_order=2,
     )
     new = Descriptor(
-        variables=('pmap_x',),
-        parameters=('pmap_new',),
+        var_names=('pmap_x',),
+        param_names=('pmap_new',),
         order=4,
         param_order=2,
     )
@@ -207,8 +207,8 @@ def test_change_descriptor_explicit_parameter_rename(complex_series):
 
 @pytest.mark.parametrize('complex_series', [False, True], ids=['real', 'complex'])
 def test_change_descriptor_does_not_expand_source_truncation_order(complex_series):
-    old = Descriptor(variables=('allocation_x', 'allocation_px'), order=4)
-    new = Descriptor(variables=('allocation_px', 'allocation_x', 'allocation_y'), order=6)
+    old = Descriptor(var_names=('allocation_x', 'allocation_px'), order=4)
+    new = Descriptor(var_names=('allocation_px', 'allocation_x', 'allocation_y'), order=6)
     t = old.complex_zero(order=2) if complex_series else old.zero(order=2)
     t.set((1, 1), 3)
 

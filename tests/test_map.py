@@ -17,24 +17,24 @@ from madng_tpsa import ComplexTpsa, Descriptor, Tpsa, TpsaMap, TpsaTensor
 from madng_tpsa._cffi import ffi
 
 
-def _descriptor(*, parameters: bool = False) -> Descriptor:
+def _descriptor(*, param_names: bool = False) -> Descriptor:
     return Descriptor(
-        variables=('maptest_x', 'maptest_px'),
-        parameters=('maptest_k',) if parameters else (),
+        var_names=('maptest_x', 'maptest_px'),
+        param_names=('maptest_k',) if param_names else (),
         order=4,
         param_order=2,
     )
 
 
 def test_identity_constructor_and_descriptor_order() -> None:
-    d = _descriptor(parameters=True)
+    d = _descriptor(param_names=True)
     m = TpsaMap(d)
 
     assert isinstance(m, TpsaTensor)
     assert m.shape == (2,)
     assert m.rank == 1
     assert m.descriptor is d
-    assert m.component_names == d.variables
+    assert m.component_names == d.var_names
     np.testing.assert_allclose(m.evaluate((3.0, 5.0), parameters=(7.0,)), (3.0, 5.0))
     assert m.named_components['maptest_x'] is m.flat[0]
     assert m.named_components['maptest_px'] is m.flat[1]
@@ -63,7 +63,7 @@ def test_named_components_infer_descriptor_and_preserve_other_identity() -> None
     m = TpsaMap(maptest_x=x * x)
 
     assert m.descriptor is d
-    assert m.component_names == d.variables
+    assert m.component_names == d.var_names
     np.testing.assert_allclose(m.evaluate((3, 5)), (9, 5))
     assert m.maptest_x is m.flat[0]
     assert m.maptest_px is m.flat[1]
@@ -135,7 +135,7 @@ def test_rejects_nested_map_components() -> None:
 
 def test_rejects_mixed_labelled_descriptors() -> None:
     d = _descriptor()
-    other = Descriptor(variables=('other_x', 'other_px'), order=4)
+    other = Descriptor(var_names=('other_x', 'other_px'), order=4)
     with pytest.raises(ValueError, match='Descriptor'):
         TpsaMap([d.var('maptest_x'), other.var('other_px')])
 
@@ -146,8 +146,8 @@ def test_mapping_accessors_track_component_replacement() -> None:
     replacement = d.var('maptest_x') * 2
     m[0] = replacement
 
-    assert m.component_names == d.variables
-    assert tuple(m.named_components.keys()) == d.variables
+    assert m.component_names == d.var_names
+    assert tuple(m.named_components.keys()) == d.var_names
     assert tuple(m.named_components.values()) == m.flat
     assert dict(m.named_components.items())['maptest_x'] is replacement
     assert m.named_components['maptest_x'] is replacement
@@ -172,20 +172,20 @@ def test_copy_is_map_with_independent_components() -> None:
     assert isinstance(copied, TpsaMap)
     assert copied is not m
     assert copied.descriptor is d
-    assert copied.component_names == d.variables
+    assert copied.component_names == d.var_names
     assert all(a is not b for a, b in zip(m.flat, copied.flat, strict=True))
     copied.flat[0].const_part = 12
     assert m.flat[0].const_part == 0
 
 
 def test_to_complex_keeps_map_type_and_is_independent() -> None:
-    d = _descriptor(parameters=True)
+    d = _descriptor(param_names=True)
     m = TpsaMap(d)
     c = m.to_complex()
 
     assert isinstance(c, TpsaMap)
     assert c.is_complex
-    assert c.component_names == d.variables
+    assert c.component_names == d.var_names
     assert all(isinstance(t, ComplexTpsa) for t in c.flat)
     c.flat[0].const_part = 1 + 2j
     assert not m.is_complex
@@ -193,20 +193,20 @@ def test_to_complex_keeps_map_type_and_is_independent() -> None:
 
 
 def test_serialise_round_trip_preserves_coordinates_and_parameter() -> None:
-    d = _descriptor(parameters=True)
+    d = _descriptor(param_names=True)
     m = TpsaMap(d, maptest_x=d.var('maptest_x') + d.param('maptest_k'))
     data = json.loads(json.dumps(m.to_dict(tol=0)))
     recreated = TpsaMap.from_dict(data)
 
     assert isinstance(recreated, TpsaMap)
     assert recreated.descriptor is d
-    assert recreated.component_names == d.variables
+    assert recreated.component_names == d.var_names
     np.testing.assert_allclose(recreated.evaluate((3, 4), parameters=(5,)), (8, 4))
     assert all(a is not b for a, b in zip(m.flat, recreated.flat, strict=True))
 
 
 def test_parameter_identity_pointer_array_has_correct_entries() -> None:
-    d = _descriptor(parameters=True)
+    d = _descriptor(param_names=True)
     m = TpsaMap(d)
     ptrs = m.pointer_array_with_params
 
@@ -217,19 +217,19 @@ def test_parameter_identity_pointer_array_has_correct_entries() -> None:
 
 
 def test_extend_descriptor_new_variables_and_parameters_fills_identities() -> None:
-    d = _descriptor(parameters=True)
+    d = _descriptor(param_names=True)
     x, px = d.vars()
     source = TpsaMap([x + px, px])
     target = Descriptor(
-        variables=('maptest_zeta', 'maptest_px', 'maptest_x'),
-        parameters=('maptest_k', 'maptest_epsilon'),
+        var_names=('maptest_zeta', 'maptest_px', 'maptest_x'),
+        param_names=('maptest_k', 'maptest_epsilon'),
         order=4,
         param_order=2,
     )
     extended = source.extend_descriptor(target)
 
     assert extended.descriptor is target
-    assert extended.component_names == target.variables
+    assert extended.component_names == target.var_names
     assert extended.shape == (3,)
     np.testing.assert_allclose(
         extended.evaluate((7, 3, 2), parameters=(5, 6)),
@@ -240,46 +240,46 @@ def test_extend_descriptor_new_variables_and_parameters_fills_identities() -> No
 
 
 def test_extend_descriptor_reorders_existing_variables_even_without_new_ones() -> None:
-    old = Descriptor(variables=('order_map_x', 'order_map_px'), order=4)
-    target = Descriptor(variables=('order_map_px', 'order_map_x'), order=4)
+    old = Descriptor(var_names=('order_map_x', 'order_map_px'), order=4)
+    target = Descriptor(var_names=('order_map_px', 'order_map_x'), order=4)
     x, px = old.vars()
     original = TpsaMap((x + 2 * px, px))
     converted = original.extend_descriptor(target)
 
     assert converted.descriptor is target
-    assert converted.component_names == target.variables
+    assert converted.component_names == target.var_names
     np.testing.assert_allclose(converted.evaluate((4, 2)), (4, 10))
 
 
 def test_extend_descriptor_rejects_target_missing_original_variable() -> None:
     source = TpsaMap(_descriptor())
-    target = Descriptor(variables=('maptest_x',), order=4)
-    with pytest.raises(ValueError, match='variables'):
+    target = Descriptor(var_names=('maptest_x',), order=4)
+    with pytest.raises(ValueError, match='Target descriptor must contain all original variables'):
         source.extend_descriptor(target)
 
 
 def test_extend_descriptor_rejects_target_missing_original_parameter() -> None:
-    source = TpsaMap(_descriptor(parameters=True))
+    source = TpsaMap(_descriptor(param_names=True))
     target = _descriptor()
     with pytest.raises(ValueError, match='parameters'):
         source.extend_descriptor(target)
 
 
 def test_map_change_descriptor_reorders_output_components() -> None:
-    old = Descriptor(variables=('convert_map_x', 'convert_map_px'), order=4)
-    target = Descriptor(variables=('convert_map_px', 'convert_map_x'), order=4)
+    old = Descriptor(var_names=('convert_map_x', 'convert_map_px'), order=4)
+    target = Descriptor(var_names=('convert_map_px', 'convert_map_x'), order=4)
     x, px = old.vars()
     source = TpsaMap((x + 2 * px, 3 * px))
     converted = source.change_descriptor(target)
 
     assert isinstance(converted, TpsaMap)
     assert converted.descriptor is target
-    assert converted.component_names == target.variables
+    assert converted.component_names == target.var_names
     np.testing.assert_allclose(converted.evaluate((4, 2)), (12, 10))
 
 
 def test_compose_two_maps_returns_a_map_with_correct_labels() -> None:
-    d = _descriptor(parameters=True)
+    d = _descriptor(param_names=True)
     x, px = d.vars()
     k = d.param('maptest_k')
     outer = TpsaMap((x + k, px))
@@ -287,7 +287,7 @@ def test_compose_two_maps_returns_a_map_with_correct_labels() -> None:
     composed = outer.compose(inner)
 
     assert isinstance(composed, TpsaMap)
-    assert composed.component_names == d.variables
+    assert composed.component_names == d.var_names
     np.testing.assert_allclose(composed.evaluate((3, 4), parameters=(1,)), (7, 5))
 
 
@@ -305,18 +305,18 @@ def test_composition_does_not_mutate_either_operand() -> None:
 
 def test_composition_reconciles_parameter_sets() -> None:
     d1 = Descriptor(
-        variables=('union_map_x', 'union_map_px'),
-        parameters=('union_map_k',),
+        var_names=('union_map_x', 'union_map_px'),
+        param_names=('union_map_k',),
         order=4,
         param_order=2,
     )
-    d2 = Descriptor(variables=('union_map_x', 'union_map_px'), order=4)
+    d2 = Descriptor(var_names=('union_map_x', 'union_map_px'), order=4)
     x, px = d1.vars()
     outer = TpsaMap((x + d1.param('union_map_k'), px))
     inner = TpsaMap((2 * d2.var('union_map_x'), d2.var('union_map_px')))
     result = outer.compose(inner)
 
-    assert result.descriptor.parameters == ('union_map_k',)
+    assert result.descriptor.param_names == ('union_map_k',)
     np.testing.assert_allclose(result.evaluate((3, 4), parameters=(5,)), (11, 4))
 
 
@@ -332,8 +332,8 @@ def test_descriptor_order_does_not_change_due_to_read_access() -> None:
 
 def test_evaluate_tpsa_map_with_parameters():
     d = Descriptor(
-        variables=('map_eval_x', 'map_eval_px'),
-        parameters=('map_eval_k',),
+        var_names=('map_eval_x', 'map_eval_px'),
+        param_names=('map_eval_k',),
         order=4,
         param_order=2,
     )
@@ -354,7 +354,7 @@ def test_evaluate_tpsa_map_with_parameters():
 
 def _nonlinear_map_with_parameter() -> TpsaMap:
     """Create a nonlinear two-variable map with one parameter."""
-    d = _descriptor(parameters=True)
+    d = _descriptor(param_names=True)
     x, px = d.vars()
     k = d.param('maptest_k')
     return TpsaMap([x * x + 3 * px + 2 * k + k * x, px * px + x * k + 5 * k])
@@ -374,7 +374,7 @@ def test_coordinates_read_only_and_snapshot_semantics() -> None:
 
 
 def test_map_coefficient_lookup_by_name_index_and_batch() -> None:
-    d = _descriptor(parameters=True)
+    d = _descriptor(param_names=True)
     mapping = TpsaMap(d)
     mapping[0].set((2, 0, 0), 4)
     mapping[1].set((0, 0, 1), 5)
@@ -448,7 +448,7 @@ def test_jacobians_at_origin_and_at_nonzero_point() -> None:
 
 
 def test_named_map_components_follow_descriptor_order() -> None:
-    d = Descriptor(variables=('review_q', 'review_p'), order=4)
+    d = Descriptor(var_names=('review_q', 'review_p'), order=4)
     q, p = d.vars()
     mapping = TpsaMap(review_p=p + q, review_q=q + p**2)
     assert mapping.component_names == ('review_q', 'review_p')

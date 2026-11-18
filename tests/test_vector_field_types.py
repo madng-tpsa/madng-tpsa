@@ -22,7 +22,7 @@ class _CustomMap(TpsaMap[Tpsa]):
 
 
 def _descriptor() -> Descriptor:
-    return Descriptor(variables=('vf_q', 'vf_p'), order=5)
+    return Descriptor(var_names=('vf_q', 'vf_p'), order=5)
 
 
 def test_from_generator_returns_real_vector_field() -> None:
@@ -34,7 +34,7 @@ def test_from_generator_returns_real_vector_field() -> None:
 
     assert type(field) is TpsaVectorField
     assert field.shape == (2,)
-    assert field.component_names == d.variables
+    assert field.component_names == d.var_names
     assert not field.is_complex
     np.testing.assert_allclose(field.evaluate((2, 3)), (-3, 2))
     assert field.to_generator() == h
@@ -186,8 +186,8 @@ def test_zero_composition_power_preserves_map_subclass() -> None:
 
 
 def test_descriptor_extension_distinguishes_map_and_field():
-    d1 = Descriptor(variables=('x', 'px'), order=3)
-    d2 = Descriptor(variables=('x', 'px', 'y', 'py'), order=3)
+    d1 = Descriptor(var_names=('x', 'px'), order=3)
+    d2 = Descriptor(var_names=('x', 'px', 'y', 'py'), order=3)
 
     map_ = TpsaMap(d1)
     field = TpsaVectorField(d1)
@@ -208,7 +208,7 @@ def test_descriptor_extension_distinguishes_map_and_field():
 
 
 def test_act_on():
-    desc = Descriptor(variables=['x', 'px'], parameters=['k'], order=3, param_order=3)
+    desc = Descriptor(var_names=['x', 'px'], param_names=['k'], order=3, param_order=3)
     x, px = desc.vars()
     field = TpsaVectorField.from_generator(px - x**2 + 3 * x * px)
     f = field.act_on(7 * px**2 - 3 * x**3 + 2 * x * px)

@@ -4,7 +4,7 @@ import numpy as np
 
 from madng_tpsa import Descriptor, TpsaMap, TpsaTensor
 
-descriptor = Descriptor(variables=('q', 'p'), parameters=('k',), order=5, param_order=3)
+descriptor = Descriptor(var_names=('q', 'p'), param_names=('k',), order=5, param_order=3)
 q, p = descriptor.vars()
 k = descriptor.param('k')
 

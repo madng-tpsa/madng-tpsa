@@ -17,8 +17,8 @@ from madng_tpsa._cffi import lib
 
 @pytest.mark.parametrize('complex_series', [False, True], ids=['real', 'complex'])
 def test_unlabelled_from_ptr_reuses_wrapper_with_ambiguous_labels(complex_series):
-    dx = Descriptor(variables=('lookup_x', 'lookup_px'), order=5)
-    dy = Descriptor(variables=('lookup_y', 'lookup_py'), order=5)
+    dx = Descriptor(var_names=('lookup_x', 'lookup_px'), order=5)
+    dy = Descriptor(var_names=('lookup_y', 'lookup_py'), order=5)
     assert dx.ptr == dy.ptr and dx is not dy
 
     series = dx.complex_zero() if complex_series else dx.zero()
@@ -35,8 +35,8 @@ def test_unlabelled_from_ptr_reuses_wrapper_with_ambiguous_labels(complex_series
 
 @pytest.mark.parametrize('complex_series', [False, True], ids=['real', 'complex'])
 def test_alternate_labelled_descriptor_cannot_rewrap_existing_pointer(complex_series):
-    dx = Descriptor(variables=('conflict_x', 'conflict_px'), order=5)
-    dy = Descriptor(variables=('conflict_y', 'conflict_py'), order=5)
+    dx = Descriptor(var_names=('conflict_x', 'conflict_px'), order=5)
+    dy = Descriptor(var_names=('conflict_y', 'conflict_py'), order=5)
     assert dx.ptr == dy.ptr
 
     series = dx.complex_zero() if complex_series else dx.zero()
@@ -57,7 +57,7 @@ def test_alternate_labelled_descriptor_cannot_rewrap_existing_pointer(complex_se
 
 @pytest.mark.parametrize('complex_series', [False, True], ids=['real', 'complex'])
 def test_fresh_native_pointer_requires_ownership_transfer(complex_series):
-    descriptor = Descriptor(variables=('adopt_x', 'adopt_px'), order=5)
+    descriptor = Descriptor(var_names=('adopt_x', 'adopt_px'), order=5)
     cls = ComplexTpsa if complex_series else Tpsa
     new = lib.mad_ctpsa_newd if complex_series else lib.mad_tpsa_newd
     delete = lib.mad_ctpsa_del if complex_series else lib.mad_tpsa_del
@@ -84,8 +84,8 @@ def test_fresh_native_pointer_requires_ownership_transfer(complex_series):
 
 @pytest.mark.parametrize('complex_series', [False, True], ids=['real', 'complex'])
 def test_fresh_pointer_with_ambiguous_descriptor_requires_explicit_label(complex_series):
-    dx = Descriptor(variables=('ambig_x', 'ambig_px'), order=6)
-    dy = Descriptor(variables=('ambig_y', 'ambig_py'), order=6)
+    dx = Descriptor(var_names=('ambig_x', 'ambig_px'), order=6)
+    dy = Descriptor(var_names=('ambig_y', 'ambig_py'), order=6)
     assert dx.ptr == dy.ptr
 
     cls = ComplexTpsa if complex_series else Tpsa
@@ -108,8 +108,8 @@ def test_fresh_pointer_with_ambiguous_descriptor_requires_explicit_label(complex
 
 @pytest.mark.parametrize('complex_series', [False, True], ids=['real', 'complex'])
 def test_from_ptr_rejects_incorrect_native_descriptor(complex_series):
-    dx = Descriptor(variables=('native_a', 'native_b'), order=5)
-    different = Descriptor(variables=('native_a', 'native_b', 'native_c'), order=5)
+    dx = Descriptor(var_names=('native_a', 'native_b'), order=5)
+    different = Descriptor(var_names=('native_a', 'native_b', 'native_c'), order=5)
     series = dx.complex_zero() if complex_series else dx.zero()
     cls = ComplexTpsa if complex_series else Tpsa
 
@@ -119,8 +119,8 @@ def test_from_ptr_rejects_incorrect_native_descriptor(complex_series):
 
 @pytest.mark.parametrize('complex_series', [False, True], ids=['real', 'complex'])
 def test_pointer_registry_is_weak_and_tpsa_keeps_labelled_descriptor(complex_series):
-    dx = Descriptor(variables=('life_x', 'life_px'), order=7)
-    dy = Descriptor(variables=('life_y', 'life_py'), order=7)
+    dx = Descriptor(var_names=('life_x', 'life_px'), order=7)
+    dy = Descriptor(var_names=('life_y', 'life_py'), order=7)
     series = dx.complex_zero() if complex_series else dx.zero()
     cls = ComplexTpsa if complex_series else Tpsa
     dref = weakref.ref(dx)
@@ -130,8 +130,8 @@ def test_pointer_registry_is_weak_and_tpsa_keeps_labelled_descriptor(complex_ser
     gc.collect()
     assert dref() is not None
     assert cls.from_ptr(series.ptr) is series
-    assert series.descriptor.variables == ('life_x', 'life_px')
-    assert dy.variables == ('life_y', 'life_py')
+    assert series.descriptor.var_names == ('life_x', 'life_px')
+    assert dy.var_names == ('life_y', 'life_py')
 
     del series
     gc.collect()
@@ -140,8 +140,8 @@ def test_pointer_registry_is_weak_and_tpsa_keeps_labelled_descriptor(complex_ser
 
 
 def test_labelled_descriptors_are_not_implicitly_compatible_in_arithmetic():
-    dx = Descriptor(variables=('arith_x', 'arith_px'), order=4)
-    dy = Descriptor(variables=('arith_y', 'arith_py'), order=4)
+    dx = Descriptor(var_names=('arith_x', 'arith_px'), order=4)
+    dy = Descriptor(var_names=('arith_y', 'arith_py'), order=4)
     assert dx.ptr == dy.ptr
     real_x = dx.var('arith_x')
     real_y = dy.var('arith_y')
@@ -158,8 +158,8 @@ def test_labelled_descriptors_are_not_implicitly_compatible_in_arithmetic():
 
 
 def test_serialisation_restores_correct_descriptor_among_aliases():
-    dx = Descriptor(variables=('serial_x', 'serial_px'), order=5)
-    dy = Descriptor(variables=('serial_y', 'serial_py'), order=5)
+    dx = Descriptor(var_names=('serial_x', 'serial_px'), order=5)
+    dy = Descriptor(var_names=('serial_y', 'serial_py'), order=5)
     assert dx.ptr == dy.ptr
     t = dx.zero()
     t.set((2, 0), 3.25)

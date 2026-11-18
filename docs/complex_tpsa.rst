@@ -8,7 +8,7 @@ counterpart of :class:`~madng_tpsa.tpsa.Tpsa`.
 
    from madng_tpsa import ComplexTpsa, Descriptor
 
-   descriptor = Descriptor(variables=['x', 'y'], order=4)
+   descriptor = Descriptor(var_names=['x', 'y'], order=4)
    x, y = descriptor.vars()
 
    z = ComplexTpsa.from_tpsa(x, y)   # x + 1j*y

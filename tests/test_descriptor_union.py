@@ -11,21 +11,21 @@ from madng_tpsa.descriptor import Descriptor
 
 
 def test_union_is_idempotent():
-    descriptor = Descriptor(variables=('r', 'pr'), order=10)
+    descriptor = Descriptor(var_names=('r', 'pr'), order=10)
 
     assert descriptor.union(descriptor) is descriptor
 
 
 def test_union_merges_variables_parameters_and_limits():
     left = Descriptor(
-        variables=('x', 'px', 'y', 'py'),
-        parameters=('k',),
+        var_names=('x', 'px', 'y', 'py'),
+        param_names=('k',),
         order=3,
         param_order=1,
     )
     right = Descriptor(
-        variables=('x', 'px', 'zeta', 'delta'),
-        parameters=('epsilon',),
+        var_names=('x', 'px', 'zeta', 'delta'),
+        param_names=('epsilon',),
         order=5,
         param_order=2,
     )
@@ -34,8 +34,8 @@ def test_union_merges_variables_parameters_and_limits():
     right_before = right.to_dict()
     merged = left.union(right)
 
-    assert merged.variables == ('x', 'px', 'y', 'py', 'zeta', 'delta')
-    assert merged.parameters == ('k', 'epsilon')
+    assert merged.var_names == ('x', 'px', 'y', 'py', 'zeta', 'delta')
+    assert merged.param_names == ('k', 'epsilon')
     assert merged.num_vars == 6
     assert merged.num_params == 2
     assert merged.monomial_length == 8
@@ -58,20 +58,20 @@ def test_union_merges_variables_parameters_and_limits():
 
 def test_union_merges_nonuniform_limits_by_label():
     left = Descriptor(
-        variables=('alpha', 'beta'),
+        var_names=('alpha', 'beta'),
         order=6,
         max_orders=(2, 4),
     )
     right = Descriptor(
-        variables=('alpha', 'gamma'),
+        var_names=('alpha', 'gamma'),
         order=7,
         max_orders=(5, 2),
     )
 
     merged = left.union(right)
 
-    assert merged.variables == ('alpha', 'beta', 'gamma')
-    assert merged.parameters == ()
+    assert merged.var_names == ('alpha', 'beta', 'gamma')
+    assert merged.param_names == ()
     assert merged.order == 7
     assert merged.max_orders == (5, 4, 2)
     assert merged.is_valid_monomial((5, 0, 0))
@@ -80,26 +80,26 @@ def test_union_merges_nonuniform_limits_by_label():
 
 
 def test_union_of_subset_reuses_superset_descriptor():
-    superset = Descriptor(variables=('v', 'pv', 'w'), order=11)
-    subset = Descriptor(variables=('v', 'pv'), order=3)
+    superset = Descriptor(var_names=('v', 'pv', 'w'), order=11)
+    subset = Descriptor(var_names=('v', 'pv'), order=3)
 
     merged = superset.union(subset)
 
     assert merged is superset
-    assert merged.variables == ('v', 'pv', 'w')
+    assert merged.var_names == ('v', 'pv', 'w')
     assert merged.max_orders == (11, 11, 11)
 
 
 def test_union_rejects_variable_parameter_collisions():
     left = Descriptor(
-        variables=('u', 'pu'),
-        parameters=('k',),
+        var_names=('u', 'pu'),
+        param_names=('k',),
         order=8,
         param_order=1,
     )
     right = Descriptor(
-        variables=('u', 'k'),
-        parameters=('h',),
+        var_names=('u', 'k'),
+        param_names=('h',),
         order=9,
         param_order=2,
     )
@@ -109,39 +109,39 @@ def test_union_rejects_variable_parameter_collisions():
 
 
 def test_descriptors_with_same_native_structure_retain_distinct_labels():
-    left = Descriptor(variables=('first', 'second'), order=13)
-    right = Descriptor(variables=('third', 'fourth'), order=13)
+    left = Descriptor(var_names=('first', 'second'), order=13)
+    right = Descriptor(var_names=('third', 'fourth'), order=13)
 
-    assert right.variables == ('third', 'fourth')
+    assert right.var_names == ('third', 'fourth')
     merged = left.union(right)
-    assert merged.variables == ('first', 'second', 'third', 'fourth')
+    assert merged.var_names == ('first', 'second', 'third', 'fourth')
 
 
 def test_union_respects_left_label_order_on_native_descriptor_collision():
-    left = Descriptor(variables=('left', 'right'), order=14)
-    right = Descriptor(variables=('right', 'left'), order=15)
+    left = Descriptor(var_names=('left', 'right'), order=14)
+    right = Descriptor(var_names=('right', 'left'), order=15)
 
     merged = left.union(right)
 
-    assert merged.variables == ('left', 'right')
+    assert merged.var_names == ('left', 'right')
     assert merged.order == 15
 
 
 def test_union_of_distinct_label_sets_is_correct():
-    x = Descriptor(variables=('merge_x', 'merge_px'), order=12)
-    y = Descriptor(variables=('merge_y', 'merge_py'), order=12)
+    x = Descriptor(var_names=('merge_x', 'merge_px'), order=12)
+    y = Descriptor(var_names=('merge_y', 'merge_py'), order=12)
 
     result = x.union(y)
-    assert result.variables == ('merge_x', 'merge_px', 'merge_y', 'merge_py')
+    assert result.var_names == ('merge_x', 'merge_px', 'merge_y', 'merge_py')
     assert result.order == 12
-    assert x.variables == ('merge_x', 'merge_px')
-    assert y.variables == ('merge_y', 'merge_py')
+    assert x.var_names == ('merge_x', 'merge_px')
+    assert y.var_names == ('merge_y', 'merge_py')
 
 
 def test_union_preserves_left_hand_order_on_native_collision():
-    x = Descriptor(variables=('reorder_x', 'reorder_y'), order=13)
-    y = Descriptor(variables=('reorder_y', 'reorder_x'), order=14)
+    x = Descriptor(var_names=('reorder_x', 'reorder_y'), order=13)
+    y = Descriptor(var_names=('reorder_y', 'reorder_x'), order=14)
     merged = x.union(y)
 
-    assert merged.variables == ('reorder_x', 'reorder_y')
+    assert merged.var_names == ('reorder_x', 'reorder_y')
     assert merged.order == 14

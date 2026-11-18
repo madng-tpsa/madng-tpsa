@@ -13,7 +13,7 @@ Construction and coordinate ordering
 
    from madng_tpsa import Descriptor, TpsaVectorField
 
-   d = Descriptor(variables=('q', 'p'), parameters=('k',), order=5)
+   d = Descriptor(var_names=('q', 'p'), param_names=('k',), order=5)
    q, p = d.vars()
    k = d.param('k')
    identity = TpsaVectorField(d)
@@ -26,7 +26,7 @@ Construction and coordinate ordering
    assert named.p == p
 
 Each field has exactly ``d.num_vars`` outputs, ordered according to
-``d.variables``. The sequence constructor is **positional**; the keyword
+``d.var_names``. The sequence constructor is **positional**; the keyword
 constructor uses names and orders them by the descriptor. Unknown names are
 rejected. Scalar component values are *constant output polynomials*. Missing
 keyword components are set to zero. The descriptor can be inferred from TPSA

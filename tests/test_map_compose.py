@@ -11,8 +11,8 @@ from madng_tpsa._cffi import ffi
 
 def _d(*, params: bool = False) -> Descriptor:
     return Descriptor(
-        variables=('native_tensor_x', 'native_tensor_px'),
-        parameters=('native_tensor_k',) if params else (),
+        var_names=('native_tensor_x', 'native_tensor_px'),
+        param_names=('native_tensor_k',) if params else (),
         order=4,
         param_order=2,
     )
@@ -52,8 +52,8 @@ def test_compose_high_rank_tensor_componentwise() -> None:
 
 
 def test_compose_reorders_substitution_coordinates_by_label() -> None:
-    old = Descriptor(variables=('perm_x', 'perm_px'), order=4)
-    reverse = Descriptor(variables=('perm_px', 'perm_x'), order=4)
+    old = Descriptor(var_names=('perm_x', 'perm_px'), order=4)
+    reverse = Descriptor(var_names=('perm_px', 'perm_x'), order=4)
 
     # The outer map is represented in (x, px) order.
     x_old = old.var('perm_x')
@@ -67,19 +67,19 @@ def test_compose_reorders_substitution_coordinates_by_label() -> None:
     inner = TpsaMap([3 * px_reverse, x_reverse + 1])
 
     composed = outer.compose(inner)
-    assert composed.descriptor.variables == old.variables
+    assert composed.descriptor.var_names == old.var_names
     np.testing.assert_allclose(composed.evaluate([2, 4]), [27, 12])
 
 
 def test_compose_automatically_unions_parameter_sets() -> None:
     with_parameter = Descriptor(
-        variables=('common_x', 'common_px'),
-        parameters=('common_k',),
+        var_names=('common_x', 'common_px'),
+        param_names=('common_k',),
         order=4,
         param_order=2,
     )
     without_parameter = Descriptor(
-        variables=('common_x', 'common_px'),
+        var_names=('common_x', 'common_px'),
         order=4,
     )
 
@@ -96,7 +96,7 @@ def test_compose_automatically_unions_parameter_sets() -> None:
         ]
     )
     composed = outer.compose(inner)
-    assert composed.descriptor.parameters == ('common_k',)
+    assert composed.descriptor.param_names == ('common_k',)
     np.testing.assert_allclose(
         composed.evaluate([3, 4], parameters=[5]),
         [11, 4],
@@ -116,8 +116,8 @@ def test_compose_mixed_real_and_complex() -> None:
 
 
 def test_compose_rejects_incompatible_variable_sets() -> None:
-    d1 = Descriptor(variables=('co_x', 'co_px'), order=3)
-    d2 = Descriptor(variables=('co_y', 'co_py'), order=3)
+    d1 = Descriptor(var_names=('co_x', 'co_px'), order=3)
+    d2 = Descriptor(var_names=('co_y', 'co_py'), order=3)
     outer = TpsaTensor(d1.vars())
     inner = TpsaMap(d2.vars())
     with pytest.raises(ValueError, match='variable'):
@@ -159,7 +159,7 @@ def test_compose_allocates_order_for_new_higher_degree_terms() -> None:
 
 
 def test_empty_index_tuple_rejected_but_ellipsis_kept() -> None:
-    d = Descriptor(variables=('quirk_q', 'quirk_p'), order=4)
+    d = Descriptor(var_names=('quirk_q', 'quirk_p'), order=4)
     q, p = d.vars()
     tensor = TpsaTensor([[q, p], [q + p, q - p]])
     with pytest.raises(IndexError, match='Empty index tuple'):
@@ -170,7 +170,7 @@ def test_empty_index_tuple_rejected_but_ellipsis_kept() -> None:
 
 
 def test_pointer_arrays_retain_length_and_refresh_from_sibling_mutation() -> None:
-    d = Descriptor(variables=('quirk_q', 'quirk_p'), order=4)
+    d = Descriptor(var_names=('quirk_q', 'quirk_p'), order=4)
     q, p = d.vars()
     tensor = TpsaTensor([[q, p], [q + p, q - p]])
     row = tensor[0]
@@ -190,8 +190,8 @@ def test_pointer_arrays_retain_length_and_refresh_from_sibling_mutation() -> Non
 
 
 def test_composition_aligns_permuted_variables_by_label() -> None:
-    d = Descriptor(variables=('quirk_q', 'quirk_p'), order=4)
-    swapped = Descriptor(variables=('quirk_p', 'quirk_q'), order=4)
+    d = Descriptor(var_names=('quirk_q', 'quirk_p'), order=4)
+    swapped = Descriptor(var_names=('quirk_p', 'quirk_q'), order=4)
     q, p = d.vars()
     ps, qs = swapped.vars()
     inner = TpsaMap([ps, qs + ps])
@@ -210,7 +210,7 @@ def test_composition_aligns_permuted_variables_by_label() -> None:
 
 
 def test_conventional_and_dragt_operator_order_for_maps_tensors_scalars() -> None:
-    d = Descriptor(variables=('quirk_q', 'quirk_p'), order=4)
+    d = Descriptor(var_names=('quirk_q', 'quirk_p'), order=4)
     q, p = d.vars()
     m = TpsaMap([q + p, p])
     n = TpsaMap([q, p + q])
@@ -233,7 +233,7 @@ def test_conventional_and_dragt_operator_order_for_maps_tensors_scalars() -> Non
 
 
 def test_operator_composition_keeps_parameter_substitution() -> None:
-    d = Descriptor(variables=('quirk_q', 'quirk_p'), parameters=('k',), order=4)
+    d = Descriptor(var_names=('quirk_q', 'quirk_p'), param_names=('k',), order=4)
     q, p = d.vars()
     k = d.param('k')
     m = TpsaMap([q + k, p])

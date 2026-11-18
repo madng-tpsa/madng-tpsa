@@ -9,7 +9,7 @@ console = Console()
 
 # Two variables, expanded through total order 4.
 descriptor = Descriptor(
-    variables=['x', 'y'],
+    var_names=['x', 'y'],
     order=4,
 )
 
@@ -37,8 +37,8 @@ print('Coefficient dictionary:')
 print(f.to_dict())
 print()
 # {
-#  '__class__': 'Tpsa', 'descriptor': {'__class__': 'Descriptor', 'variables': ('x', 'y'),
-#                                      'parameters': (), 'order': 4, 'param_order': 0,
+#  '__class__': 'Tpsa', 'descriptor': {'__class__': 'Descriptor', 'var_names': ('x', 'y'),
+#                                      'param_names': (), 'order': 4, 'param_order': 0,
 #                                      'max_orders': None},
 #  'truncation_order': 4, '[0, 0]': 2.0, '[1, 0]': 3.0, '[0, 1]': -1.0, '[1, 1]': 4.0,
 #  '[0, 2]': 2.0, '[3, 0]': 1.0

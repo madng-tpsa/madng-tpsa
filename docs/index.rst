@@ -41,7 +41,7 @@ Quick start
 
    from madng_tpsa import Descriptor, TpsaMap
 
-   descriptor = Descriptor(variables=['x', 'y'], order=4)
+   descriptor = Descriptor(var_names=['x', 'y'], order=4)
    x, y = descriptor.vars()
 
    f = 2 + 3 * x - y + 4 * x * y + x**3

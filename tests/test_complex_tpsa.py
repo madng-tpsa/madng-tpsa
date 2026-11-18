@@ -16,7 +16,7 @@ if TYPE_CHECKING:
 
 
 def test_complex_variable_and_parameter_seeds():
-    d = madng_tpsa.Descriptor(variables=['x', 'y'], order=3, parameters=['k'])
+    d = madng_tpsa.Descriptor(var_names=['x', 'y'], order=3, param_names=['k'])
     x = d.var('x', 1 + 2j)
     y = d.var('y', 0j)
     k = d.param('k', 3 - 4j)
@@ -126,8 +126,8 @@ def test_complex_from_ptr_interns_and_infers_descriptor():
 
 
 def test_complex_raise_ambiguous_labelled_descriptors():
-    d1 = madng_tpsa.Descriptor(variables=('x',), order=2)
-    d2 = madng_tpsa.Descriptor(variables=('y',), order=2)
+    d1 = madng_tpsa.Descriptor(var_names=('x',), order=2)
+    d2 = madng_tpsa.Descriptor(var_names=('y',), order=2)
 
     assert d1.ptr == d2.ptr
     assert d1 is not d2
@@ -186,7 +186,7 @@ def test_complex_power_conjugate_and_real_imaginary_parts():
 
 
 def test_complex_differential_algebra():
-    d = madng_tpsa.Descriptor(variables=['x', 'y'], order=4)
+    d = madng_tpsa.Descriptor(var_names=['x', 'y'], order=4)
     x, y = d.vars([0j, 0j])
     assert isinstance(x, madng_tpsa.ComplexTpsa)
     assert isinstance(y, madng_tpsa.ComplexTpsa)
@@ -199,7 +199,7 @@ def test_complex_differential_algebra():
 
 
 def test_complex_derivative_resolves_variable_and_parameter_specifications():
-    d = madng_tpsa.Descriptor(variables=['x'], order=3, parameters=['k'], param_order=3)
+    d = madng_tpsa.Descriptor(var_names=['x'], order=3, param_names=['k'], param_order=3)
     x = d.var('x', 0j)
     k = d.param('k', 0j)
     real_x = d.var('x')
@@ -220,7 +220,7 @@ def test_complex_derivative_resolves_variable_and_parameter_specifications():
 
 
 def test_complex_integrate_resolves_variable_specifications():
-    d = madng_tpsa.Descriptor(variables=['x'], order=3, parameters=['k'], param_order=3)
+    d = madng_tpsa.Descriptor(var_names=['x'], order=3, param_names=['k'], param_order=3)
     x = d.var('x', 0j)
     real_x = d.var('x')
     f = x * x
@@ -231,7 +231,7 @@ def test_complex_integrate_resolves_variable_specifications():
 
 @pytest.mark.xfail(reason='MAD-NG integration does not support parameters')
 def test_complex_integrate_resolves_parameter_specifications():
-    d = madng_tpsa.Descriptor(variables=['x'], order=3, parameters=['k'], param_order=3)
+    d = madng_tpsa.Descriptor(var_names=['x'], order=3, param_names=['k'], param_order=3)
     x = d.var('x', 0j)
     k = d.param('k', 0j)
     real_k = d.param('k')
@@ -428,9 +428,9 @@ def test_complex_tpsa_arithmetic_dunder_dispatches_are_exhaustive():
 
 def test_complex_get_and_set_reject_wrong_monomial_length_with_parameters():
     descriptor = madng_tpsa.Descriptor(
-        variables=['x', 'px'],
+        var_names=['x', 'px'],
         order=3,
-        parameters=['k'],
+        param_names=['k'],
     )
     x = descriptor.var('x', 0j)
     with pytest.raises(ValueError, match='Monomial must have length 3'):
@@ -441,9 +441,9 @@ def test_complex_get_and_set_reject_wrong_monomial_length_with_parameters():
 
 def test_complex_grad_uses_full_monomials_with_parameters():
     descriptor = madng_tpsa.Descriptor(
-        variables=['x', 'px'],
+        var_names=['x', 'px'],
         order=2,
-        parameters=['k'],
+        param_names=['k'],
         param_order=1,
     )
     x = descriptor.var('x', 0j)

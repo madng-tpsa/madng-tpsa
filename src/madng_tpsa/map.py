@@ -74,8 +74,8 @@ class TpsaMap(TpsaVector[TpsaSeriesT]):
 
     >>> from madng_tpsa import Descriptor, TpsaMap
     >>> d = Descriptor(
-    ...     variables=('x', 'px', 'y', 'py'),
-    ...     parameters=('k',),
+    ...     var_names=('x', 'px', 'y', 'py'),
+    ...     param_names=('k',),
     ...     order=4,
     ... )
     >>> M = TpsaMap(d)
@@ -543,7 +543,7 @@ class TpsaMap(TpsaVector[TpsaSeriesT]):
             err_mess = 'Pullback requires a scalar TPSA'
             raise TypeError(err_mess)
         left, right, _ = _align_descriptors(
-            self, function, extend_left=True, extend_right=False, reorder_variables=True
+            self, function, extend_left=True, extend_right=False, reorder_vars=True
         )
         return TpsaTensor([right]).compose(left).flat[0]
 

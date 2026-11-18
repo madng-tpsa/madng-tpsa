@@ -18,7 +18,6 @@ if TYPE_CHECKING:
 
 import operator
 from numbers import Integral
-from warnings import warn
 
 import numpy as np
 
@@ -46,24 +45,10 @@ class Tpsa(_TpsaBase[float, SupportsFloat]):
         ),
     }
 
-    def __init__(
-        self,
-        descriptor: Descriptor,
-        truncation_order: int | None = None,
-        *,
-        order: int | None = None,  # Deprecated: use truncation_order instead of order
-    ) -> None:
+    def __init__(self, descriptor: Descriptor, truncation_order: int | None = None) -> None:
         """Create a zero series on ``descriptor``."""
-        if truncation_order is None and order is not None:
-            warn(
-                'The order property is deprecated, use truncation_order instead.',
-                FutureWarning,
-                stacklevel=2,
-            )
-            truncation_order = order
         if truncation_order is None:
             truncation_order = lib.mad_tpsa_dflt
-
         self._descriptor = descriptor
         self._ptr = lib.mad_tpsa_newd(descriptor.ptr, truncation_order)
         descriptor._tpsas[int(ffi.cast('uintptr_t', self._ptr))] = self
@@ -173,15 +158,6 @@ class Tpsa(_TpsaBase[float, SupportsFloat]):
         self._check_monomial(monomial_orders)
         monomial_arr = ffi.new('unsigned char[]', monomial_orders)
         return lib.mad_tpsa_getm(self._ptr, len(monomial_orders), monomial_arr)
-
-    def set_const_part(self, value: SupportsFloat) -> None:
-        """Set the constant coefficient (deprecated)."""
-        warn(
-            "The method 'set_const_part' is deprecated; use the setter for 'const_part' instead.",
-            FutureWarning,
-            stacklevel=2,
-        )
-        lib.mad_tpsa_seti(self._ptr, 0, 0.0, float(value))
 
     def set(self, monomial: Iterable[int], value: SupportsFloat) -> None:
         """Set the coefficient for ``monomial``."""

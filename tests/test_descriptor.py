@@ -40,14 +40,14 @@ def test_descriptor_order_must_be_positive():
 
 
 def test_descriptor_with_parameters():
-    d = Descriptor(6, 2, num_params=2, param_order=1)
+    d = Descriptor(6, 2, param_names=2, param_order=1)
     assert (d.num_vars, d.num_params, d.param_order) == (6, 2, 1)
     assert d.monomial_length == 8
-    assert 'num_params=2' in repr(d)
+    assert "param_names=('p_1', 'p_2')" in repr(d)
 
 
 def test_factories_dispatch_to_complex_tpsas():
-    d = Descriptor(2, 2, num_params=2)
+    d = Descriptor(2, 2, param_names=2)
 
     assert isinstance(d.constant(1 + 2j), ComplexTpsa)
     assert isinstance(d.var(1, 1j), ComplexTpsa)
@@ -70,7 +70,7 @@ def test_factories_dispatch_to_complex_tpsas():
 
 def test_descriptor_param_order_must_be_positive():
     with pytest.raises(ValueError, match='Descriptor parameter order must be positive'):
-        Descriptor(6, 2, num_params=2, param_order=0)
+        Descriptor(6, 2, param_names=2, param_order=0)
 
 
 def test_is_valid_monomial():
@@ -116,7 +116,7 @@ def test_monomial_index_of_the_constant_term_is_zero():
 
 
 def test_monomial_index_with_parameters():
-    d = Descriptor(6, 2, num_params=2, param_order=1)
+    d = Descriptor(6, 2, param_names=2, param_order=1)
     t = d.zero()
     monomial = (1, 0, 0, 0, 0, 0, 1, 0)  # one variable times one parameter
     t.set(monomial, 0.25)
@@ -154,25 +154,25 @@ def test_descriptor_instances_and_from_ptr():
 
 
 def test_descriptor_accepts_variable_and_parameter_labels():
-    d = Descriptor(variables=['x', 'px'], order=3, parameters=['delta'])
+    d = Descriptor(var_names=['x', 'px'], order=3, param_names=['delta'])
 
     assert d.num_vars == 2
     assert d.num_params == 1
-    assert d.variables == ('x', 'px')
-    assert d.parameters == ('delta',)
+    assert d.var_names == ('x', 'px')
+    assert d.param_names == ('delta',)
     assert d.var('px').grad() == [0.0, 1.0]
     assert d.param('delta').param_grad() == [1.0]
 
 
 def test_descriptor_generates_default_labels():
-    d = Descriptor(2, 3, num_params=1)
+    d = Descriptor(2, 3, param_names=1)
 
-    assert d.variables == ('v_1', 'v_2')
-    assert d.parameters == ('p_1',)
+    assert d.var_names == ('v_1', 'v_2')
+    assert d.param_names == ('p_1',)
 
 
 def test_descriptor_accepts_per_variable_max_orders():
-    d = Descriptor(variables=['x', 'y'], order=3, max_orders=[1, 3])
+    d = Descriptor(var_names=['x', 'y'], order=3, max_orders=[1, 3])
 
     assert d.max_orders == (1, 3)
     assert d.is_valid_monomial((1, 0))
@@ -181,7 +181,7 @@ def test_descriptor_accepts_per_variable_max_orders():
 
 
 def test_descriptor_accepts_parameter_max_orders():
-    d = Descriptor(variables=['x'], order=3, parameters=['k'], max_orders=[3, 1])
+    d = Descriptor(var_names=['x'], order=3, param_names=['k'], max_orders=[3, 1])
 
     assert d.max_orders == (3, 1)
     assert d.is_valid_monomial((1, 1))
@@ -190,20 +190,14 @@ def test_descriptor_accepts_parameter_max_orders():
 
 def test_descriptor_warns_when_max_orders_raise_order():
     with pytest.warns(UserWarning, match='Order 2 was given, but it was overridden to 4'):
-        d = Descriptor(variables=['x', 'y'], order=2, max_orders=[2, 4])
+        d = Descriptor(var_names=['x', 'y'], order=2, max_orders=[2, 4])
 
     assert d.order == 4
 
 
 def test_descriptor_rejects_mismatched_label_counts():
-    with pytest.raises(ValueError, match='Variable labels must contain 3 entries'):
-        Descriptor(3, 2, variables=['x', 'y'])
-
-    with pytest.raises(ValueError, match='Param labels must contain 2 entries'):
-        Descriptor(2, 2, num_params=2, parameters=['k'])
-
     with pytest.raises(ValueError, match='Length of max_orders must have the length'):
-        Descriptor(2, 2, num_params=1, max_orders=[1, 1])
+        Descriptor(2, 2, param_names=1, max_orders=[1, 1])
 
     with pytest.raises(ValueError, match='All max_orders must be positive'):
         Descriptor(2, 2, max_orders=[1, 0])
@@ -211,14 +205,14 @@ def test_descriptor_rejects_mismatched_label_counts():
 
 def test_descriptor_rejects_duplicate_labels():
     with pytest.raises(ValueError, match='Variable labels must be unique'):
-        Descriptor(variables=['x', 'x'], order=2)
+        Descriptor(var_names=['x', 'x'], order=2)
 
-    with pytest.raises(ValueError, match='Param labels must be unique'):
-        Descriptor(1, 2, parameters=['k', 'k'])
+    with pytest.raises(ValueError, match='Parameter labels must be unique'):
+        Descriptor(1, 2, param_names=['k', 'k'])
 
 
 def test_descriptor_unknown_labels_raise_key_error():
-    d = Descriptor(variables=['x'], order=2, parameters=['k'])
+    d = Descriptor(var_names=['x'], order=2, param_names=['k'])
 
     with pytest.raises(KeyError):
         d.var('y')
@@ -227,7 +221,7 @@ def test_descriptor_unknown_labels_raise_key_error():
 
 
 def test_tpsa_keeps_descriptor_alive():
-    d = Descriptor(variables=['x'], order=2)
+    d = Descriptor(var_names=['x'], order=2)
     descriptor_ref = weakref.ref(d)
     t = d.var('x')
 
@@ -235,14 +229,14 @@ def test_tpsa_keeps_descriptor_alive():
     gc.collect()
 
     assert descriptor_ref() is t.descriptor
-    assert t.descriptor.variables == ('x',)
+    assert t.descriptor.var_names == ('x',)
 
 
 def test_is_valid_monomial_rejects_wrong_length():
     descriptor = Descriptor(
-        variables=['x', 'px'],
+        var_names=['x', 'px'],
         order=3,
-        parameters=['k'],
+        param_names=['k'],
     )
 
     assert not descriptor.is_valid_monomial((1, 0))
@@ -251,21 +245,21 @@ def test_is_valid_monomial_rejects_wrong_length():
 
 
 def test_descriptor_to_dict():
-    desc1 = Descriptor(order=5, variables=('x', 'y'))
+    desc1 = Descriptor(order=5, var_names=('x', 'y'))
     dct1 = desc1.to_dict()
     assert set(dct1.keys()) == {
         '__class__',
         'order',
         'param_order',
-        'variables',
-        'parameters',
+        'var_names',
+        'param_names',
         'max_orders',
     }
     assert dct1['__class__'] == 'Descriptor'
     assert dct1['order'] == 5
     assert dct1['param_order'] == 0
-    assert dct1['variables'] == ('x', 'y')
-    assert dct1['parameters'] == ()
+    assert dct1['var_names'] == ('x', 'y')
+    assert dct1['param_names'] == ()
     assert dct1['max_orders'] is None
     desc1_copy1 = Descriptor.from_dict(dct1)
     assert desc1_copy1 is desc1
@@ -273,21 +267,21 @@ def test_descriptor_to_dict():
     desc1_copy2 = Descriptor.from_dict(json.loads(json.dumps(dct1)))
     assert desc1_copy2 is desc1
 
-    desc2 = Descriptor(order=5, variables=('x', 'y'), max_orders=(3, 4))
+    desc2 = Descriptor(order=5, var_names=('x', 'y'), max_orders=(3, 4))
     dct2 = desc2.to_dict()
     assert set(dct2.keys()) == {
         '__class__',
         'order',
         'param_order',
-        'variables',
-        'parameters',
+        'var_names',
+        'param_names',
         'max_orders',
     }
     assert dct2['__class__'] == 'Descriptor'
     assert dct2['order'] == 5
     assert dct2['param_order'] == 0
-    assert dct2['variables'] == ('x', 'y')
-    assert dct2['parameters'] == ()
+    assert dct2['var_names'] == ('x', 'y')
+    assert dct2['param_names'] == ()
     assert dct2['max_orders'] == (3, 4)
     desc2_copy1 = Descriptor.from_dict(dct2)
     assert desc2_copy1 is desc2
@@ -295,21 +289,21 @@ def test_descriptor_to_dict():
     desc2_copy2 = Descriptor.from_dict(json.loads(json.dumps(dct2)))
     assert desc2_copy2 is desc2
 
-    desc3 = Descriptor(order=5, variables=('x', 'y'), param_order=2, parameters=('k1', 'k2'))
+    desc3 = Descriptor(order=5, var_names=('x', 'y'), param_order=2, param_names=('k1', 'k2'))
     dct3 = desc3.to_dict()
     assert set(dct3.keys()) == {
         '__class__',
         'order',
         'param_order',
-        'variables',
-        'parameters',
+        'var_names',
+        'param_names',
         'max_orders',
     }
     assert dct3['__class__'] == 'Descriptor'
     assert dct3['order'] == 5
     assert dct3['param_order'] == 2
-    assert dct3['variables'] == ('x', 'y')
-    assert dct3['parameters'] == ('k1', 'k2')
+    assert dct3['var_names'] == ('x', 'y')
+    assert dct3['param_names'] == ('k1', 'k2')
     assert dct3['max_orders'] is None
     desc3_copy1 = Descriptor.from_dict(dct3)
     assert desc3_copy1 is desc3
@@ -319,9 +313,9 @@ def test_descriptor_to_dict():
 
     desc4 = Descriptor(
         order=5,
-        variables=('x', 'y'),
+        var_names=('x', 'y'),
         param_order=2,
-        parameters=('k1', 'k2'),
+        param_names=('k1', 'k2'),
         max_orders=(5, 4, 1, 1),
     )
     dct4 = desc4.to_dict()
@@ -329,15 +323,15 @@ def test_descriptor_to_dict():
         '__class__',
         'order',
         'param_order',
-        'variables',
-        'parameters',
+        'var_names',
+        'param_names',
         'max_orders',
     }
     assert dct4['__class__'] == 'Descriptor'
     assert dct4['order'] == 5
     assert dct4['param_order'] == 2
-    assert dct4['variables'] == ('x', 'y')
-    assert dct4['parameters'] == ('k1', 'k2')
+    assert dct4['var_names'] == ('x', 'y')
+    assert dct4['param_names'] == ('k1', 'k2')
     assert dct4['max_orders'] == (5, 4, 1, 1)
     desc4_copy1 = Descriptor.from_dict(dct4)
     assert desc4_copy1 is desc4

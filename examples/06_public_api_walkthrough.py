@@ -8,7 +8,7 @@ import numpy as np
 
 from madng_tpsa import ComplexTpsa, Descriptor, TpsaMap, TpsaTensor, TpsaVectorField
 
-d = Descriptor(variables=('q', 'p'), parameters=('k',), order=5, param_order=2)
+d = Descriptor(var_names=('q', 'p'), param_names=('k',), order=5, param_order=2)
 q, p = d.vars()
 k = d.param('k')
 
@@ -19,11 +19,11 @@ assert d.is_valid_monomial((1, 0, 1))
 assert d.monomial_index((1, 0, 0)) >= 0
 assert Descriptor.from_dict(d.to_dict()) is d
 assert d.union(d) is d
-print('Variables:', d.variables, 'parameters:', d.parameters)
+print('Variables:', d.var_names, 'parameters:', d.param_names)
 print('Variable index:', d.var_or_param_index('q'))
 print('Parameter series:', d.params())
 print('Descriptor native pointer:', d.ptr)
-print('Descriptor pointer lookup:', Descriptor.from_ptr(d.ptr, d.variables, d.parameters) is d)
+print('Descriptor pointer lookup:', Descriptor.from_ptr(d.ptr, d.var_names, d.param_names) is d)
 print('Descriptor order limits:', d.order, d.param_order, d.max_orders)
 print('Descriptor formatting:', d.format_polynomial(q))
 print('Constant TPSA:', d.constant(2))
@@ -185,7 +185,7 @@ print('Map pullback:', map_.pullback(q**2).get((0, 4, 0)))
 print('Map composition:', (map_ << identity))
 
 # Map extension adds a new identity output in descriptor order.
-d_extended = Descriptor(variables=('q', 'p', 'r'), parameters=('k',), order=5)
+d_extended = Descriptor(var_names=('q', 'p', 'r'), param_names=('k',), order=5)
 assert map_.extend_descriptor(d_extended).shape == (3,)
 
 # First-order setters

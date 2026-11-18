@@ -19,8 +19,8 @@ from madng_tpsa._cffi import ffi
 
 def _descriptor(*, params: bool = False) -> Descriptor:
     return Descriptor(
-        variables=('tensor_x', 'tensor_px'),
-        parameters=('tensor_k',) if params else (),
+        var_names=('tensor_x', 'tensor_px'),
+        param_names=('tensor_k',) if params else (),
         order=4,
         param_order=2,
     )
@@ -103,8 +103,8 @@ def test_constructor_rejects_bad_explicit_shape(shape: tuple[int, ...]) -> None:
 
 
 def test_constructor_rejects_different_labelled_descriptors() -> None:
-    dx = Descriptor(variables=('tensor_d1_x', 'tensor_d1_px'), order=4)
-    dy = Descriptor(variables=('tensor_d2_x', 'tensor_d2_px'), order=4)
+    dx = Descriptor(var_names=('tensor_d1_x', 'tensor_d1_px'), order=4)
+    dy = Descriptor(var_names=('tensor_d2_x', 'tensor_d2_px'), order=4)
     assert dx.ptr == dy.ptr
     assert dx is not dy
     with pytest.raises(ValueError, match='Descriptor'):
@@ -200,7 +200,7 @@ def test_setitem_rejects_incompatible_values_without_mutation() -> None:
     with pytest.raises(TypeError):
         tensor[0, 0] = cast('Any', d.complex_zero())
     with pytest.raises(ValueError, match='[Dd]escriptor'):
-        different = Descriptor(variables=('tensor_wrong_x', 'tensor_wrong_px'), order=4)
+        different = Descriptor(var_names=('tensor_wrong_x', 'tensor_wrong_px'), order=4)
         tensor[0, 0] = different.zero()
     with pytest.raises(ValueError, match='[Ss]hape'):
         tensor[0] = TpsaTensor(_components(d, 3))
@@ -323,8 +323,8 @@ def test_serialization_round_trip_of_partial_view() -> None:
 
 
 def test_tensor_change_descriptor_converts_each_component_and_copies() -> None:
-    old = Descriptor(variables=('tensor_conv_x', 'tensor_conv_px'), order=4)
-    new = Descriptor(variables=('tensor_conv_px', 'tensor_conv_x'), order=4)
+    old = Descriptor(var_names=('tensor_conv_x', 'tensor_conv_px'), order=4)
+    new = Descriptor(var_names=('tensor_conv_px', 'tensor_conv_x'), order=4)
     first = old.zero()
     first.set((2, 1), 5)
     tensor = TpsaTensor([first, old.zero()], shape=(1, 2))
@@ -340,7 +340,7 @@ def test_tensor_change_descriptor_converts_each_component_and_copies() -> None:
 
 
 def test_change_descriptor_honours_explicit_remapping_with_same_descriptor() -> None:
-    d = Descriptor(variables=('tensor_remap_x', 'tensor_remap_px'), order=4)
+    d = Descriptor(var_names=('tensor_remap_x', 'tensor_remap_px'), order=4)
     t = d.var('tensor_remap_x')
     tensor = TpsaTensor([t])
     swapped = tensor.change_descriptor(
@@ -436,7 +436,7 @@ def test_const_part_rejection_is_atomic() -> None:
 
 def test_change_descriptor_of_view_creates_compact_independent_result() -> None:
     old = _descriptor()
-    new = Descriptor(variables=('tensor_px', 'tensor_x'), order=4)
+    new = Descriptor(var_names=('tensor_px', 'tensor_x'), order=4)
     x, px = old.vars()
     t = TpsaTensor([x, px, 2 * x, 3 * px], shape=(2, 2))
     view = t[1]
@@ -545,7 +545,7 @@ def test_evaluate_partial_view_with_parameters():
 
 @pytest.mark.parametrize('complex_series', [False, True], ids=['real', 'complex'])
 def test_numpy_array_of_tpsas(*, complex_series: bool) -> None:
-    d = Descriptor(variables=('array_x', 'array_px'), order=4)
+    d = Descriptor(var_names=('array_x', 'array_px'), order=4)
     x, px = d.vars()
 
     components = [x, px, x + px, x * px]
@@ -581,7 +581,7 @@ def test_numpy_array_of_tpsas(*, complex_series: bool) -> None:
 
 
 def test_numpy_array_of_mixed_tpsas() -> None:
-    d = Descriptor(variables=('mixed_x', 'mixed_px'), order=4)
+    d = Descriptor(var_names=('mixed_x', 'mixed_px'), order=4)
     x, px = d.vars()
 
     complex_px = ComplexTpsa.from_tpsa(px)

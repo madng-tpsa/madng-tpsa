@@ -74,7 +74,7 @@ def _align_descriptors(
     *,
     extend_left: bool = False,
     extend_right: bool = False,
-    reorder_variables: bool = False,
+    reorder_vars: bool = False,
 ):
     """Reconcile descriptors and promote both operands to complex if needed.
 
@@ -89,13 +89,9 @@ def _align_descriptors(
         return left, right, False
     # Elementwise arithmetic requires identical variable order. Composition
     # can match equivalent sets of input variables by descriptor label.
-    left_variables = left.descriptor.variables
-    right_variables = right.descriptor.variables
-    compatible = (
-        set(left_variables) == set(right_variables)
-        if reorder_variables
-        else left_variables == right_variables
-    )
+    left_vars = left.descriptor.var_names
+    right_vars = right.descriptor.var_names
+    compatible = set(left_vars) == set(right_vars) if reorder_vars else left_vars == right_vars
     if not compatible:
         err_mess = 'Incompatible descriptor variables or variable order'
         raise ValueError(err_mess)
@@ -232,7 +228,7 @@ class TpsaTensor(Generic[TpsaSeriesT]):
         --------
         Create a one-dimensional tensor:
 
-        >>> d = Descriptor(variables=('x', 'px'), order=4)
+        >>> d = Descriptor(var_names=('x', 'px'), order=4)
         >>> x, px = d.vars()
         >>> a, b, c, e = x, px, x + px, x * px
         >>> tensor = TpsaTensor([a, b, c, e])
@@ -542,7 +538,7 @@ class TpsaTensor(Generic[TpsaSeriesT]):
             raise ValueError(message)
         flat = self.flat[:max_tpsa]
         end = '' if len(flat) == self.size else ', ...'
-        labels = self.descriptor.variables + self.descriptor.parameters
+        labels = self.descriptor.var_names + self.descriptor.param_names
         components = []
         for tpsa in flat:
             tt = format_polynomial(tpsa=tpsa, labels=labels, style='unicode', max_terms=max_terms)
@@ -971,7 +967,7 @@ class TpsaTensor(Generic[TpsaSeriesT]):
             raise ValueError(err_mess)
 
         left, right, complex_needed = _align_descriptors(
-            self, other, extend_left=False, extend_right=True, reorder_variables=True
+            self, other, extend_left=False, extend_right=True, reorder_vars=True
         )
 
         result = []
@@ -1073,7 +1069,7 @@ class TpsaTensor(Generic[TpsaSeriesT]):
         compatible: list[TpsaTensor[TpsaSeriesT] | np.ndarray] = []
         for op in operands:
             if isinstance(op, TpsaTensor):
-                if op.descriptor.variables != descriptor.variables:
+                if op.descriptor.var_names != descriptor.var_names:
                     error_message = 'Incompatible variable order in einsum operands'
                     raise ValueError(error_message)
                 descriptor = descriptor.union(op.descriptor)

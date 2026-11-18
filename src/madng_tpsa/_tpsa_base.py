@@ -15,7 +15,6 @@ if TYPE_CHECKING:
 
 import json
 import operator
-import warnings
 from abc import ABC, abstractmethod
 from numbers import Integral
 
@@ -130,22 +129,20 @@ class _TpsaBase(ABC, Generic[_Coefficient, _InputCoefficient]):
         if cls.__name__ != class_name:
             err_mess = f'Wrong dict: expected class {cls.__name__}, got {class_name}'
             raise ValueError(err_mess)
-        desc = dct.get('descriptor')
-        if desc is None:
+        desc_dict = dct.get('descriptor')
+        if desc_dict is not None:
+            desc_from_dict = Descriptor.from_dict(desc_dict)
             if descriptor is None:
-                err_mess = (
-                    'Descriptor is missing in the dictionary. Please provide it '
-                    "explicitly with the argument 'Descriptor'."
-                )
-                raise ValueError(err_mess)
-        else:
-            desc = Descriptor.from_dict(desc)
-            if descriptor is None:
-                descriptor = desc
-            elif desc is not descriptor:
+                descriptor = desc_from_dict
+            elif desc_from_dict is not descriptor:
                 err_mess = 'Provided Descriptor does not agree with descriptor in dict.'
                 raise ValueError(err_mess)
-
+        elif descriptor is None:
+            err_mess = (
+                'Descriptor is missing in the dictionary. Please provide it '
+                "explicitly with the argument 'Descriptor'."
+            )
+            raise ValueError(err_mess)
         truncation_order = dct.get('truncation_order')
         if truncation_order is None:
             err_mess = 'Truncation order is missing in the dictionary'
@@ -194,9 +191,9 @@ class _TpsaBase(ABC, Generic[_Coefficient, _InputCoefficient]):
             return self.copy()
 
         positions = [
-            *_match_labels(old.variables, descriptor.variables, variable_map),
+            *_match_labels(old.var_names, descriptor.var_names, variable_map),
             *_match_labels(
-                old.parameters, descriptor.parameters, parameter_map, offset=descriptor.num_vars
+                old.param_names, descriptor.param_names, parameter_map, offset=descriptor.num_vars
             ),
         ]
 
@@ -206,12 +203,11 @@ class _TpsaBase(ABC, Generic[_Coefficient, _InputCoefficient]):
         for monomial, coefficient in self.monomial_coeffs(tol=0).items():
             exponents = [0] * descriptor.monomial_length
             for power, target in zip(monomial, positions, strict=True):
-                if target is None:
-                    if power:
-                        err_mess = 'Cannot remove a variable or parameter on which the TPSA depends'
-                        raise ValueError(err_mess)
-                else:
+                if target is not None:
                     exponents[target] = power
+                elif power:
+                    err_mess = 'Cannot remove a variable or parameter on which the TPSA depends'
+                    raise ValueError(err_mess)
 
             # Check allocated order and all descriptor restrictions.
             if not descriptor.is_valid_monomial(exponents):
@@ -234,29 +230,9 @@ class _TpsaBase(ABC, Generic[_Coefficient, _InputCoefficient]):
         """Descriptor that defines the TPSA space."""
 
     @property
-    def order(self) -> int:
-        """Backwards-compatible property for truncation_order (deprecated)."""
-        warnings.warn(
-            'The order property is deprecated, use truncation_order instead.',
-            FutureWarning,
-            stacklevel=2,
-        )
-        return self.truncation_order
-
-    @property
     @abstractmethod
     def truncation_order(self) -> int:
         """Maximum order stored by this series."""
-
-    @property
-    def max_nonzero_order(self) -> int:
-        """Backwards-compatible property for degree (deprecated)."""
-        warnings.warn(
-            'The max_nonzero_order property is deprecated, use degree instead.',
-            FutureWarning,
-            stacklevel=2,
-        )
-        return self.degree
 
     @property
     @abstractmethod
@@ -272,10 +248,6 @@ class _TpsaBase(ABC, Generic[_Coefficient, _InputCoefficient]):
     @abstractmethod
     def const_part(self, value: _InputCoefficient) -> None:
         """Return the constant coefficient."""
-
-    @abstractmethod
-    def set_const_part(self, value: _InputCoefficient) -> None:
-        """Set the constant coefficient."""
 
     @abstractmethod
     def homogeneous(self, degree: int) -> Self:
@@ -500,7 +472,7 @@ class _TpsaBase(ABC, Generic[_Coefficient, _InputCoefficient]):
         if max_terms is not None and max_terms < 0:
             message = 'max_terms must be non-negative or None'
             raise ValueError(message)
-        labels = self.descriptor.variables + self.descriptor.parameters
+        labels = self.descriptor.var_names + self.descriptor.param_names
         tt = format_polynomial(tpsa=self, labels=labels, style='unicode', max_terms=max_terms)
         name = self.__class__.__name__
         return f'{name}({tt})'

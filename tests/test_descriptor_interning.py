@@ -17,20 +17,20 @@ from madng_tpsa.descriptor import Descriptor
 
 
 def test_same_algebra_different_variable_labels():
-    x = Descriptor(variables=('inter_x', 'inter_px'), order=7)
-    y = Descriptor(variables=('inter_y', 'inter_py'), order=7)
+    x = Descriptor(var_names=('inter_x', 'inter_px'), order=7)
+    y = Descriptor(var_names=('inter_y', 'inter_py'), order=7)
 
     assert x is not y
     assert x.ptr == y.ptr  # MAD-NG interns the numerical algebra
-    assert x.variables == ('inter_x', 'inter_px')
-    assert y.variables == ('inter_y', 'inter_py')
+    assert x.var_names == ('inter_x', 'inter_px')
+    assert y.var_names == ('inter_y', 'inter_py')
     assert x != y
     assert len({x, y}) == 2
 
 
 def test_same_algebra_and_same_labels_is_same_python_object():
-    x = Descriptor(variables=('intern_x', 'intern_px'), order=8)
-    y = Descriptor(variables=('intern_x', 'intern_px'), order=8)
+    x = Descriptor(var_names=('intern_x', 'intern_px'), order=8)
+    y = Descriptor(var_names=('intern_x', 'intern_px'), order=8)
 
     assert x is y
     assert x == y
@@ -39,14 +39,14 @@ def test_same_algebra_and_same_labels_is_same_python_object():
 
 def test_parameter_labels_participate_in_interning():
     first = Descriptor(
-        variables=('a', 'b'),
-        parameters=('knob_1',),
+        var_names=('a', 'b'),
+        param_names=('knob_1',),
         order=5,
         param_order=1,
     )
     second = Descriptor(
-        variables=('a', 'b'),
-        parameters=('knob_2',),
+        var_names=('a', 'b'),
+        param_names=('knob_2',),
         order=5,
         param_order=1,
     )
@@ -54,20 +54,20 @@ def test_parameter_labels_participate_in_interning():
     assert first.ptr == second.ptr
     assert first is not second
     assert first != second
-    assert first.parameters == ('knob_1',)
-    assert second.parameters == ('knob_2',)
+    assert first.param_names == ('knob_1',)
+    assert second.param_names == ('knob_2',)
 
 
 def test_from_ptr_with_labels_is_unambiguous():
-    first = Descriptor(variables=('lab_x', 'lab_y'), order=9)
-    second = Descriptor(variables=('lab_y', 'lab_x'), order=9)
+    first = Descriptor(var_names=('lab_x', 'lab_y'), order=9)
+    second = Descriptor(var_names=('lab_y', 'lab_x'), order=9)
 
     assert (
-        Descriptor.from_ptr(first.ptr, variables=first.variables, parameters=first.parameters)
+        Descriptor.from_ptr(first.ptr, var_names=first.var_names, param_names=first.param_names)
         is first
     )
     assert (
-        Descriptor.from_ptr(second.ptr, variables=second.variables, parameters=second.parameters)
+        Descriptor.from_ptr(second.ptr, var_names=second.var_names, param_names=second.param_names)
         is second
     )
 
@@ -76,13 +76,13 @@ def test_from_ptr_with_labels_is_unambiguous():
 
 
 def test_from_ptr_single_live_variant():
-    first = Descriptor(variables=('lone_x', 'lone_y'), order=10)
+    first = Descriptor(var_names=('lone_x', 'lone_y'), order=10)
     assert Descriptor.from_ptr(first.ptr) is first
 
 
 def test_native_descriptor_stays_alive_while_alias_is_alive():
-    first = Descriptor(variables=('life_x', 'life_px'), order=11)
-    second = Descriptor(variables=('life_y', 'life_py'), order=11)
+    first = Descriptor(var_names=('life_x', 'life_px'), order=11)
+    second = Descriptor(var_names=('life_y', 'life_py'), order=11)
     assert first.ptr == second.ptr
     wr = weakref.ref(first)
 
@@ -97,27 +97,27 @@ def test_native_descriptor_stays_alive_while_alias_is_alive():
 
 
 def test_from_dict_recovers_requested_labels():
-    source = Descriptor(variables=('serial_a', 'serial_b'), order=15)
-    other = Descriptor(variables=('serial_c', 'serial_d'), order=15)
+    source = Descriptor(var_names=('serial_a', 'serial_b'), order=15)
+    other = Descriptor(var_names=('serial_c', 'serial_d'), order=15)
     assert source.ptr == other.ptr
 
     loaded = Descriptor.from_dict(source.to_dict())
     assert loaded is source
-    assert loaded.variables == ('serial_a', 'serial_b')
+    assert loaded.var_names == ('serial_a', 'serial_b')
 
 
 def test_construct_rejects_mismatched_variable_and_parameter_labels():
     with pytest.raises(ValueError, match='both variable and parameter'):
         Descriptor(
-            variables=('reused_name',),
-            parameters=('reused_name',),
+            var_names=('reused_name',),
+            param_names=('reused_name',),
             order=4,
         )
 
 
 def test_tpsa_retains_original_labelled_descriptor():
-    first = Descriptor(variables=('retained_x', 'retained_px'), order=16)
-    second = Descriptor(variables=('different_x', 'different_px'), order=16)
+    first = Descriptor(var_names=('retained_x', 'retained_px'), order=16)
+    second = Descriptor(var_names=('different_x', 'different_px'), order=16)
     assert first.ptr == second.ptr
 
     tpsa = first.var('retained_x')
@@ -127,5 +127,5 @@ def test_tpsa_retains_original_labelled_descriptor():
     gc.collect()
 
     assert reference() is not None  # TPSA retains its labelled descriptor.
-    assert tpsa.descriptor.variables == ('retained_x', 'retained_px')
-    assert second.variables == ('different_x', 'different_px')
+    assert tpsa.descriptor.var_names == ('retained_x', 'retained_px')
+    assert second.var_names == ('different_x', 'different_px')

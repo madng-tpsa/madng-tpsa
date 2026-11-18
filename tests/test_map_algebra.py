@@ -15,13 +15,13 @@ from madng_tpsa import ComplexTpsa, Descriptor, Tpsa, TpsaMap, TpsaTensor, TpsaV
 
 
 def _d(
-    *, params: bool = False, parameters: tuple[str, ...] | None = None, order: int = 5
+    *, params: bool = False, param_names: tuple[str, ...] | None = None, order: int = 5
 ) -> Descriptor:
-    if parameters is None:
-        parameters = ('alg_k',) if params else ()
+    if param_names is None:
+        param_names = ('alg_k',) if params else ()
     return Descriptor(
-        variables=('alg_q', 'alg_p'),
-        parameters=parameters,
+        var_names=('alg_q', 'alg_p'),
+        param_names=param_names,
         order=order,
         param_order=2,
     )
@@ -70,7 +70,7 @@ def test_inverse_rejects_nonzero_constant_and_singular_linear_part() -> None:
 
 
 def test_inverse_rejects_singular_jacobian_with_nonzero_rows():
-    d = Descriptor(variables=('q', 'p'), order=4)
+    d = Descriptor(var_names=('q', 'p'), order=4)
     q, _ = d.vars()
 
     mapping = TpsaMap([q, 2 * q])
@@ -101,7 +101,7 @@ def test_partial_inverse_selection_validation() -> None:
 
 
 def test_partial_inverse_rejects_singular_jacobian_with_nonzero_rows():
-    d = Descriptor(variables=('q', 'p'), order=4)
+    d = Descriptor(var_names=('q', 'p'), order=4)
     q, p = d.vars()
 
     mapping = TpsaMap([p, q])
@@ -154,7 +154,7 @@ def test_from_generator_and_field_to_vector_complex() -> None:
 
 
 def test_generator_methods_reject_odd_variable_count() -> None:
-    d = Descriptor(variables=('alg_a', 'alg_b', 'alg_c'), order=4)
+    d = Descriptor(var_names=('alg_a', 'alg_b', 'alg_c'), order=4)
     with pytest.raises(ValueError, match='even'):
         TpsaVectorField.from_generator(d.var('alg_a'))
     with pytest.raises(ValueError, match='even'):
@@ -181,7 +181,7 @@ def test_lie_bracket_promotes_complex_and_rejects_wrong_descriptor() -> None:
     result = real.lie_bracket(complex_field)
     assert result.is_complex
     assert all(isinstance(t, ComplexTpsa) for t in result.flat)
-    other = Descriptor(variables=('alg_diff_x', 'alg_diff_p'), order=5)
+    other = Descriptor(var_names=('alg_diff_x', 'alg_diff_p'), order=5)
     with pytest.raises(ValueError, match='descriptor'):
         real.lie_bracket(TpsaVectorField(other))
 
@@ -227,7 +227,7 @@ def test_logarithm_with_near_identity_map_and_round_trip() -> None:
 
 def test_logarithm_rejects_mismatched_guess() -> None:
     mapping = TpsaMap(_d())
-    other = Descriptor(variables=('alg_wrong_q', 'alg_wrong_p'), order=5)
+    other = Descriptor(var_names=('alg_wrong_q', 'alg_wrong_p'), order=5)
     with pytest.raises(ValueError, match='descriptor'):
         mapping.log_fgrad(TpsaVectorField(other))
 
@@ -249,7 +249,7 @@ def test_pullback_complex_promotion_and_descriptor_validation() -> None:
     result = TpsaMap([q + 1j * p, p]).pullback(q * q)
     assert isinstance(result, ComplexTpsa)
     np.testing.assert_allclose(TpsaTensor([result]).evaluate((2, 3)), [-5 + 12j])
-    other = Descriptor(variables=('alg_bad_q', 'alg_bad_p'), order=5)
+    other = Descriptor(var_names=('alg_bad_q', 'alg_bad_p'), order=5)
     with pytest.raises(ValueError, match='descriptor'):
         TpsaMap(d).pullback(other.var('alg_bad_q'))
 
@@ -270,7 +270,7 @@ def test_add_subtract_negate_scale_are_componentwise() -> None:
 
 def test_componentwise_arithmetic_validates_descriptors() -> None:
     left = TpsaMap(_d())
-    other = Descriptor(variables=('alg_other_q', 'alg_other_p'), order=5)
+    other = Descriptor(var_names=('alg_other_q', 'alg_other_p'), order=5)
     with pytest.raises(ValueError, match='descriptor'):
         _ = left + TpsaMap(other)
     with pytest.raises(ValueError, match='descriptor'):
@@ -331,7 +331,7 @@ def test_native_translation_agrees_with_explicit_polynomial_composition() -> Non
 
 
 def test_native_translation_preserves_two_independent_parameters() -> None:
-    d = _d(parameters=('alg_k', 'native_reg_l'))
+    d = _d(param_names=('alg_k', 'native_reg_l'))
     q, p = d.vars()
     k, ell = d.params()
     mapping = TpsaMap([q + k * ell, p + k])
@@ -413,7 +413,7 @@ def test_complex_hamiltonian_field_roundtrip_with_parameter() -> None:
 
 
 def test_to_generator_clears_mixed_parameter_only_monomials() -> None:
-    d = _d(parameters=('alg_k', 'alg_l'))
+    d = _d(param_names=('alg_k', 'alg_l'))
     q, p = d.vars()
     k, ell = d.params()
     generator = q * p + k * q + ell * p + k * ell
@@ -453,7 +453,7 @@ def test_to_generator_rejects_complex_nonhamiltonian_field() -> None:
 
 
 def test_to_generator_detects_generator_order_beyond_descriptor() -> None:
-    d = _d(parameters=(), order=3)
+    d = _d(param_names=(), order=3)
     _, p = d.vars()
     # A Hamiltonian primitive needs degree four, but the descriptor only
     # supports order three. The native integral cannot be a true round trip.
@@ -473,7 +473,7 @@ def test_to_generator_rejects_invalid_tolerances() -> None:
 
 
 def test_scalar_exponential_does_not_match_negative_native_hamiltonian_field() -> None:
-    d = _d(parameters=())
+    d = _d(param_names=())
     q, _ = d.vars()
     generator = q * q / 2
     field = TpsaVectorField.from_generator(generator)
@@ -487,7 +487,7 @@ def test_scalar_exponential_does_not_match_negative_native_hamiltonian_field() -
 
 
 def test_field_to_vector_compatibility_alias_uses_validation() -> None:
-    d = _d(parameters=())
+    d = _d(param_names=())
     q, _ = d.vars()
     m = TpsaVectorField([q, d.zero()])
     with pytest.raises(ValueError, match='Hamiltonian|non-integrable'):
@@ -549,7 +549,7 @@ def _assert_coefficients_small(mapping: TpsaTensor, degree: int = 3, atol: float
 
 
 def test_inverse_with_parameter_only_terms_has_formal_identities() -> None:
-    d = Descriptor(variables=('inv_q', 'inv_p'), parameters=('inv_k',), order=6, param_order=3)
+    d = Descriptor(var_names=('inv_q', 'inv_p'), param_names=('inv_k',), order=6, param_order=3)
     q, p = d.vars()
     k = d.param('inv_k')
     mapping = TpsaMap([q + k + 0.1 * p**2, p + 0.02 * k * q])
@@ -568,8 +568,8 @@ def test_inverse_with_parameter_only_terms_has_formal_identities() -> None:
 
 def test_partial_inverse_mixed_selected_and_unselected_variables() -> None:
     d = Descriptor(
-        variables=('part_q', 'part_p', 'part_y', 'part_py'),
-        parameters=('part_k',),
+        var_names=('part_q', 'part_p', 'part_y', 'part_py'),
+        param_names=('part_k',),
         order=5,
         param_order=2,
     )
@@ -585,8 +585,8 @@ def test_partial_inverse_mixed_selected_and_unselected_variables() -> None:
 
 
 def test_canonical_labels_are_positional_not_inferred() -> None:
-    canonical = Descriptor(variables=('physical_q', 'physical_p'), order=4)
-    reversed_order = Descriptor(variables=('physical_p', 'physical_q'), order=4)
+    canonical = Descriptor(var_names=('physical_q', 'physical_p'), order=4)
+    reversed_order = Descriptor(var_names=('physical_p', 'physical_q'), order=4)
     q, p = canonical.vars()
     p_rev, q_rev = reversed_order.vars()
     assert q.poisson_bracket(p).const_part == 1
@@ -598,13 +598,13 @@ def test_canonical_labels_are_positional_not_inferred() -> None:
 
 def test_complex_descriptor_relabelling_with_reordered_variables_and_two_parameters() -> None:
     src = Descriptor(
-        variables=('old_q', 'old_p'), parameters=('old_a', 'old_b'), order=5, param_order=2
+        var_names=('old_q', 'old_p'), param_names=('old_a', 'old_b'), order=5, param_order=2
     )
     q, p = src.vars()
     a, b = src.params()
     mapping = TpsaMap([q + (1 + 2j) * a * p + b**2, p - 1j * b * q])
     dst = Descriptor(
-        variables=('new_p', 'new_q'), parameters=('new_b', 'new_a'), order=6, param_order=3
+        var_names=('new_p', 'new_q'), param_names=('new_b', 'new_a'), order=6, param_order=3
     )
     converted = mapping.change_descriptor(
         dst,
@@ -630,10 +630,10 @@ def test_complex_descriptor_relabelling_with_reordered_variables_and_two_paramet
 
 
 def test_complex_descriptor_rejects_unsafe_downwards_order_conversion() -> None:
-    src = Descriptor(variables=('ord_q', 'ord_p'), order=5)
+    src = Descriptor(var_names=('ord_q', 'ord_p'), order=5)
     q, p = src.vars()
     mapping = TpsaMap([q + 1j * q**4, p])
-    dst = Descriptor(variables=('ord_q', 'ord_p'), order=2)
+    dst = Descriptor(var_names=('ord_q', 'ord_p'), order=2)
     with pytest.raises((ValueError, TypeError)):
         mapping.change_descriptor(dst)
     truncated = mapping.change_descriptor(dst, truncate=True)

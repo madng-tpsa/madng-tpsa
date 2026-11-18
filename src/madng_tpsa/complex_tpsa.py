@@ -15,7 +15,6 @@ if TYPE_CHECKING:
 
 import operator
 from numbers import Integral
-from warnings import warn
 
 import numpy as np
 
@@ -39,20 +38,10 @@ class ComplexTpsa(_TpsaBase[complex, SupportsFloat | SupportsComplex]):
         self,
         descriptor: Descriptor,
         truncation_order: int | None = None,
-        *,
-        order: int | None = None,  # Deprecated: use truncation_order instead of order
     ) -> None:
         """Create a zero complex series on ``descriptor``."""
-        if truncation_order is None and order is not None:
-            warn(
-                'The order property is deprecated, use truncation_order instead.',
-                FutureWarning,
-                stacklevel=2,
-            )
-            truncation_order = order
         if truncation_order is None:
             truncation_order = lib.mad_tpsa_dflt
-
         self._descriptor = descriptor
         self._ptr = lib.mad_ctpsa_newd(descriptor.ptr, truncation_order)
         descriptor._complex_tpsas[int(ffi.cast('uintptr_t', self._ptr))] = self
@@ -183,15 +172,6 @@ class ComplexTpsa(_TpsaBase[complex, SupportsFloat | SupportsComplex]):
         value = ffi.new('double _Complex*')
         lib.mad_ctpsa_getm_r(self._ptr, len(monomial_orders), monomial_arr, value)
         return complex(value[0])
-
-    def set_const_part(self, value: SupportsFloat | SupportsComplex) -> None:
-        """Set the constant coefficient (deprecated)."""
-        warn(
-            "The method 'set_const_part' is deprecated; use the setter for 'const_part' instead.",
-            FutureWarning,
-            stacklevel=2,
-        )
-        self._seti(0, complex(value))
 
     def _seti(self, index: int, value: complex) -> None:
         lib.mad_ctpsa_seti_r(self._ptr, index, 0.0, 0.0, value.real, value.imag)

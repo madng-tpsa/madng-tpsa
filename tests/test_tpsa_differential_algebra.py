@@ -19,7 +19,7 @@ def test_integrate_accepts_index_or_identity_variable():
 
 
 def test_integrate_resolves_variable_specifications():
-    d = madng_tpsa.Descriptor(variables=['x'], order=3, parameters=['k'], param_order=3)
+    d = madng_tpsa.Descriptor(var_names=['x'], order=3, param_names=['k'], param_order=3)
     x = d.var('x')
     k = d.param('k')
     f = x * x + k
@@ -30,7 +30,7 @@ def test_integrate_resolves_variable_specifications():
 
 @pytest.mark.xfail(reason='MAD-NG integration does not support parameters')
 def test_integrate_resolves_parameter_specifications():
-    d = madng_tpsa.Descriptor(variables=['x'], order=3, parameters=['k'], param_order=3)
+    d = madng_tpsa.Descriptor(var_names=['x'], order=3, param_names=['k'], param_order=3)
     x = d.var('x')
     k = d.param('k')
     f = x * x + k
@@ -64,7 +64,7 @@ def test_derivative_accepts_index_identity_variable_tuple_or_single_monomial_tps
 
 
 def test_derivative_resolves_variable_and_parameter_specifications():
-    d = madng_tpsa.Descriptor(variables=['x'], order=3, parameters=['k'])
+    d = madng_tpsa.Descriptor(var_names=['x'], order=3, param_names=['k'])
     x = d.var('x')
     k = d.param('k')
     f = x * x * k
@@ -78,7 +78,7 @@ def test_derivative_resolves_variable_and_parameter_specifications():
 
 @pytest.mark.parametrize('receiver_factory', ('zero', 'complex_zero'))
 def test_resolve_single_monomial(receiver_factory):
-    d = madng_tpsa.Descriptor(variables=['x'], order=3, parameters=['k'], param_order=3)
+    d = madng_tpsa.Descriptor(var_names=['x'], order=3, param_names=['k'], param_order=3)
     receiver = getattr(d, receiver_factory)()
     x = d.var('x')
     k = d.param('k')

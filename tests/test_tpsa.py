@@ -42,7 +42,7 @@ def test_vars_unpack_all_identity_seeds():
 
 
 def test_var_order_uses_descriptor_order_by_default():
-    d = madng_tpsa.Descriptor(variables=['a', 'b'], order=4, max_orders=[2, 4])
+    d = madng_tpsa.Descriptor(var_names=['a', 'b'], order=4, max_orders=[2, 4])
     a, b = d.vars()
 
     assert a.truncation_order == 4
@@ -52,7 +52,9 @@ def test_var_order_uses_descriptor_order_by_default():
 
 
 def test_var_zero_and_param_have_expected_orders():
-    d = madng_tpsa.Descriptor(variables=['a', 'b'], order=4, max_orders=[2, 4, 1], parameters=['k'])
+    d = madng_tpsa.Descriptor(
+        var_names=['a', 'b'], order=4, max_orders=[2, 4, 1], param_names=['k']
+    )
     zero = d.zero(order=2)
     a = d.var('a', order=2)
     k = d.param('k')
@@ -66,7 +68,7 @@ def test_var_zero_and_param_have_expected_orders():
 
 
 def test_var_and_param_labels_can_seed_series():
-    d = madng_tpsa.Descriptor(variables=['x', 'y'], order=2, parameters=['k'])
+    d = madng_tpsa.Descriptor(var_names=['x', 'y'], order=2, param_names=['k'])
     x = d.var('x', 0.5)
     y = d.var('y')
     k = d.param('k', 2.0)
@@ -291,7 +293,7 @@ def test_set_and_get_coefficients():
 
 
 def test_get_and_set_reject_invalid_or_out_of_order_monomials():
-    d = madng_tpsa.Descriptor(variables=['a', 'b'], order=4, max_orders=[2, 4])
+    d = madng_tpsa.Descriptor(var_names=['a', 'b'], order=4, max_orders=[2, 4])
     a = d.var('a', order=2)
 
     assert d.is_valid_monomial((1, 3))
@@ -370,7 +372,7 @@ def test_json_round_trip():
 
 
 def test_param_seed_and_param_grad():
-    d = madng_tpsa.Descriptor(2, 2, num_params=2, param_order=1)
+    d = madng_tpsa.Descriptor(2, 2, param_names=2, param_order=1)
     x = d.var(1, 0.5)
     k = d.param(1, 3.0)
 
@@ -384,7 +386,7 @@ def test_param_seed_and_param_grad():
 
 
 def test_params_unpack_all_identity_seeds():
-    d = madng_tpsa.Descriptor(2, 2, num_params=2, param_order=1)
+    d = madng_tpsa.Descriptor(2, 2, param_names=2, param_order=1)
     k1, k2 = d.params()
 
     assert k1.param_grad() == [1, 0]
@@ -483,9 +485,9 @@ def test_two_output_unary_operations(method_name, expected):
 
 def test_get_and_set_reject_wrong_monomial_length_with_parameters():
     descriptor = madng_tpsa.Descriptor(
-        variables=['x', 'px'],
+        var_names=['x', 'px'],
         order=3,
-        parameters=['k'],
+        param_names=['k'],
     )
     x = descriptor.var('x')
     with pytest.raises(ValueError, match='Monomial must have length 3'):
@@ -496,9 +498,9 @@ def test_get_and_set_reject_wrong_monomial_length_with_parameters():
 
 def test_coefficient_rejects_wrong_monomial_length_with_parameters():
     descriptor = madng_tpsa.Descriptor(
-        variables=['x', 'px'],
+        var_names=['x', 'px'],
         order=3,
-        parameters=['k'],
+        param_names=['k'],
     )
     x = descriptor.var('x')
     with pytest.raises(ValueError, match='Monomial must have length 3'):
@@ -514,9 +516,9 @@ def test_coefficient_rejects_wrong_monomial_length_with_parameters():
 
 def test_grad_uses_full_monomials_with_parameters():
     descriptor = madng_tpsa.Descriptor(
-        variables=['x', 'px'],
+        var_names=['x', 'px'],
         order=2,
-        parameters=['k1', 'k2'],
+        param_names=['k1', 'k2'],
         param_order=1,
     )
     x, px = descriptor.vars()
@@ -527,8 +529,8 @@ def test_grad_uses_full_monomials_with_parameters():
 
 
 def test_tpsa_preserves_labelled_descriptor():
-    dx = madng_tpsa.Descriptor(variables=('x', 'px'), order=4)
-    dy = madng_tpsa.Descriptor(variables=('y', 'py'), order=4)
+    dx = madng_tpsa.Descriptor(var_names=('x', 'px'), order=4)
+    dy = madng_tpsa.Descriptor(var_names=('y', 'py'), order=4)
 
     assert dx.ptr == dy.ptr
     assert dx is not dy
@@ -542,8 +544,8 @@ def test_tpsa_preserves_labelled_descriptor():
 
 
 def test_same_native_descriptor_different_labels_incompatible():
-    dx = madng_tpsa.Descriptor(variables=('x', 'px'), order=4)
-    dy = madng_tpsa.Descriptor(variables=('y', 'py'), order=4)
+    dx = madng_tpsa.Descriptor(var_names=('x', 'px'), order=4)
+    dy = madng_tpsa.Descriptor(var_names=('y', 'py'), order=4)
 
     x = dx.var('x')
     y = dy.var('y')
@@ -555,8 +557,8 @@ def test_same_native_descriptor_different_labels_incompatible():
 
 
 def test_from_ptr_cannot_create_second_owner():
-    dx = madng_tpsa.Descriptor(variables=('x', 'px'), order=4)
-    dy = madng_tpsa.Descriptor(variables=('y', 'py'), order=4)
+    dx = madng_tpsa.Descriptor(var_names=('x', 'px'), order=4)
+    dy = madng_tpsa.Descriptor(var_names=('y', 'py'), order=4)
 
     x = dx.var('x')
 
@@ -571,8 +573,8 @@ def test_from_ptr_cannot_create_second_owner():
 
 
 def test_explicit_descriptor_conversion():
-    dx = madng_tpsa.Descriptor(variables=('x', 'px'), order=4)
-    dy = madng_tpsa.Descriptor(variables=('y', 'py'), order=4)
+    dx = madng_tpsa.Descriptor(var_names=('x', 'px'), order=4)
+    dy = madng_tpsa.Descriptor(var_names=('y', 'py'), order=4)
 
     x = dx.var('x')
 
@@ -587,8 +589,8 @@ def test_explicit_descriptor_conversion():
 
 
 def test_deserialisation_keeps_original_labels():
-    dx = madng_tpsa.Descriptor(variables=('x', 'px'), order=4)
-    dy = madng_tpsa.Descriptor(variables=('y', 'py'), order=4)
+    dx = madng_tpsa.Descriptor(var_names=('x', 'px'), order=4)
+    dy = madng_tpsa.Descriptor(var_names=('y', 'py'), order=4)
 
     assert dx.ptr == dy.ptr
 

@@ -18,7 +18,7 @@ def close_as_tpsa(left: TpsaMap, right: TpsaMap, tol: float = 1e-9) -> bool:
     return True
 
 
-d = Descriptor(variables=('lie_q', 'lie_p'), order=5)
+d = Descriptor(var_names=('lie_q', 'lie_p'), order=5)
 q, p = d.vars()
 
 # An exactly solvable symplectic shear.

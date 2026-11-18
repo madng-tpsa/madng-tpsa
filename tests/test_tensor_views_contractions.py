@@ -13,7 +13,7 @@ if TYPE_CHECKING:
 
 
 def _example():
-    d = Descriptor(variables=('q', 'p'), order=5)
+    d = Descriptor(var_names=('q', 'p'), order=5)
     q, p = d.vars()
     t = TpsaTensor([q, p, q + p, q - p, q * p, q**2], shape=(2, 3))
     return d, q, p, t
@@ -75,7 +75,7 @@ def test_assignment_through_strided_view_reflects_in_original():
 
 
 def test_matmul_symplectic_identity_and_numeric_s():
-    d = Descriptor(variables=('q', 'p'), order=5)
+    d = Descriptor(var_names=('q', 'p'), order=5)
     q, p = d.vars()
     m = TpsaMap([q + p**2, p])
     j = m.jacobian()
@@ -90,7 +90,7 @@ def test_matmul_symplectic_identity_and_numeric_s():
 
 
 def test_einsum_trace_inner_and_tensordot():
-    d = Descriptor(variables=('q', 'p'), order=4)
+    d = Descriptor(var_names=('q', 'p'), order=4)
     q, p = d.vars()
     a = TpsaTensor([[q, p], [q + p, q - p]])
     b = TpsaTensor([[p, q], [q, p]])
@@ -118,7 +118,7 @@ def test_component_identity_not_polynomial_equality():
 
 
 def test_map_components_names_and_composition_operators():
-    d = Descriptor(variables=('q', 'p'), order=4)
+    d = Descriptor(var_names=('q', 'p'), order=4)
     q, p = d.vars()
     m = TpsaMap([q + p**2, p])
     n = TpsaMap([q, p + q**2])
@@ -141,33 +141,33 @@ def test_map_components_names_and_composition_operators():
 
 
 def test_map_slice_returns_plain_tensor():
-    d = Descriptor(variables=('q', 'p'), order=4)
+    d = Descriptor(var_names=('q', 'p'), order=4)
     m = TpsaMap(d)
     assert isinstance(m[:], TpsaTensor)
     assert not isinstance(m[:], TpsaMap)
 
 
 def test_arithmetic_requires_same_variable_order_and_allows_parameters():
-    d = Descriptor(variables=('q', 'p'), order=4)
+    d = Descriptor(var_names=('q', 'p'), order=4)
     q, p = d.vars()
     t = TpsaTensor([q, p])
-    flipped = Descriptor(variables=('p', 'q'), order=4)
+    flipped = Descriptor(var_names=('p', 'q'), order=4)
     with pytest.raises(ValueError, match='variable'):
         _ = t + TpsaTensor([flipped.var('q'), flipped.var('p')])
     with pytest.raises(ValueError, match='variable'):
         _ = t * flipped.var('q')
     with pytest.raises(ValueError, match='variable'):
         _ = t + flipped.var('q')
-    d2 = Descriptor(variables=('q', 'p'), parameters=('k',), order=4)
+    d2 = Descriptor(var_names=('q', 'p'), param_names=('k',), order=4)
     k = d2.param('k')
     combined = t + k
-    assert combined.descriptor.parameters == ('k',)
+    assert combined.descriptor.param_names == ('k',)
     assert combined[0] == d2.var('q') + k
     assert (t + np.array([1, 2])).evaluate((3, 4)).tolist() == [4, 6]
 
 
 def test_parameter_augmented_jacobian_has_horizontal_shape():
-    d = Descriptor(variables=('q', 'p'), parameters=('k',), order=4)
+    d = Descriptor(var_names=('q', 'p'), param_names=('k',), order=4)
     q, p = d.vars()
     k = d.param('k')
     m = TpsaMap([q + 2 * p + k, p + q * k])
@@ -180,7 +180,7 @@ def test_parameter_augmented_jacobian_has_horizontal_shape():
 
 
 def test_tensor_high_rank_contraction_and_trace():
-    d = Descriptor(variables=('q', 'p'), order=3)
+    d = Descriptor(var_names=('q', 'p'), order=3)
     q, p = d.vars()
     h = TpsaTensor([q, p, p, q, 2 * q, 3 * p, p, q], shape=(2, 2, 2))
     s = np.asarray([[0, 1], [-1, 0]])
@@ -207,7 +207,7 @@ def test_invalid_contraction_labels_and_axes():
 
 
 def test_native_evaluate_and_composition_on_noncontiguous_view():
-    d = Descriptor(variables=('q', 'p'), order=4)
+    d = Descriptor(var_names=('q', 'p'), order=4)
     q, p = d.vars()
     original = TpsaTensor([[q + p, p**2], [q**2, q - p]])
     noncontiguous = original.T

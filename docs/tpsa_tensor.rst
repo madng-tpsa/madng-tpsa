@@ -10,7 +10,7 @@ array shape; all polynomial components share one descriptor. A rank-one
 
    from madng_tpsa import Descriptor, TpsaTensor
 
-   d = Descriptor(variables=('q', 'p'), parameters=('k',), order=4)
+   d = Descriptor(var_names=('q', 'p'), param_names=('k',), order=4)
    q, p = d.vars()
    k = d.param('k')
    tensor = TpsaTensor([[q**2 + k*p, p], [q*p, k*q]])

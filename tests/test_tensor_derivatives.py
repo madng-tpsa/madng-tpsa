@@ -12,8 +12,8 @@ from madng_tpsa import ComplexTpsa, Descriptor, TpsaMap, TpsaTensor
 
 def _map() -> TpsaMap:
     d = Descriptor(
-        variables=('der_q', 'der_p'),
-        parameters=('der_k',),
+        var_names=('der_q', 'der_p'),
+        param_names=('der_k',),
         order=5,
         param_order=3,
     )
@@ -28,7 +28,7 @@ def _map() -> TpsaMap:
 
 
 def _tensor() -> TpsaTensor:
-    d = Descriptor(variables=('ten_q', 'ten_p'), parameters=('ten_k',), order=5, param_order=3)
+    d = Descriptor(var_names=('ten_q', 'ten_p'), param_names=('ten_k',), order=5, param_order=3)
     q, p = d.vars()
     k = d.param('ten_k')
     return TpsaTensor([[q**2 * k, q * p], [k * p**2, q + k]])
@@ -158,7 +158,7 @@ def test_third_derivative_tensor_contains_all_permutations() -> None:
 
 
 def test_complex_derivatives_and_no_mutation() -> None:
-    d = Descriptor(variables=('cx', 'cp'), parameters=('ck',), order=4, param_order=2)
+    d = Descriptor(var_names=('cx', 'cp'), param_names=('ck',), order=4, param_order=2)
     q, p = d.vars()
     k = d.param('ck')
     m = TpsaMap(((1 + 2j) * q**2 + (2 - 1j) * k * q * p, 1j * p**2 + k**2 * q))
@@ -181,7 +181,7 @@ def test_complex_derivatives_and_no_mutation() -> None:
 
 
 def test_order_beyond_descriptor_returns_independent_zero_components() -> None:
-    d = Descriptor(variables=('hq', 'hp'), order=3)
+    d = Descriptor(var_names=('hq', 'hp'), order=3)
     q, p = d.vars()
     m = TpsaMap((q**3, p))
     fourth = m.derivative_tensor(4)
@@ -222,15 +222,15 @@ def test_derivative_tensor_rejects_invalid_order(order: int) -> None:
 
 
 def test_derivative_tensor_rejects_unselected_or_unavailable_axes() -> None:
-    d = Descriptor(variables=('np_q', 'np_p'), order=3)
+    d = Descriptor(var_names=('np_q', 'np_p'), order=3)
     with pytest.raises(ValueError, match='Select at least one'):
         TpsaMap(d).derivative_tensor(1, wrt='parameters')
 
 
 def test_mixed_parameter_derivative_tensor_is_symmetric_but_not_aliased() -> None:
     d = Descriptor(
-        variables=('review_q2', 'review_p2'),
-        parameters=('review_k2',),
+        var_names=('review_q2', 'review_p2'),
+        param_names=('review_k2',),
         order=5,
         param_order=2,
     )
@@ -256,7 +256,7 @@ def test_mixed_parameter_derivative_tensor_is_symmetric_but_not_aliased() -> Non
 
 
 def test_tensor_partial_and_full_derivative_consistency() -> None:
-    d = Descriptor(variables=('review_q3', 'review_p3'), order=5)
+    d = Descriptor(var_names=('review_q3', 'review_p3'), order=5)
     q, p = d.vars()
     m = TpsaMap([q**3 + q * p**2, q * p**3])
     hessian = m.hessian()
@@ -267,8 +267,8 @@ def test_tensor_partial_and_full_derivative_consistency() -> None:
 
 def test_real_parameter_multiindex_matches_successive_derivatives() -> None:
     d = Descriptor(
-        variables=('multi_q', 'multi_p'),
-        parameters=('multi_k',),
+        var_names=('multi_q', 'multi_p'),
+        param_names=('multi_k',),
         order=5,
         param_order=3,
     )
@@ -285,8 +285,8 @@ def test_real_parameter_multiindex_matches_successive_derivatives() -> None:
 
 def test_complex_parameter_multiindex_matches_successive_derivatives() -> None:
     d = Descriptor(
-        variables=('cmulti_q', 'cmulti_p'),
-        parameters=('cmulti_k',),
+        var_names=('cmulti_q', 'cmulti_p'),
+        param_names=('cmulti_k',),
         order=5,
         param_order=3,
     )
@@ -301,8 +301,8 @@ def test_complex_parameter_multiindex_matches_successive_derivatives() -> None:
 
 def test_mixed_multiple_parameters() -> None:
     d = Descriptor(
-        variables=('two_q', 'two_p'),
-        parameters=('two_k', 'two_l'),
+        var_names=('two_q', 'two_p'),
+        param_names=('two_k', 'two_l'),
         order=5,
         param_order=3,
     )
@@ -319,8 +319,8 @@ def test_mixed_multiple_parameters() -> None:
 
 def test_tensor_parameter_hessian_inherits_scalar_fix() -> None:
     d = Descriptor(
-        variables=('hpar_q', 'hpar_p'),
-        parameters=('hpar_k',),
+        var_names=('hpar_q', 'hpar_p'),
+        param_names=('hpar_k',),
         order=5,
         param_order=3,
     )
@@ -340,14 +340,14 @@ def test_tensor_parameter_hessian_inherits_scalar_fix() -> None:
 
 
 def test_extreme_rank_is_rejected_before_allocating_components() -> None:
-    d = Descriptor(variables=('rank_q', 'rank_p'), order=4)
+    d = Descriptor(var_names=('rank_q', 'rank_p'), order=4)
     t = TpsaTensor([d.var(1), d.var(2)])
     with pytest.raises(ValueError, match='components|limit|large'):
         t.derivative_tensor(21)
 
 
 def test_configurable_rank_limit_and_valid_small_tensor() -> None:
-    d = Descriptor(variables=('rank_a', 'rank_b'), order=4)
+    d = Descriptor(var_names=('rank_a', 'rank_b'), order=4)
     t = TpsaTensor([d.var(1), d.var(2)])
     with pytest.raises(ValueError, match='components|limit|large'):
         t.derivative_tensor(3, max_components=8)

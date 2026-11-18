@@ -24,13 +24,13 @@ def _assert_maps_close(actual: TpsaMap, expected: TpsaMap, tol: float = 1e-9) ->
 
 
 def _shear() -> TpsaMap:
-    d = Descriptor(variables=('log_q', 'log_p'), order=5)
+    d = Descriptor(var_names=('log_q', 'log_p'), order=5)
     q, p = d.vars()
     return TpsaMap([q, p - 0.015 * q**2])
 
 
 def test_logarithm_of_identity_is_zero_field() -> None:
-    d = Descriptor(variables=('log_ident_q', 'log_ident_p'), order=5)
+    d = Descriptor(var_names=('log_ident_q', 'log_ident_p'), order=5)
     field = TpsaMap(d).log_fgrad()
     assert all(tpsa.is_zero() for tpsa in field.flat)
 
@@ -46,7 +46,7 @@ def test_logarithm_of_polynomial_kick_reconstructs_both_components() -> None:
 
 
 def test_logarithm_of_non_hamiltonian_map_is_allowed() -> None:
-    d = Descriptor(variables=('log_nonsym_q', 'log_nonsym_p'), order=5)
+    d = Descriptor(var_names=('log_nonsym_q', 'log_nonsym_p'), order=5)
     q, _ = d.vars()
     # div(F) != 0, so this field cannot be Hamiltonian for canonical (q,p).
     field = TpsaVectorField([0.012 * q**2, d.zero()])
@@ -58,7 +58,7 @@ def test_logarithm_of_non_hamiltonian_map_is_allowed() -> None:
 
 
 def test_logarithm_of_complex_kick_and_complex_result() -> None:
-    d = Descriptor(variables=('log_cq', 'log_cp'), order=5)
+    d = Descriptor(var_names=('log_cq', 'log_cp'), order=5)
     q, p = d.vars()
     mapping = TpsaMap([q, p + (0.01 + 0.005j) * q**2])
     logarithm = mapping.log_fgrad()
@@ -68,7 +68,7 @@ def test_logarithm_of_complex_kick_and_complex_result() -> None:
 
 
 def test_parameter_dependent_lie_logarithm() -> None:
-    d = Descriptor(variables=('log_pq', 'log_pp'), parameters=('log_k',), order=5, param_order=2)
+    d = Descriptor(var_names=('log_pq', 'log_pp'), param_names=('log_k',), order=5, param_order=2)
     q, p = d.vars()
     k = d.param('log_k')
     mapping = TpsaMap([q, p - 0.02 * k * q**2])
@@ -116,7 +116,7 @@ def test_invalid_validation_tolerance_rejected(bad: float) -> None:
 
 
 def test_challenging_nonlinear_input_either_reconstructs_or_fails_clearly() -> None:
-    d = Descriptor(variables=('log_hard_q', 'log_hard_p'), order=5)
+    d = Descriptor(var_names=('log_hard_q', 'log_hard_p'), order=5)
     q, p = d.vars()
     # A larger nonlinear perturbation can be difficult for the iterative
     # native logarithm. A successful return must still reconstruct the map.

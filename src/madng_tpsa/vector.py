@@ -51,7 +51,7 @@ class TpsaVector(TpsaTensor[TpsaSeriesT]):
 
     Examples
     --------
-    >>> d = Descriptor(variables=('x', 'px'), order=4)
+    >>> d = Descriptor(var_names=('x', 'px'), order=4)
     >>> x, px = d.vars()
     >>> V = TpsaVector(d)               # (0, 0)
     >>> V = TpsaVector([x, 0.2])        # (x, 0.2)
@@ -139,8 +139,8 @@ class TpsaVector(TpsaTensor[TpsaSeriesT]):
 
         >>> from madng_tpsa import Descriptor, TpsaVector
         >>> d = Descriptor(
-        ...     variables=('x', 'px', 'y', 'py'),
-        ...     parameters=('k',),
+        ...     var_names=('x', 'px', 'y', 'py'),
+        ...     param_names=('k',),
         ...     order=4,
         ... )
         >>> x, px, y, py = d.vars()
@@ -190,7 +190,7 @@ class TpsaVector(TpsaTensor[TpsaSeriesT]):
             raise ValueError(err_mess)
 
         # Convert positional components to named coordinates
-        names = tuple(descriptor.variables)
+        names = tuple(descriptor.var_names)
         if components is not None:
             if len(components) != len(names):
                 err_mess = f'Expected {len(names)} components, got {len(components)}'
@@ -254,7 +254,7 @@ class TpsaVector(TpsaTensor[TpsaSeriesT]):
         rename = variable_map or {}
         output_names = tuple(rename.get(name, name) for name in self.component_names)
         if len(set(output_names)) != len(output_names) or set(output_names) != set(
-            descriptor.variables
+            descriptor.var_names
         ):
             err_mess = (
                 'Target variables must match the map outputs. '
@@ -270,7 +270,7 @@ class TpsaVector(TpsaTensor[TpsaSeriesT]):
             )
             for name, component in self.named_components.items()
         }
-        return self._new_like([converted[name] for name in descriptor.variables])
+        return self._new_like([converted[name] for name in descriptor.var_names])
 
     def extend_descriptor(self, descriptor: Descriptor, *, merge: bool = False) -> Self:
         """Extend a vector, inserting identity components (TpsaMap) or constants (TpsaVectorField).
@@ -283,10 +283,10 @@ class TpsaVector(TpsaTensor[TpsaSeriesT]):
         """
         if merge:
             descriptor = descriptor.union(self.descriptor)
-        if not set(self.descriptor.variables) <= set(descriptor.variables):
+        if not set(self.descriptor.var_names) <= set(descriptor.var_names):
             err_mess = 'Target descriptor must contain all original variables'
             raise ValueError(err_mess)
-        if not set(self.descriptor.parameters) <= set(descriptor.parameters):
+        if not set(self.descriptor.param_names) <= set(descriptor.param_names):
             err_mess = 'Target descriptor must contain all original parameters'
             raise ValueError(err_mess)
         converted = {
@@ -297,7 +297,7 @@ class TpsaVector(TpsaTensor[TpsaSeriesT]):
             converted[name]
             if name in converted
             else self._scalar_component(descriptor, name, 0j if self.is_complex else 0.0)
-            for name in descriptor.variables
+            for name in descriptor.var_names
         ]
         return self._new_like(cast('Sequence[TpsaSeriesT]', values))
 
@@ -318,7 +318,7 @@ class TpsaVector(TpsaTensor[TpsaSeriesT]):
         if max_terms is not None and max_terms < 0:
             message = 'max_terms must be non-negative or None'
             raise ValueError(message)
-        labels = self.descriptor.variables + self.descriptor.parameters
+        labels = self.descriptor.var_names + self.descriptor.param_names
         entries = tuple(self.named_components.items())
         selected = entries[:max_tpsa]
 
@@ -625,7 +625,7 @@ class TpsaVectorField(TpsaVector[TpsaSeriesT]):
     Construct the zero vector field:
 
     >>> from madng_tpsa import Descriptor, TpsaVectorField
-    >>> d = Descriptor(variables=('x', 'px'), order=4)
+    >>> d = Descriptor(var_names=('x', 'px'), order=4)
     >>> F = TpsaVectorField(d)                # (0, 0)
 
     Construct a field from TPSA components:

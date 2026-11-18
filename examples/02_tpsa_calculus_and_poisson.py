@@ -4,9 +4,9 @@ from madng_tpsa import Descriptor
 
 # Canonical coordinates are taken in pairs: (q, p).
 descriptor = Descriptor(
-    variables=['q', 'p'],
+    var_names=['q', 'p'],
     order=5,
-    parameters=['k'],
+    param_names=['k'],
     param_order=2,
 )
 

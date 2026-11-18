@@ -6,7 +6,7 @@ from madng_tpsa import ComplexTpsa, Descriptor, Tpsa, TpsaMap, TpsaTensor, forma
 
 
 def _polynomial():
-    desc = Descriptor(variables=['x', 'y'], order=2)
+    desc = Descriptor(var_names=['x', 'y'], order=2)
     t = Tpsa.from_dict(
         {
             '__class__': 'Tpsa',
@@ -65,17 +65,17 @@ def test_format_polynomial_rejects_unknown_style():
 
 
 def test_unicode_formatting_of_complex_coefficients_in_tensor_and_map():
-    d = Descriptor(variables=('q', 'p'), order=3)
+    d = Descriptor(var_names=('q', 'p'), order=3)
     q, p = d.vars()
     z = ComplexTpsa.from_tpsa(q)
     polynomial = (2 + 3j) * z**2 + (1 - 2j) * z + 1j * p - 4
 
-    text = format_polynomial(polynomial, d.variables, style='unicode')
+    text = format_polynomial(polynomial, d.var_names, style='unicode')
     assert '(2+3j)·q²' in text
     assert '(1-2j)·q' in text
     assert '(0+1j)·p' in text
     assert '-4' in text
-    assert '(2+3j) * q**2' in format_polynomial(polynomial, d.variables, style='code')
+    assert '(2+3j) * q**2' in format_polynomial(polynomial, d.var_names, style='code')
 
     tensor = TpsaTensor([polynomial, q])
     mapping = TpsaMap([polynomial, p])
@@ -86,7 +86,7 @@ def test_unicode_formatting_of_complex_coefficients_in_tensor_and_map():
 
 def test_max_terms_zero_and_negative_limits():
     d, t = _polynomial()
-    labels = d.variables
+    labels = d.var_names
     assert format_polynomial(t, labels, style='unicode', max_terms=0) == '...'
     assert format_polynomial(t, labels, style='code', max_terms=0) == '...'
     assert format_polynomial(d.zero(), labels, style='unicode', max_terms=0) == '0'

@@ -51,7 +51,7 @@ def _pointers(series: Sequence[Tpsa]) -> Any:
 
 def _native_inverse_case() -> tuple[list[Tpsa], list[Tpsa], list[Tpsa], Any, Any, Any]:
     """Return native arrays *and* the TPSAs owning their C pointers."""
-    descriptor = Descriptor(variables=('stress_q', 'stress_p'), order=4)
+    descriptor = Descriptor(var_names=('stress_q', 'stress_p'), order=4)
     q, p = descriptor.vars()
     failure = [q, descriptor.zero()]
     success = [q + p**2, p]
@@ -76,7 +76,7 @@ def _rss_bytes() -> int:
 
 def test_thousands_of_protected_native_failures_preserve_next_operation() -> None:
     iterations = int(os.environ.get('MADNG_TPSA_NATIVE_ITERATIONS', '250000'))
-    d = Descriptor(variables=('rec_q', 'rec_p'), order=4)
+    d = Descriptor(var_names=('rec_q', 'rec_p'), order=4)
     q, p = d.vars()
     singular = [q, d.zero()]
     good = [q + p**2, p]
@@ -109,7 +109,7 @@ def test_simultaneous_native_errors_keep_thread_local_messages() -> None:
     barrier = Barrier(2)
 
     def singular_worker() -> list[str]:
-        d = Descriptor(variables=('thread_sq', 'thread_sp'), order=3)
+        d = Descriptor(var_names=('thread_sq', 'thread_sp'), order=3)
         q, _ = d.vars()
         inputs = (q, d.zero())
         inp = _ptrs(inputs)
@@ -124,8 +124,8 @@ def test_simultaneous_native_errors_keep_thread_local_messages() -> None:
         return messages
 
     def incompatible_worker() -> list[str]:
-        d1 = Descriptor(variables=('thread_a', 'thread_b'), order=3)
-        d2 = Descriptor(variables=('thread_c', 'thread_d'), order=5)
+        d1 = Descriptor(var_names=('thread_a', 'thread_b'), order=3)
+        d2 = Descriptor(var_names=('thread_c', 'thread_d'), order=5)
         a = d1.var(1)
         b = d2.var(1)
         out = d1.zero()
@@ -147,7 +147,7 @@ def test_simultaneous_native_errors_keep_thread_local_messages() -> None:
     assert not any('incompatib' in message.lower() for message in singular_messages)
 
     # Verify Python's public error conversion is still functional.
-    d = Descriptor(variables=('post_q', 'post_p'), order=3)
+    d = Descriptor(var_names=('post_q', 'post_p'), order=3)
     q, p = d.vars()
     with pytest.raises(ValueError):
         TpsaMap([q, d.zero()]).inverse()
@@ -162,7 +162,7 @@ def test_simultaneous_native_errors_keep_thread_local_messages() -> None:
 
 def test_distinct_native_failures_restore_valid_operations() -> None:
     """Exercise map, unary and binary protected paths, not just one wrapper."""
-    descriptor = Descriptor(variables=('recovery_q', 'recovery_p'), order=4)
+    descriptor = Descriptor(var_names=('recovery_q', 'recovery_p'), order=4)
     q, p = descriptor.vars()
     zero = descriptor.zero()
     scratch = descriptor.zero()
@@ -191,7 +191,7 @@ def test_distinct_native_failures_restore_valid_operations() -> None:
 
 def _thread_case(function: str, repetitions: int, barrier: Barrier) -> int:
     """Test thread-local error text and successful calls on the same thread."""
-    descriptor = Descriptor(variables=(f'{function}_q', f'{function}_p'), order=3)
+    descriptor = Descriptor(var_names=(f'{function}_q', f'{function}_p'), order=3)
     bad = descriptor.zero()
     good = descriptor.constant(1)
     output = descriptor.zero()
