@@ -70,7 +70,7 @@ Evaluation, Jacobians, Hessians
    m.evaluate_jacobian((2., 3.), param_values=(4.,))
    # array([[8., 1.],
    #        [3., 2.]])
-   J = m.jacobian(wrt='variables')  # Shape (2, 2), TPSA-valued
+   J = m.jacobian(wrt='vars')  # Shape (2, 2), TPSA-valued
    print(J)
    # TpsaTensor(shape=(2, 2), size=4, components=[2·q + k, 1, p, ...])
    H = m.hessian(wrt='all')         # Shape (2, 3, 3), TPSA-valued

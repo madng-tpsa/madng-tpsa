@@ -63,8 +63,8 @@ class TpsaVector(TpsaTensor[TpsaSeriesT]):
     TpsaVectorField : Vector fields on phase space.
     """
 
-    __slots__ = ('_coord_names',)
-    _coord_names: tuple[builtins.str, ...]
+    __slots__ = ('_component_names',)
+    _component_names: tuple[builtins.str, ...]
 
     # ===================================
     # === Construction and Access API ===
@@ -191,7 +191,7 @@ class TpsaVector(TpsaTensor[TpsaSeriesT]):
             err_mess = 'Cannot infer the descriptor. Provide it explicitly.'
             raise ValueError(err_mess)
 
-        # Convert positional components to named named_components
+        # Convert positional components
         names = tuple(descriptor.var_names)
         if components is not None:
             if len(components) != len(names):
@@ -202,7 +202,7 @@ class TpsaVector(TpsaTensor[TpsaSeriesT]):
         # Validate coordinate names
         unknown = named_components.keys() - names
         if unknown:
-            err_mess = f'Unknown named components: {sorted(unknown)}'
+            err_mess = f'Unknown components: {sorted(unknown)}'
             raise ValueError(err_mess)
 
         # Construct components
@@ -221,7 +221,7 @@ class TpsaVector(TpsaTensor[TpsaSeriesT]):
             components=cast('Sequence[TpsaSeriesT]', coords),
             shape=(descriptor.num_vars,),
         )
-        self._coord_names = names
+        self._component_names = names
         self._post_init()
 
     def _new_like(self, components: Sequence[TpsaSeriesT]) -> Self:
@@ -306,7 +306,7 @@ class TpsaVector(TpsaTensor[TpsaSeriesT]):
     def __getattr__(self, name: builtins.str) -> TpsaSeriesT:
         """Access the coordinate TPSAs by coordinate name."""
         try:
-            names = object.__getattribute__(self, '_coord_names')
+            names = object.__getattribute__(self, '_component_names')
             i = names.index(name)
             return object.__getattribute__(self, '_flat')[self._offset + i]
         except (AttributeError, ValueError):
@@ -349,7 +349,7 @@ class TpsaVector(TpsaTensor[TpsaSeriesT]):
     @property
     def component_names(self) -> tuple[builtins.str, ...]:
         """Descriptor-ordered names of the full map outputs."""
-        return self._coord_names
+        return self._component_names
 
     @property
     def components(self) -> tuple[TpsaSeriesT, ...]:
@@ -365,7 +365,7 @@ class TpsaVector(TpsaTensor[TpsaSeriesT]):
     # === TPSA Operations ===
     # =======================
 
-    def _coordinate_index(self, coord: builtins.str | int) -> int:
+    def _component_index(self, coord: builtins.str | int) -> int:
         """Resolve a coordinate name or zero-based integer index."""
         if isinstance(coord, str):
             if coord in self.component_names:
@@ -399,38 +399,38 @@ class TpsaVector(TpsaTensor[TpsaSeriesT]):
 
     def coefficient(
         self,
-        coord: builtins.str | int,
+        component: builtins.str | int,
         monomials: Sequence[int] | Sequence[Sequence[int]] | np.ndarray,
     ) -> float | complex | np.ndarray:
-        """Return coefficient(s) from one output series by coordinate name or index."""
-        idx = self._coordinate_index(coord)
+        """Return coefficient(s) from one output series by component name or index."""
+        idx = self._component_index(component)
         arr = self._monomial_rows(monomials)
         return self.components[idx].coefficient(arr)
 
     def set_coefficient(
         self,
-        coord: builtins.str | int,
+        component: builtins.str | int,
         monomial: Sequence[int] | np.ndarray,
         value: Scalar,
     ) -> None:
         """Set a coefficient of an output series, preserving its real/complex type."""
-        idx = self._coordinate_index(coord)
+        idx = self._component_index(component)
         arr = self._monomial_rows(monomial)
         if arr.ndim != 1:
             err_mess = 'Exactly one monomial must be supplied'
             raise ValueError(err_mess)
         mono = tuple(int(v) for v in arr)
-        component = self.components[idx]
-        if isinstance(component, Tpsa):
+        comp = self.components[idx]
+        if isinstance(comp, Tpsa):
             converted = complex(value)
             if converted.imag != 0:
                 err_mess = 'Cannot assign a complex coefficient to a real TPSA map'
                 raise TypeError(err_mess)
-            component.set(mono, converted.real)
-        elif isinstance(component, ComplexTpsa):
-            component.set(mono, value)
+            comp.set(mono, converted.real)
+        elif isinstance(comp, ComplexTpsa):
+            comp.set(mono, value)
         else:
-            err_mess = f'Unsupported TPSA component type: {type(component).__name__}'
+            err_mess = f'Unsupported TPSA component type: {type(comp).__name__}'
             raise TypeError(err_mess)
 
     def jacobian(self, *, wrt: DerivativeGroup = 'vars') -> TpsaTensor[TpsaSeriesT]:

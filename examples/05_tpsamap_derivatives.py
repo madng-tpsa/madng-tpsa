@@ -69,7 +69,7 @@ print()
 full_hessian = mapping.hessian(wrt='all')
 param_hessian = mapping.derivative_tensor(2, wrt='params')
 print('Hessian incl. parameter axes shape:', full_hessian.shape)  # (2, 3, 3)
-print('Parameter Hessian shape:', param_hessian.shape)  # (2, 3, 3)
+print('Parameter Hessian shape:', param_hessian.shape)  # (2, 1, 1)
 print('Mixed q-k entry:', full_hessian.evaluate(point, param_values=param_values)[0, 0, 2])  # 4.0
 print()
 
