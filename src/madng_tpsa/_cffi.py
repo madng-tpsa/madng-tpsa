@@ -131,7 +131,6 @@ CDEF = """
     void mad_ctpsa_integ(const void* a, void* c, int iv);
     void mad_ctpsa_deriv(const void* a, void* c, int iv);
     void mad_ctpsa_derivm(const void* a, void* c, int n, const unsigned char* m);
-    void mad_ctpsa_poisbra(const void* a, const void* b, void* c, int nv);
 
     void mad_tpsa_scl(const void* a, double v, void* c);
     void mad_tpsa_divn(const void* a, double v, void* c);
@@ -180,7 +179,6 @@ CDEF = """
     void mad_tpsa_integ(const void* a, void* c, int iv);
     void mad_tpsa_deriv(const void* a, void* c, int iv);
     void mad_tpsa_derivm(const void* a, void* c, int n, const unsigned char* m);
-    void mad_tpsa_poisbra(const void* a, const void* b, void* c, int nv);
 
     /*
      * Native real map operations.

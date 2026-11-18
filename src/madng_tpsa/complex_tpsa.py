@@ -23,6 +23,7 @@ from . import _cffi
 from ._cffi import ffi, lib
 from ._tpsa_base import _JsonCoefficient, _TpsaBase
 from .descriptor import Descriptor
+from .madng_definitions import POISBRA
 from .tpsa import Tpsa
 
 
@@ -357,9 +358,7 @@ class ComplexTpsa(_TpsaBase[complex, SupportsFloat | SupportsComplex]):
         else:
             message = "Parameter num_pairs must be 'all' or an integer"
             raise ValueError(message)
-        result = self.descriptor.complex_zero()
-        lib.mad_ctpsa_poisbra(self._ptr, other._ptr, result._ptr, c_num_vars)
-        return result
+        return POISBRA(self, other, nv=c_num_vars)
 
     @staticmethod
     def _to_json_friendly_coefficient(value: complex) -> list[float]:

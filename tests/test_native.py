@@ -32,12 +32,23 @@ import pytest
 
 from madng_tpsa import Descriptor, TpsaError, TpsaMap
 from madng_tpsa._cffi import ffi, lib
+from madng_tpsa.madng_definitions import (
+    COMPOSE,
+    EVAL,
+    EXPPB,
+    FLD2VEC,
+    LIEBRA,
+    MINV,
+    TRANSLATE,
+    VEC2FLD,
+)
 
 if TYPE_CHECKING:
     from collections.abc import Iterable, Sequence
     from typing import Any
 
     from madng_tpsa import Tpsa
+    from madng_tpsa.madng_function import MadngFunction
 
 
 _REPO_ROOT = Path(__file__).resolve().parents[1]
@@ -59,8 +70,13 @@ def _native_inverse_case() -> tuple[list[Tpsa], list[Tpsa], list[Tpsa], Any, Any
     return failure, success, output, _pointers(failure), _pointers(success), _pointers(output)
 
 
+def _generated_protected(function: MadngFunction) -> Any:
+    """Return the low-level status-code wrapper for the real native signature."""
+    return getattr(lib, function.real.wrapper_name)
+
+
 def _inverse_call(inputs: Any, outputs: Any) -> int:
-    return int(lib.madng_tpsa_protected_map_inverse_call(lib.mad_tpsa_minv, 2, inputs, 2, outputs))
+    return int(_generated_protected(MINV)(lib.mad_tpsa_minv, 2, inputs, 2, outputs))
 
 
 def _ptrs(series: Iterable[Tpsa]) -> Any:
@@ -85,20 +101,13 @@ def test_thousands_of_protected_native_failures_preserve_next_operation() -> Non
     gc.collect()
     before = _rss_bytes()
     for i in range(iterations):
-        status = lib.madng_tpsa_protected_map_inverse_call(
-            lib.mad_tpsa_minv, 2, singular_ptrs, 2, output_ptrs
-        )
+        status = _generated_protected(MINV)(lib.mad_tpsa_minv, 2, singular_ptrs, 2, output_ptrs)
         assert status != 0
         if i % 100 == 0:
             message = ffi.string(lib.madng_tpsa_last_error_message()).decode()
             assert message
             # A valid native operation must still succeed after repeated longjmps.
-            assert (
-                lib.madng_tpsa_protected_map_inverse_call(
-                    lib.mad_tpsa_minv, 2, good_ptrs, 2, output_ptrs
-                )
-                == 0
-            )
+            assert _generated_protected(MINV)(lib.mad_tpsa_minv, 2, good_ptrs, 2, output_ptrs) == 0
             assert outputs[0] == q - p**2
     gc.collect()
     # Advisory leak bound rather than exact leak detection; OS allocators retain arenas.
@@ -118,7 +127,7 @@ def test_simultaneous_native_errors_keep_thread_local_messages() -> None:
         barrier.wait(timeout=10)
         messages = []
         for _ in range(30):
-            status = lib.madng_tpsa_protected_map_inverse_call(lib.mad_tpsa_minv, 2, inp, 2, out)
+            status = _generated_protected(MINV)(lib.mad_tpsa_minv, 2, inp, 2, out)
             assert status != 0
             messages.append(ffi.string(lib.madng_tpsa_last_error_message()).decode())
         return messages
@@ -348,7 +357,7 @@ def test_map_compose():
     # B(x, y) = (x, y + x^2)
     right = [x, y + x**2]
     output = _zeros(descriptor, 2)
-    status = lib.madng_tpsa_protected_map_binary_call(
+    status = _generated_protected(COMPOSE)(
         lib.mad_tpsa_compose,
         2,
         _ptrs(left),
@@ -368,7 +377,7 @@ def test_map_inverse():
     x, y = descriptor.vars()
     map_ = [x + y**2, y]
     output = _zeros(descriptor, 2)
-    status = lib.madng_tpsa_protected_map_inverse_call(
+    status = _generated_protected(MINV)(
         lib.mad_tpsa_minv,
         2,
         _ptrs(map_),
@@ -385,7 +394,7 @@ def test_map_inverse_composes_to_identity():
     x, y = descriptor.vars()
     map_ = [x + y**2, y + x**3]
     inverse = _zeros(descriptor, 2)
-    status = lib.madng_tpsa_protected_map_inverse_call(
+    status = _generated_protected(MINV)(
         lib.mad_tpsa_minv,
         2,
         _ptrs(map_),
@@ -394,7 +403,7 @@ def test_map_inverse_composes_to_identity():
     )
     assert status == 0
     composed = _zeros(descriptor, 2)
-    status = lib.madng_tpsa_protected_map_binary_call(
+    status = _generated_protected(COMPOSE)(
         lib.mad_tpsa_compose,
         2,
         _ptrs(map_),
@@ -412,7 +421,7 @@ def test_vector_to_field():
     q, p = descriptor.vars()
     generator = (q**2 + p**2) / 2
     field = _zeros(descriptor, 2)
-    status = lib.madng_tpsa_protected_scalar_to_map_call(
+    status = _generated_protected(VEC2FLD)(
         lib.mad_tpsa_vec2fld,
         2,
         generator.ptr,
@@ -428,7 +437,7 @@ def test_field_to_vector_inverts_vector_to_field():
     q, p = descriptor.vars()
     generator = q**3 / 3 + q * p**2 + p**4 / 4
     field = _zeros(descriptor, 2)
-    status = lib.madng_tpsa_protected_scalar_to_map_call(
+    status = _generated_protected(VEC2FLD)(
         lib.mad_tpsa_vec2fld,
         2,
         generator.ptr,
@@ -436,7 +445,7 @@ def test_field_to_vector_inverts_vector_to_field():
     )
     assert status == 0
     recovered = descriptor.zero()
-    status = lib.madng_tpsa_protected_map_to_scalar_call(
+    status = _generated_protected(FLD2VEC)(
         lib.mad_tpsa_fld2vec,
         2,
         _ptrs(field),
@@ -451,7 +460,7 @@ def test_lie_bracket_with_itself_is_zero():
     q, p = descriptor.vars()
     field = [q * p, q**2 - p**2]
     output = _zeros(descriptor, 2)
-    status = lib.madng_tpsa_protected_map_pair_call(
+    status = _generated_protected(LIEBRA)(
         lib.mad_tpsa_liebra,
         2,
         _ptrs(field),
@@ -469,7 +478,7 @@ def test_exp_poisson_zero_field_leaves_map_unchanged():
     field = _zeros(descriptor, 2)
     map_ = [x + y**2, y + x**3]
     output = _zeros(descriptor, 2)
-    status = lib.madng_tpsa_protected_map_binary_call(
+    status = _generated_protected(EXPPB)(
         lib.mad_tpsa_exppb,
         2,
         _ptrs(field),
@@ -488,7 +497,7 @@ def test_map_translate_identity():
     map_ = [x, y]
     output = _zeros(descriptor, 2)
     offsets = ffi.new('double[]', [1.5, -2.0])
-    status = lib.madng_tpsa_protected_map_translate_call(
+    status = _generated_protected(TRANSLATE)(
         lib.mad_tpsa_translate,
         2,
         _ptrs(map_),
@@ -507,7 +516,7 @@ def test_map_eval():
     map_ = [x**2 + y, x * y]
     point = ffi.new('double[]', [2.0, 3.0])
     output = ffi.new('double[]', 2)
-    status = lib.madng_tpsa_protected_map_eval_call(
+    status = _generated_protected(EVAL)(
         lib.mad_tpsa_eval,
         2,
         _ptrs(map_),
@@ -531,7 +540,7 @@ def test_map_inverse_failure_is_caught():
         descriptor.zero(),
     ]
     output = _zeros(descriptor, 2)
-    status = lib.madng_tpsa_protected_map_inverse_call(
+    status = _generated_protected(MINV)(
         lib.mad_tpsa_minv,
         2,
         _ptrs(map_),

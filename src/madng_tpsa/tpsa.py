@@ -27,6 +27,7 @@ from ._cffi import ffi, lib
 from ._tpsa_base import _JsonCoefficient, _TpsaBase
 from .descriptor import Descriptor
 from .errors import TpsaError
+from .madng_definitions import POISBRA
 
 
 class Tpsa(_TpsaBase[float, SupportsFloat]):
@@ -329,9 +330,7 @@ class Tpsa(_TpsaBase[float, SupportsFloat]):
                     f'0 < 2 * num_pairs <= {self.descriptor.num_vars}',
                 )
 
-        result = self.descriptor.zero()
-        lib.mad_tpsa_poisbra(self._ptr, other._ptr, result._ptr, c_num_vars)
-        return result
+        return POISBRA(self, other, nv=c_num_vars)
 
     def format(self, style: FormatStyle = 'code') -> object:
         """Format this series as code, LaTeX math, or a rich table.

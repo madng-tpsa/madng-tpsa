@@ -165,6 +165,9 @@ else:
 
 # Logical dimensions are always positive; native_sizes changes only C arguments.
 # fmt: off
+POISBRA = MadngFunction(
+    'void mad_tpsa_poisbra(const tpsa_t *a, const tpsa_t *b, tpsa_t *c, int nv);'
+)
 MNRM = MadngFunction('num_t mad_tpsa_mnrm(ssz_t na, const tpsa_t *ma[]);')
 MORD = MadngFunction('ord_t mad_tpsa_mord(ssz_t na, const tpsa_t *ma[], log_t hi);')
 FLD2VEC = MadngFunction('void mad_tpsa_fld2vec(ssz_t na, const tpsa_t *ma[], tpsa_t *c);')
