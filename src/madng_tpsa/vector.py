@@ -25,13 +25,12 @@ from collections.abc import Sequence
 
 import numpy as np
 
-from ._cffi import ffi, lib
 from ._typing import TpsaSeriesT
 from .complex_tpsa import ComplexTpsa
 from .descriptor import Descriptor
 from .formatting import format_coord, format_polynomial
-from .madng_definitions import LIEBRA, VEC2FLD
-from .tensor import TpsaTensor, _align_descriptors
+from .madng_definitions import FGRAD, FLD2VEC, LIEBRA, MNRM, TRANSLATE, VEC2FLD
+from .tensor import TpsaTensor
 from .tpsa import Tpsa
 
 
@@ -553,40 +552,18 @@ class TpsaVector(TpsaTensor[TpsaSeriesT]):
                 self.compose(TpsaMap(substitutions)),
             )
 
-        source = self.to_complex() if complex_needed and not self.is_complex else self
-        if complex_needed:
-            result = [
-                source.descriptor.complex_zero(order=source.descriptor.order)
-                for _ in range(source.num_vars)
-            ]
-            translations = ffi.new('double _Complex[]', [complex(v) for v in offsets])
-            protected_func = lib.madng_ctpsa_protected_map_translate_call
-            func = lib.mad_ctpsa_translate
-        else:
-            result = [
-                source.descriptor.zero(order=source.descriptor.order)
-                for _ in range(source.num_vars)
-            ]
-            translations = ffi.new('double[]', [complex(v).real for v in offsets])
-            protected_func = lib.madng_tpsa_protected_map_translate_call
-            func = lib.mad_tpsa_translate
-        status = protected_func(
-            func,
-            source.num_vars,
-            source.pointer_array,
-            len(offsets),
-            translations,
-            ffi.new('void*[]', [t.ptr for t in result]),
+        return cast(
+            'TpsaVector[Tpsa] | TpsaVector[ComplexTpsa]',
+            TRANSLATE(
+                self,
+                offsets if complex_needed else tuple(complex(value).real for value in offsets),
+                complex_needed=complex_needed,
+            ),
         )
-        if status:
-            source.flat[0]._raise_mad_error()
-        return cast('TpsaVector[Tpsa] | TpsaVector[ComplexTpsa]', source._new_like(result))
 
     def norm(self) -> float:
         """Return the native vector norm (sum of component coefficient norms)."""
-        if self.is_complex:
-            return float(lib.mad_ctpsa_mnrm(self.num_vars, self.pointer_array))
-        return float(lib.mad_tpsa_mnrm(self.num_vars, self.pointer_array))
+        return float(MNRM(self))
 
     # ====================
     # === Typing Casts ===
@@ -667,7 +644,7 @@ class TpsaVectorField(TpsaVector[TpsaSeriesT]):
         if descriptor.num_vars % 2:
             err_mess = 'Hamiltonian fields require an even number of variables'
             raise ValueError(err_mess)
-        output = VEC2FLD.fast_call(generator, na=descriptor.num_vars)
+        output = VEC2FLD(generator, na=descriptor.num_vars)
         return cast('TpsaVectorField[Tpsa] | TpsaVectorField[ComplexTpsa]', TpsaVectorField(output))
 
     def to_generator(
@@ -693,22 +670,7 @@ class TpsaVectorField(TpsaVector[TpsaSeriesT]):
         if atol < 0 or rtol < 0:
             err_mess = 'atol and rtol must be non-negative'
             raise ValueError(err_mess)
-        if self.is_complex:
-            result = self.descriptor.complex_zero(order=self.descriptor.order)
-            protected_func = lib.madng_ctpsa_protected_map_to_scalar_call
-            func = lib.mad_ctpsa_fld2vec
-        else:
-            result = self.descriptor.zero(order=self.descriptor.order)
-            protected_func = lib.madng_tpsa_protected_map_to_scalar_call
-            func = lib.mad_tpsa_fld2vec
-        status = protected_func(
-            func,
-            self.num_vars,
-            self.pointer_array,
-            result.ptr,
-        )
-        if status:
-            self.flat[0]._raise_mad_error()
+        result = cast('Tpsa | ComplexTpsa', FLD2VEC(self))
 
         if self.num_params:
             # Native fld2vec divides each coefficient by its phase-space degree.
@@ -765,27 +727,7 @@ class TpsaVectorField(TpsaVector[TpsaSeriesT]):
         if not isinstance(other, (Tpsa, ComplexTpsa)):
             err_mess = 'Can only apply directional derivative on scalar field!'
             raise ValueError(err_mess)
-        left, right, complex_needed = _align_descriptors(
-            self, other, extend_left=True, extend_right=False
-        )
-        if complex_needed:
-            result = self.descriptor.complex_zero(order=self.descriptor.order)
-            protected_func = lib.madng_ctpsa_protected_map_scalar_pair_call
-            func = lib.mad_ctpsa_fgrad
-        else:
-            result = self.descriptor.zero(order=self.descriptor.order)
-            protected_func = lib.madng_tpsa_protected_map_scalar_pair_call
-            func = lib.mad_tpsa_fgrad
-        status = protected_func(
-            func,
-            left.num_vars,
-            left.pointer_array,
-            right.ptr,
-            result.ptr,
-        )
-        if status:
-            left.flat[0]._raise_mad_error()
-        return result
+        return cast('Tpsa | ComplexTpsa', FGRAD(self, other))
 
     def lie_bracket(
         self, other: TpsaVectorField[MapSeriesT]
@@ -794,9 +736,7 @@ class TpsaVectorField(TpsaVector[TpsaSeriesT]):
         if not isinstance(other, TpsaVectorField):
             err_mess = f'Can only take Lie bracket with another TpsaVectorField! Got {type(other)}'
             raise TypeError(err_mess)
-        return cast(
-            'TpsaVectorField[Tpsa] | TpsaVectorField[ComplexTpsa]', LIEBRA.fast_call(self, other)
-        )
+        return cast('TpsaVectorField[Tpsa] | TpsaVectorField[ComplexTpsa]', LIEBRA(self, other))
 
     # TODO: G.lie_transform(F) = exp(lie_bracket(F, .)) G
 

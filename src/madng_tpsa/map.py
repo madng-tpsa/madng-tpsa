@@ -20,10 +20,10 @@ from numbers import Integral
 
 import numpy as np
 
-from ._cffi import ffi, lib
+from ._cffi import ffi
 from ._typing import TpsaSeriesT
 from .complex_tpsa import ComplexTpsa
-from .madng_definitions import MINV
+from .madng_definitions import EXPPB, LOGPB, MINV, PMINV
 from .tensor import TpsaTensor, _align_descriptors
 from .tpsa import Tpsa
 from .vector import TpsaVector, TpsaVectorField
@@ -299,7 +299,7 @@ class TpsaMap(TpsaVector[TpsaSeriesT]):
         if np.linalg.matrix_rank(jac) < self.num_vars:
             err_mess = 'Cannot invert map: the linear Jacobian is singular'
             raise ValueError(err_mess)
-        return cast('TpsaMap[TpsaSeriesT]', MINV.fast_call(self))
+        return cast('TpsaMap[TpsaSeriesT]', MINV(self))
 
     def partial_inverse(self, select: Sequence[SelectionValue]) -> TpsaMap[TpsaSeriesT]:
         """Invert selected variables, leaving other variables and parameters intact.
@@ -332,34 +332,9 @@ class TpsaMap(TpsaVector[TpsaSeriesT]):
             if np.linalg.matrix_rank(block) < len(selected):
                 err_mess = 'Cannot partially invert map: selected Jacobian block is singular'
                 raise ValueError(err_mess)
-
-        if self.is_complex:
-            result = [
-                self.descriptor.complex_zero(order=self.descriptor.order)
-                for _ in range(self.num_vars)
-            ]
-            target_params = [ComplexTpsa.from_tpsa(t) for t in self.descriptor.params()]
-            protected_func = lib.madng_ctpsa_protected_map_partial_inverse_call
-            func = lib.mad_ctpsa_pminv
-        else:
-            result = [
-                self.descriptor.zero(order=self.descriptor.order) for _ in range(self.num_vars)
-            ]
-            target_params = list(self.descriptor.params())
-            protected_func = lib.madng_tpsa_protected_map_partial_inverse_call
-            func = lib.mad_tpsa_pminv
-        output = (*result, *target_params)
-        status = protected_func(
-            func,
-            self.num_vars + self.num_params,
-            self.pointer_array_with_params,
-            self.num_vars,
-            ffi.new('void*[]', [t.ptr for t in output]),
-            ffi.new('int[]', choices),
-        )
-        if status:
-            self.flat[0]._raise_mad_error()
-        return cast('TpsaMap[TpsaSeriesT]', self._new_like(result))
+        # MAD-NG expects select[na] with na = num_vars + num_params.
+        # PMINV attaches parameter identities to both native map arrays.
+        return cast('TpsaMap[TpsaSeriesT]', PMINV(self, ffi.new('int[]', choices)))
 
     def exp_poisson(self, generator: Tpsa | ComplexTpsa) -> TpsaMap[Tpsa] | TpsaMap[ComplexTpsa]:
         """Apply the Lie operator exponential to this map: M.exp_poisson(f) = exp(:f:) M."""
@@ -374,7 +349,10 @@ class TpsaMap(TpsaVector[TpsaSeriesT]):
         # the exponentiated grad amounts to the exponentiated Poisson bracket
         # of the original generator
         left = TpsaVectorField.from_generator(left)
-        return self._exppb(left, right, complex_needed=complex_needed)
+        return cast(
+            'TpsaMap[Tpsa] | TpsaMap[ComplexTpsa]',
+            EXPPB(left, right, complex_needed=complex_needed),
+        )
 
     def exp_fgrad(
         self, field: TpsaVectorField[Tpsa] | TpsaVectorField[ComplexTpsa]
@@ -386,39 +364,10 @@ class TpsaMap(TpsaVector[TpsaSeriesT]):
         left, right, complex_needed = _align_descriptors(
             field, self, extend_left=True, extend_right=True
         )
-        return self._exppb(left, right, complex_needed=complex_needed)
-
-    @staticmethod
-    def _exppb(
-        left: TpsaVectorField[Tpsa] | TpsaVectorField[ComplexTpsa],
-        right: TpsaMap[Tpsa] | TpsaMap[ComplexTpsa],
-        *,
-        complex_needed: bool,
-    ) -> TpsaMap[Tpsa] | TpsaMap[ComplexTpsa]:
-        if complex_needed:
-            result = [
-                left.descriptor.complex_zero(order=left.descriptor.order)
-                for _ in range(left.num_vars)
-            ]
-            protected_call = lib.madng_ctpsa_protected_map_binary_call
-            func = lib.mad_ctpsa_exppb
-        else:
-            result = [
-                left.descriptor.zero(order=left.descriptor.order) for _ in range(left.num_vars)
-            ]
-            protected_call = lib.madng_tpsa_protected_map_binary_call
-            func = lib.mad_tpsa_exppb
-        status = protected_call(
-            func,
-            left.num_vars,
-            left.pointer_array,
-            right.num_vars,
-            right.pointer_array,
-            ffi.new('void*[]', [t.ptr for t in result]),
+        return cast(
+            'TpsaMap[Tpsa] | TpsaMap[ComplexTpsa]',
+            EXPPB(left, right, complex_needed=complex_needed),
         )
-        if status:
-            left.flat[0]._raise_mad_error()
-        return right._new_like(result)
 
     def log_fgrad(
         self,
@@ -462,28 +411,12 @@ class TpsaMap(TpsaVector[TpsaSeriesT]):
                 self, initial_guess, extend_left=True, extend_right=True
             )
 
-        if complex_needed:
-            result = [
-                left.descriptor.complex_zero(order=left.descriptor.order)
-                for _ in range(self.num_vars)
-            ]
-            protected_func = lib.madng_ctpsa_protected_map_pair_call
-            func = lib.mad_ctpsa_logpb
-        else:
-            result = [
-                left.descriptor.zero(order=left.descriptor.order) for _ in range(self.num_vars)
-            ]
-            protected_func = lib.madng_tpsa_protected_map_pair_call
-            func = lib.mad_tpsa_logpb
-        status = protected_func(
-            func,
-            left.num_vars,
-            left.pointer_array,
-            ffi.NULL if right is None else right.pointer_array,
-            ffi.new('void*[]', [t.ptr for t in result]),
+        # A NULL second map lets MAD-NG start its logarithm without a guess.
+        result = LOGPB(
+            left,
+            ffi.NULL if right is None else right,
+            complex_needed=complex_needed,
         )
-        if status:
-            self.flat[0]._raise_mad_error()
         field = TpsaVectorField(result)
         if validate:
             # Compare against `left`, not self: a supplied initial guess can

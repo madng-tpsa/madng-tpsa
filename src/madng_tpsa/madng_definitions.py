@@ -31,12 +31,14 @@ unique safe ``_arg`` suffix in the generated Python signature.
 Const pointers/arrays and by-value arguments are inputs; non-const pointers
 and arrays default to outputs. Use ``directions={'select': 'in'}`` for a
 non-const C input, or ``'inout'`` for a required input which is also returned.
-Directions are Python-side policies, not C type qualifiers. A non-void C
-return value precedes the output arguments in the result. A single result
-is returned directly; multiple results form a tuple, and a void function
-with no outputs returns None. Numeric array outputs supplied as writable,
-contiguous buffers of the correct type are updated in place. Python list
-outputs use temporary native storage and return a new list.
+Directions are Python-side policies, not C type qualifiers. An `idx_t *`
+input, such as PMINV's parameter-inclusive selection buffer, is a
+pointer rather than a sized array and must be supplied as CFFI storage.
+A non-void C return value precedes the output arguments in the result. A
+single result is returned directly; multiple results form a tuple, and a
+void function with no outputs returns None. Numeric array outputs supplied
+as writable, contiguous buffers of the correct type are updated in place.
+Python list outputs use temporary native storage and return a new list.
 
 Dimensions and pointer arrays
 -----------------------------
@@ -163,12 +165,41 @@ else:
 
 # Logical dimensions are always positive; native_sizes changes only C arguments.
 # fmt: off
+MNRM = MadngFunction('num_t mad_tpsa_mnrm(ssz_t na, const tpsa_t *ma[]);')
+MORD = MadngFunction('ord_t mad_tpsa_mord(ssz_t na, const tpsa_t *ma[], log_t hi);')
+FLD2VEC = MadngFunction('void mad_tpsa_fld2vec(ssz_t na, const tpsa_t *ma[], tpsa_t *c);')
+VEC2FLD = MadngFunction('void mad_tpsa_vec2fld(ssz_t na, const tpsa_t *a, tpsa_t *mc[]);')
 MINV = MadngFunction(
     'void mad_tpsa_minv(ssz_t na, const tpsa_t *ma[], ssz_t nb, tpsa_t *mc[]);',
     size_aliases={'nb': 'na'},
     parameter_arrays=('ma', 'mc'),
     native_sizes={'na': NativeSize(params_from='ma')},
     return_like='ma',
+)
+PMINV = MadngFunction(
+    # `idx_t *select` is ABI-equivalent to `select[]`, but leaves the
+    # parameter-inclusive selection buffer outside logical size inference.
+    'void mad_tpsa_pminv(ssz_t na, const tpsa_t *ma[], ssz_t nb, tpsa_t *mc[], idx_t *select);',
+    directions={'select': 'in'},
+    size_aliases={'nb': 'na'},
+    native_sizes={'na': NativeSize(params_from='ma')},
+    parameter_arrays=('ma', 'mc'),
+    return_like='ma',
+)
+TRANSLATE = MadngFunction(
+    'void mad_tpsa_translate(ssz_t na, const tpsa_t *ma[], ssz_t nb, const num_t tb[], tpsa_t *mc[]);',
+    complex_declaration='void mad_ctpsa_translate(ssz_t na, const ctpsa_t *ma[], ssz_t nb, const cpx_t tb[], ctpsa_t *mc[]);',
+    array_sizes={'mc': 'na'},
+    return_like='ma',
+)
+LIEBRA = MadngFunction(
+    'void mad_tpsa_liebra(ssz_t na, const tpsa_t *ma[], const tpsa_t *mb[], tpsa_t *mc[]);',
+    return_like='ma',
+)
+FGRAD = MadngFunction(
+    'void mad_tpsa_fgrad(ssz_t na, const tpsa_t *ma[], const tpsa_t *b, tpsa_t *c);',
+    extend_left=True,
+    extend_right=False,
 )
 COMPOSE = MadngFunction(
     'void mad_tpsa_compose(ssz_t na, const tpsa_t *ma[], ssz_t nb, const tpsa_t *mb[], tpsa_t *mc[]);',
@@ -180,15 +211,18 @@ COMPOSE = MadngFunction(
     reorder_variables=True,
     return_like='ma',
 )
-LIEBRA = MadngFunction(
-    'void mad_tpsa_liebra(ssz_t na, const tpsa_t *ma[], const tpsa_t *mb[], tpsa_t *mc[]);',
-    return_like='ma',
-)
-VEC2FLD = MadngFunction('void mad_tpsa_vec2fld(ssz_t na, const tpsa_t *a, tpsa_t *mc[]);')
 EVAL = MadngFunction(
     'void mad_tpsa_eval(ssz_t na, const tpsa_t *ma[], ssz_t nb, const num_t tb[], num_t tc[]);',
     complex_declaration='void mad_ctpsa_eval(ssz_t na, const ctpsa_t *ma[], ssz_t nb, const cpx_t tb[], cpx_t tc[]);',
     array_sizes={'tc': 'na'},
+)
+EXPPB = MadngFunction(
+    'void mad_tpsa_exppb(ssz_t na, const tpsa_t *ma[], ssz_t nb, const tpsa_t *mb[], tpsa_t *mc[]);',
+    array_sizes={'mc': 'nb'},
+    return_like='mb',
+)
+LOGPB = MadngFunction(
+    'void mad_tpsa_logpb(ssz_t na, const tpsa_t *ma[], const tpsa_t *mb[], tpsa_t *mc[]);',
 )
 # fmt: on
 

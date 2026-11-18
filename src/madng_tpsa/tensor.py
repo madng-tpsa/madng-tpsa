@@ -960,7 +960,7 @@ class TpsaTensor(Generic[TpsaSeriesT]):
         if other.size != self.num_vars:
             err_mess = f'Expected a map with {self.num_vars} components, got {other.size}'
             raise ValueError(err_mess)
-        return cast('TpsaTensor[Tpsa] | TpsaTensor[ComplexTpsa]', COMPOSE.fast_call(self, other))
+        return cast('TpsaTensor[Tpsa] | TpsaTensor[ComplexTpsa]', COMPOSE(self, other))
 
     # ========================
     # === Numpy Operations ===

@@ -188,24 +188,7 @@ CDEF = """
      * MAD-NG's ssz_t and idx_t are both int32_t. The bindings already use
      * plain int for these ABI arguments.
      */
-    void mad_tpsa_fld2vec(int na, const void* ma[], void* c);
-    void mad_tpsa_fgrad(int na, const void* ma[], const void* b, void* c);
-    void mad_tpsa_exppb(int na, const void* ma[], int nb, const void* mb[], void* mc[]);
-    void mad_tpsa_logpb(int na, const void* ma[], const void* mb[], void* mc[]);
-    unsigned char mad_tpsa_mord(int na, const void* ma[], _Bool hi);
-    double mad_tpsa_mnrm(int na, const void* ma[]);
-    void mad_tpsa_pminv(int na, const void* ma[], int nb, void* mc[], int select[]);
-    void mad_tpsa_translate(int na, const void* ma[], int nb, const double tb[], void* mc[]);
-
-    /* Native complex map operations. */
-    void mad_ctpsa_fld2vec(int na, const void* ma[], void* c);
-    void mad_ctpsa_fgrad(int na, const void* ma[], const void* b, void* c);
-    void mad_ctpsa_exppb(int na, const void* ma[], int nb, const void* mb[], void* mc[]);
-    void mad_ctpsa_logpb(int na, const void* ma[], const void* mb[], void* mc[]);
-    unsigned char mad_ctpsa_mord(int na, const void* ma[], _Bool hi);
-    double mad_ctpsa_mnrm(int na, const void* ma[]);
-    void mad_ctpsa_pminv(int na, const void* ma[], int nb, void* mc[], int select[]);
-    void mad_ctpsa_translate(int na, const void* ma[], int nb, const double _Complex tb[], void* mc[]);
+    /* Remaining native map symbols are declared by MadngFunction. */
 
     /* protected calls for unary, binary, and two-output functions */
     typedef void (*madng_tpsa_unary_fn)(const void* input, void* output);
@@ -214,60 +197,6 @@ CDEF = """
     int madng_tpsa_protected_unary_call(madng_tpsa_unary_fn function, const void* input, void* output);
     int madng_tpsa_protected_binary_call(madng_tpsa_binary_fn function, const void* left, const void* right, void* output);
     int madng_tpsa_protected_two_output_call(madng_tpsa_two_output_fn function, const void* input, void* first_output, void* second_output);
-
-    /* compose, exppb */
-    typedef void (*madng_tpsa_map_binary_fn)(int na, const void* ma[], int nb, const void* mb[], void* mc[]);
-    typedef void (*madng_ctpsa_map_binary_fn)(int na, const void* ma[], int nb, const void* mb[], void* mc[]);
-    int madng_tpsa_protected_map_binary_call(madng_tpsa_map_binary_fn function, int na, const void* ma[], int nb, const void* mb[], void* mc[]);
-    int madng_ctpsa_protected_map_binary_call(madng_ctpsa_map_binary_fn function, int na, const void* ma[], int nb, const void* mb[], void* mc[]);
-
-    /* liebra, logpb */
-    typedef void (*madng_tpsa_map_pair_fn)(int na, const void* ma[], const void* mb[], void* mc[]);
-    typedef void (*madng_ctpsa_map_pair_fn)(int na, const void* ma[], const void* mb[], void* mc[]);
-    int madng_tpsa_protected_map_pair_call(madng_tpsa_map_pair_fn function, int na, const void* ma[], const void* mb[], void* mc[]);
-    int madng_ctpsa_protected_map_pair_call(madng_ctpsa_map_pair_fn function, int na, const void* ma[], const void* mb[], void* mc[]);
-
-    /* minv */
-    typedef void (*madng_tpsa_map_inverse_fn)(int na, const void* ma[], int nb, void* mc[]);
-    typedef void (*madng_ctpsa_map_inverse_fn)(int na, const void* ma[], int nb, void* mc[]);
-    int madng_tpsa_protected_map_inverse_call(madng_tpsa_map_inverse_fn function, int na, const void* ma[], int nb, void* mc[]);
-    int madng_ctpsa_protected_map_inverse_call(madng_ctpsa_map_inverse_fn function, int na, const void* ma[], int nb, void* mc[]);
-
-    /* pminv */
-    typedef void (*madng_tpsa_map_partial_inverse_fn)(int na, const void* ma[], int nb, void* mc[], int select[]);
-    typedef void (*madng_ctpsa_map_partial_inverse_fn)(int na, const void* ma[], int nb, void* mc[], int select[]);
-    int madng_tpsa_protected_map_partial_inverse_call(madng_tpsa_map_partial_inverse_fn function, int na, const void* ma[], int nb, void* mc[], int select[]);
-    int madng_ctpsa_protected_map_partial_inverse_call(madng_ctpsa_map_partial_inverse_fn function, int na, const void* ma[], int nb, void* mc[], int select[]);
-
-    /* vec2fld */
-    typedef void (*madng_tpsa_scalar_to_map_fn)(int na, const void* a, void* mc[]);
-    typedef void (*madng_ctpsa_scalar_to_map_fn)(int na, const void* a, void* mc[]);
-    int madng_tpsa_protected_scalar_to_map_call(madng_tpsa_scalar_to_map_fn function, int na, const void* a, void* mc[]);
-    int madng_ctpsa_protected_scalar_to_map_call(madng_ctpsa_scalar_to_map_fn function, int na, const void* a, void* mc[]);
-
-    /* fld2vec */
-    typedef void (*madng_tpsa_map_to_scalar_fn)(int na, const void* ma[], void* c);
-    typedef void (*madng_ctpsa_map_to_scalar_fn)(int na, const void* ma[], void* c);
-    int madng_tpsa_protected_map_to_scalar_call(madng_tpsa_map_to_scalar_fn function, int na, const void* ma[], void* c);
-    int madng_ctpsa_protected_map_to_scalar_call(madng_ctpsa_map_to_scalar_fn function, int na, const void* ma[], void* c);
-
-    /* fgrad */
-    typedef void (*madng_tpsa_map_scalar_pair_fn)(int na, const void* ma[], const void* b, void* c);
-    typedef void (*madng_ctpsa_map_scalar_pair_fn)(int na, const void* ma[], const void* b, void* c);
-    int madng_tpsa_protected_map_scalar_pair_call(madng_tpsa_map_scalar_pair_fn function, int na, const void* ma[], const void* b, void* c);
-    int madng_ctpsa_protected_map_scalar_pair_call(madng_ctpsa_map_scalar_pair_fn function, int na, const void* ma[], const void* b, void* c);
-
-    /* translate */
-    typedef void (*madng_tpsa_map_translate_fn)(int na, const void* ma[], int nb, const double tb[], void* mc[]);
-    typedef void (*madng_ctpsa_map_translate_fn)(int na, const void* ma[], int nb, const double _Complex tb[], void* mc[]);
-    int madng_tpsa_protected_map_translate_call(madng_tpsa_map_translate_fn function, int na, const void* ma[], int nb, const double tb[], void* mc[]);
-    int madng_ctpsa_protected_map_translate_call(madng_ctpsa_map_translate_fn function, int na, const void* ma[], int nb, const double _Complex tb[], void* mc[]);
-
-    /* eval */
-    typedef void (*madng_tpsa_map_eval_fn)(int na, const void* ma[], int nb, const double tb[], double tc[]);
-    typedef void (*madng_ctpsa_map_eval_fn)(int na, const void* ma[], int nb, const double _Complex tb[], double _Complex tc[]);
-    int madng_tpsa_protected_map_eval_call(madng_tpsa_map_eval_fn function, int na, const void* ma[], int nb, const double tb[], double tc[]);
-    int madng_ctpsa_protected_map_eval_call(madng_ctpsa_map_eval_fn function, int na, const void* ma[], int nb, const double _Complex tb[], double _Complex tc[]);
 
     const char* madng_tpsa_last_error_location(void);
     const char* madng_tpsa_last_error_message(void);
