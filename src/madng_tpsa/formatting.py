@@ -7,30 +7,258 @@ methods.
 
 from __future__ import annotations
 
-from typing import TYPE_CHECKING, Literal, no_type_check
+from typing import TYPE_CHECKING, Literal, no_type_check, overload
 
 if TYPE_CHECKING:
     from collections.abc import Callable, Sequence
+    from typing import Any, SupportsFloat
 
-    from .tpsa import Tpsa
+    from ._tpsa_base import _TpsaBase
 
-FormatStyle = Literal['code', 'math', 'table']
+FormatStyle = Literal['unicode', 'code', 'math', 'table']
 
 
-def format_polynomial(tpsa: Tpsa, labels: Sequence[str], style: FormatStyle) -> object:
+# q is missing
+_SUPERSCRIPT_MAP = str.maketrans(
+    {
+        '0': '⁰',
+        '1': '¹',
+        '2': '²',
+        '3': '³',
+        '4': '⁴',
+        '5': '⁵',
+        '6': '⁶',
+        '7': '⁷',
+        '8': '⁸',
+        '9': '⁹',
+        '+': '⁺',
+        '-': '⁻',
+        '=': '⁼',
+        '(': '⁽',
+        ')': '⁾',
+        'a': 'ᵃ',
+        'b': 'ᵇ',
+        'c': 'ᶜ',
+        'd': 'ᵈ',
+        'e': 'ᵉ',
+        'f': 'ᶠ',
+        'g': 'ᵍ',
+        'h': 'ʰ',
+        'i': 'ⁱ',
+        'j': 'ʲ',
+        'k': 'ᵏ',
+        'l': 'ˡ',
+        'm': 'ᵐ',
+        'n': 'ⁿ',
+        'o': 'ᵒ',
+        'p': 'ᵖ',
+        'r': 'ʳ',
+        's': 'ˢ',
+        't': 'ᵗ',
+        'u': 'ᵘ',
+        'v': 'ᵛ',
+        'w': 'ʷ',
+        'x': 'ˣ',
+        'y': 'ʸ',
+        'z': 'ᶻ',
+    }
+)
+
+# b,c,d,f,g,q,r,u,v,w are missing
+_SUBSCRIPT_MAP = str.maketrans(
+    {
+        '0': '₀',
+        '1': '₁',
+        '2': '₂',
+        '3': '₃',
+        '4': '₄',
+        '5': '₅',
+        '6': '₆',
+        '7': '₇',
+        '8': '₈',
+        '9': '₉',
+        '+': '₊',
+        '-': '₋',
+        '=': '₌',
+        '(': '₍',
+        ')': '₎',
+        'a': 'ₐ',
+        'e': 'ₑ',
+        'h': 'ₕ',
+        'i': 'ᵢ',
+        'j': 'ⱼ',
+        'k': 'ₖ',
+        'l': 'ₗ',
+        'm': 'ₘ',
+        'n': 'ₙ',
+        'o': 'ₒ',
+        'p': 'ₚ',
+        's': 'ₛ',
+        't': 'ₜ',
+        'x': 'ₓ',
+        'y': 'ᵧ',
+        'z': '𝓏',
+    }
+)
+
+_GREEK_MAP = {
+    'Alpha': 'Α',
+    'alpha': 'α',
+    'Beta': 'Β',
+    'beta': 'β',
+    'Gamma': 'Γ',
+    'gamma': 'γ',
+    'Delta': 'Δ',
+    'delta': 'δ',
+    'Epsilon': 'Ε',
+    'epsilon': 'ε',
+    'Zeta': 'Ζ',
+    'zeta': 'ζ',
+    'Eta': 'Η',
+    'eta': 'η',
+    'Theta': 'Θ',
+    'theta': 'θ',
+    'Iota': 'Ι',
+    'iota': 'ι',
+    'Kappa': 'Κ',
+    'kappa': 'κ',
+    'Lambda': 'Λ',
+    'lambda': 'λ',
+    'Mu': 'Μ',
+    'mu': 'μ',
+    'Nu': 'Ν',
+    'nu': 'ν',
+    'Xi': 'Ξ',
+    'xi': 'ξ',
+    'Omicron': 'Ο',
+    'omicron': 'ο',
+    'Pi': 'Π',
+    'pi': 'π',
+    'Rho': 'Ρ',
+    'rho': 'ρ',
+    'Sigma': 'Σ',
+    'sigma': 'σ',
+    'varsigma': 'ς',
+    'Tau': 'Τ',
+    'tau': 'τ',
+    'Upsilon': 'Υ',
+    'upsilon': 'υ',
+    'Phi': 'Φ',
+    'phi': 'φ',
+    'Chi': 'Χ',
+    'chi': 'χ',
+    'Psi': 'Ψ',
+    'psi': 'ψ',
+    'Omega': 'Ω',
+    'omega': 'ω',
+}
+
+
+def to_superscript(s: str | int) -> str:
+    """Move all characters in a string to superscript, if possible (keep basescript otherwise)."""
+    if isinstance(s, int):
+        s = str(s)
+    return s.translate(_SUPERSCRIPT_MAP)
+
+
+def to_subscript(s: str | int) -> str:
+    """Move all characters in a string to subscript, if possible (keep basescript otherwise)."""
+    if isinstance(s, int):
+        s = str(s)
+    return s.translate(_SUBSCRIPT_MAP)
+
+
+def format_coeff(coef: SupportsFloat) -> str:
+    """Format a coefficient with explicit exponential notation."""
+    value = float(coef)
+    formatted = f'{value:.3g}' if 0.1 <= abs(value) < 1000.0 else f'{value:.2e}'
+    parts = formatted.split('e')
+    if len(parts) == 1:
+        return parts[0]
+    base, exponent = parts
+    exponent = int(exponent)
+    if exponent == 0:
+        return base
+    return f'{base}·10{to_superscript(str(exponent))}'
+
+
+def format_coord(coord: str) -> str:
+    """Format a coordinate with Greek letters and potential subscripts for momenta."""
+    new_coord = _GREEK_MAP.get(coord, coord)
+    if new_coord == coord and coord.startswith('p') and len(coord) > 1:
+        # Try momenta
+        momentum = new_coord[1:]
+        momentum = to_subscript(_GREEK_MAP.get(momentum, momentum))
+        return f'p{momentum}'
+    return new_coord
+
+
+@overload
+def format_polynomial(
+    tpsa: _TpsaBase[Any, Any],
+    labels: Sequence[str],
+    style: Literal['unicode', 'code'],
+    max_terms: int | None = None,
+) -> str: ...
+
+
+@overload
+def format_polynomial(
+    tpsa: _TpsaBase[Any, Any],
+    labels: Sequence[str],
+    style: FormatStyle,
+    max_terms: int | None = None,
+) -> object: ...
+
+
+def format_polynomial(
+    tpsa: _TpsaBase[Any, Any],
+    labels: Sequence[str],
+    style: FormatStyle,
+    max_terms: int | None = None,
+) -> object:
     """Format ``tpsa`` using ``labels`` for variables and parameters."""
-    coefficients = tpsa.to_dict()
+    if max_terms is not None and max_terms < 0:
+        message = 'max_terms must be non-negative or None'
+        raise ValueError(message)
+
+    coeffs = tpsa.monomial_coeffs()
+    end = ''
+    if max_terms is not None:
+        coefficients = dict(list(coeffs.items())[:max_terms])
+        if len(coefficients) < len(coeffs):
+            end = ' + ...'
+    else:
+        coefficients = coeffs
+    if style == 'unicode':
+        if not coefficients and end:
+            return '...'
+        return _format_unicode(coefficients, labels) + end
     if style == 'code':
-        return _format_code(coefficients, labels)
+        if not coefficients and end:
+            return '...'
+        return _format_code(coefficients, labels) + end
     if style == 'math':
         return _format_math(coefficients, labels)
     if style == 'table':
         return _format_table(coefficients, labels)
-    message = "Style must be 'code', 'math', or 'table'"
+    message = "Style must be 'unicode', 'code', 'math', or 'table'"
     raise ValueError(message)
 
 
-def _format_code(coeffs: dict[tuple[int, ...], float], labels: Sequence[str]) -> str:
+def _format_unicode(coeffs: dict[tuple[int, ...], float | complex], labels: Sequence[str]) -> str:
+    """Format a series into an expression such as ``'1.38·10⁻¹² + ζ + 2pζ - 3ζ² - 2ζpζ - pζ²'``."""
+    formatted_labels = tuple(format_coord(ll) for ll in labels)
+    return _format_terms(
+        coeffs,
+        formatted_labels,
+        separator='·',
+        format_power=lambda label, exponent: f'{label}{to_superscript(exponent)}',
+        format_coeff=format_coeff,
+    )
+
+
+def _format_code(coeffs: dict[tuple[int, ...], float | complex], labels: Sequence[str]) -> str:
     """Format a series into an expression such as ``'12 + 2 * x + 3 * x * y**2'``."""
     return _format_terms(
         coeffs,
@@ -41,7 +269,7 @@ def _format_code(coeffs: dict[tuple[int, ...], float], labels: Sequence[str]) ->
 
 
 @no_type_check
-def _format_math(coeffs: dict[tuple[int, ...], float], labels: Sequence[str]) -> object:
+def _format_math(coeffs: dict[tuple[int, ...], float | complex], labels: Sequence[str]) -> object:
     """Format a series as Jupyter-friendly Math object, e.g. ``Math('12 + 2 x + 3 x y^{2}')``."""
     from IPython.display import Math
 
@@ -55,10 +283,11 @@ def _format_math(coeffs: dict[tuple[int, ...], float], labels: Sequence[str]) ->
 
 
 def _format_terms(
-    coeffs: dict[tuple[int, ...], float],
+    coeffs: dict[tuple[int, ...], float | complex],
     labels: Sequence[str],
     separator: str,
     format_power: Callable[[str, int], str],
+    format_coeff: Callable[[float], str] | None = None,
 ) -> str:
     if not coeffs:
         return '0'
@@ -66,14 +295,39 @@ def _format_terms(
     chunks: list[str] = []
     for monomial, coefficient in coeffs.items():
         factors = _factors(monomial, labels, format_power)
+        if isinstance(coefficient, complex):
+            if coefficient.imag != 0:
+                if coefficient.real == 0:
+                    real = '0'
+                else:
+                    real = (
+                        f'{coefficient.real:g}'
+                        if format_coeff is None
+                        else format_coeff(coefficient.real)
+                    )
+                imag = (
+                    f'{abs(coefficient.imag):g}'
+                    if format_coeff is None
+                    else format_coeff(abs(coefficient.imag))
+                )
+                sign = '+' if coefficient.imag > 0 else '-'
+                term = f'({real}{sign}{imag}j)'
+                if factors:
+                    term += separator + separator.join(factors)
+                chunks.append(term if not chunks else f' + {term}')
+                continue
+            coefficient = coefficient.real
+
         magnitude = abs(coefficient)
         if factors and magnitude == 1.0:
             term = separator.join(factors)
-        elif factors:
-            factor_text = separator.join(factors)
-            term = f'{magnitude:g}{separator}{factor_text}'
         else:
-            term = f'{magnitude:g}'
+            magnitude_text = f'{magnitude:g}' if format_coeff is None else format_coeff(magnitude)
+            if factors:
+                factor_text = separator.join(factors)
+                term = f'{magnitude_text}{separator}{factor_text}'
+            else:
+                term = magnitude_text
 
         if not chunks:
             chunks.append(f'-{term}' if coefficient < 0 else term)
@@ -97,7 +351,7 @@ def _factors(
     return factors
 
 
-def _format_table(coeffs: dict[tuple[int, ...], float], labels: Sequence[str]) -> object:
+def _format_table(coeffs: dict[tuple[int, ...], float | complex], labels: Sequence[str]) -> object:
     """Format a series into a rich ``Table``.
 
     E.g. for Tpsa({(0, 0, 0): 12.0, (1, 0, 0): 2.0, (1, 2, 0): 3.0}):

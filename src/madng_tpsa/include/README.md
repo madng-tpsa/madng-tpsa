@@ -82,8 +82,9 @@ The `mo` argument is the maximum order for this particular series. Passing
 Conceptually, a TPSA holds:
 
 - a pointer to its descriptor;
-- its own active maximum order;
-- the range of orders that currently contain non-zero terms;
+- its own active maximum order for which memory has been allocated`ao`;
+- its current trunctation order `mo` (with `mo` $\leq$`ao`)
+- the range of orders that currently contain non-zero terms `lo` -> `hi`;
 - optional metadata such as a user id and name;
 - the coefficient array.
 
@@ -115,6 +116,7 @@ $a = 0$ and $b = 5$.
 | `void mad_tpsa_del(const tpsa_t *t)` | Free a TPSA. |
 | `const desc_t* mad_tpsa_desc(const tpsa_t *t)` | Return the descriptor that defines the TPSA's algebraic space. |
 | `ord_t mad_tpsa_ord(const tpsa_t *t, log_t hi_)` | Return the active maximum order, or the highest currently non-zero order when `hi_` is true. |
+| `ord_t mad_tpsa_mo(tpsa_t *t, ord_t mo)` | Change the truncation order to `mo` (which has to be smaller than `t->ao`). Terms of higher degree will be truncated.|
 | `log_t mad_tpsa_isnul(const tpsa_t *t)` | Test whether the series is zero. |
 | `log_t mad_tpsa_isval(const tpsa_t *t)` | Test whether the series contains only a constant coefficient. |
 | `void mad_tpsa_clear(tpsa_t *t)` | Clear all coefficients. madng_tpsa uses this before loading coefficients from a dictionary. |
@@ -243,14 +245,39 @@ and may refer to ordinary variables or appended parameters unless otherwise note
 | `void mad_tpsa_integ(const tpsa_t *a, tpsa_t *c, idx_t iv)` | Formal indefinite integral of `a` with respect to variable/parameter index `iv`. The integration constant is zero. |
 | `void mad_tpsa_deriv(const tpsa_t *a, tpsa_t *c, idx_t iv)` | First partial derivative with respect to variable/parameter index `iv`. |
 | `void mad_tpsa_derivm(const tpsa_t *a, tpsa_t *c, ssz_t n, const ord_t m[])` | Higher or mixed partial derivative. The monomial `m` gives derivative orders; for example $(2, 1)$ means $\partial^3/(\partial x^2\,\partial y)$ in a two-variable descriptor. |
-| `void mad_tpsa_poisbra(const tpsa_t *a, const tpsa_t *b, tpsa_t *c, int nv)` | Poisson bracket $[a,b] = \sum_i \partial a/\partial q_i\,\partial b/\partial p_i - \partial a/\partial p_i\,\partial b/\partial q_i$, using canonical variable pairs $(q_1,p_1), (q_2,p_2), \ldots$ stored as indices $(1,2), (3,4), \ldots$. Passing $nv = 0$ uses all available variable pairs; otherwise MAD-NG uses $nv/2$ pairs. madng_tpsa exposes this as `num_pairs`, validates $0 < 2\,\mathrm{num\_pairs} \le \mathrm{num\_vars}$, and passes $2\,\mathrm{num\_pairs}$ to C. |
+| `void mad_tpsa_poisbra(const tpsa_t *a, const tpsa_t *b, tpsa_t *c, int nv)` | Poisson bracket $\llbracket a,b \rrbracket = \sum_i \partial a/\partial q_i\,\partial b/\partial p_i - \partial a/\partial p_i\,\partial b/\partial q_i$, using canonical variable pairs $(q_1,p_1), (q_2,p_2), \ldots$ stored as indices $(1,2), (3,4), \ldots$. Passing $nv = 0$ uses all available variable pairs; otherwise MAD-NG uses $nv/2$ pairs. madng_tpsa exposes this as `num_pairs`, validates $0 < 2\,\mathrm{num\_pairs} \le \mathrm{num\_vars}$, and passes $2\,\mathrm{num\_pairs}$ to C. |
 | `void mad_tpsa_taylor(const tpsa_t *a, ssz_t n, const num_t coef[], tpsa_t *c)` | Evaluate $\sum_i \mathrm{coef}[i]\,(a - a_0)^i$, where $a_0$ is the constant part. Coefficients are already Taylor coefficients, so for a scalar function $f$ pass $f(a_0)$, $f'(a_0)$, $f''(a_0)/2!$, and so on. |
 | `void mad_tpsa_taylor_h(const tpsa_t *a, ssz_t n, const num_t coef[], tpsa_t *c)` | Same mathematical result as `mad_tpsa_taylor`, evaluated with Horner's method. MAD-NG's implementation notes say this can be slower because multiplication is always full order. |
+
+Vector field operations
+
+| Function | Description |
+| --- | --- |
+| `void mad_tpsa_vec2fld(ssz_t na, const tpsa_t *a,tpsa_t *mc[])` | Change a scalar field `a` ($f$, a generator) into a vector field `c` ($F$). This follows the sign convemtion $F = -S \nabla f $.|
+| `void mad_tpsa_fld2vec(ssz_t na, const tpsa_t *ma[], tpsa_t *c)` | Retrieve a scalar field `c` ($f$) from a vector field `a` ($F$): $f(x) = \int\limits_0^x S F(x';0) dx'$|
+| `void mad_tpsa_fgrad(ssz_t na, const tpsa_t *ma[], const tpsa_t * b  , tpsa_t *c)` | Take the scalar product between a vector field `a` ($K$) and the derivative of the scalar `b` ($f$) and store in `c` ($g$): $g = K\cdot \nabla f$ |
+| `void mad_tpsa_liebra(ssz_t na, const tpsa_t *ma[], const tpsa_t *mb[], tpsa_t *mc[])` | Take the component-wise Lie bracket between vector fields `a` ($F$) and `b` ($G$) and store in `c` ($K$): $K^i = F\cdot\nabla G^i - G\cdot\nabla F^i$ |
+| `void mad_tpsa_exppb(ssz_t na, const tpsa_t *ma[], ssz_t nb, const tpsa_t *mb[], tpsa_t *mc[])` | Take the component-wise exponentiated Lie bracket between vector fields `a` ($F$) and `b` ($G$) and store in `c` ($K$): $K^i = e^{F^j\partial_j} G^i = G^i + F^j\partial_j(G^i) + \frac{1}{2} F^j\partial_j(F^k\partial_k(G^i)) + \cdots$ (the series is cut by convergence when the component norm reaches <1e-9 or after 100 terms).
+| `void mad_tpsa_logpb(ssz_t na, const tpsa_t *ma[], const tpsa_t *mb[], tpsa_t *mc[])` | exp(log(:F:))K |
+
+Map operations:
+
+| Function | Description |
+| --- | --- |
+| `ord_t mad_tpsa_mord(ssz_t na, const tpsa_t *ma[], log_t hi)` | Maximum order of the map |
+| `num_t mad_tpsa_mnrm(ssz_t na, const tpsa_t *ma[])` | Map norm: sum over all components of the absolute values of all monomial coefficients |
+| `void mad_tpsa_minv(ssz_t na, const tpsa_t *ma[], ssz_t nb, tpsa_t *mc[])` | Inverse of the map |
+| `void mad_tpsa_pminv(ssz_t na, const tpsa_t *ma[], ssz_t nb, tpsa_t *mc[], idx_t select[])` | Partial inverse of the map |
+| `void mad_tpsa_compose(ssz_t na, const tpsa_t *ma[], ssz_t nb, const tpsa_t *mb[], tpsa_t *mc[])` | Compose `a` with `b`: $a \circ b$ |
+| `void mad_tpsa_translate(ssz_t na, const tpsa_t *ma[], ssz_t nb, const num_t tb[], tpsa_t *mc[])` | Translate `a` by a 6D point `b` |
+| `void mad_tpsa_eval(ssz_t na, const tpsa_t *ma[], ssz_t nb, const num_t tb[], num_t   tc[])` | Evaluate `a` in the point `b` (joined list of coordinates and parameters) |
+| `void mad_tpsa_mconv(ssz_t na, const tpsa_t *ma[], ssz_t nc, tpsa_t *mc[], ssz_t n, idx_t t2r_[], int pb)` | Convert maps to another maps using tpsa conversion |
 
 ## High-level combined expressions
 
 These functions fuse common expressions into one C call. madng_tpsa currently uses
-only a small subset directly.
+only a small subset directly. Careful, as there are conditions on the arguments or
+the function fails (like `x->lo` $\leq$ `y->lo` in `mad_tpsa_axpbypc`).
 
 | Function | Description |
 | --- | --- |
