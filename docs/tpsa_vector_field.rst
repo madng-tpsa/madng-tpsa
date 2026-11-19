@@ -57,7 +57,7 @@ a writable array-shaped property.
 ``change_descriptor`` converts a complete field to another compatible descriptor,
 including the output coordinate ordering; ``extend_descriptor`` inserts identity
 components for newly introduced variables. Both use descriptor variable names,
-not merely the number of named_components. ``homogeneous()``, ``truncate()`` and
+not merely the number of variables. ``homogeneous()``, ``truncate()`` and
 ``clear_order()`` operate on every component without modifying the original.
 
 Evaluation, Jacobians, Hessians
@@ -76,7 +76,7 @@ Evaluation, Jacobians, Hessians
    H = m.hessian(wrt='all')         # Shape (2, 3, 3), TPSA-valued
    values = m.evaluate_hessian((2., 3.), param_values=(4.,), wrt='all')
 
-Each Jacobian and Hessian is evaluated in the original descriptor named_components.
+Each Jacobian and Hessian is evaluated in the original descriptor's variable and parameter order.
 
 The inherited generic methods
 :meth:`~madng_tpsa.tensor.TpsaTensor.partial_derivative` and
@@ -101,7 +101,7 @@ Hamiltonian fields and Lie maps
 
 Hamiltonian operations assume an **even** number of descriptor variables,
 ordered in canonical pairs ``(q1, p1, q2, p2, ...)``. Names are not checked for
-physical meaning. Descriptor parameters are not canonical named_components.
+physical meaning. Descriptor parameters are not canonical variables.
 
 MAD-NG's native scalar-to-field convention is
 :math:`G=-S\nabla f`, implemented by

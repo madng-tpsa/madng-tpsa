@@ -17,9 +17,9 @@ if TYPE_CHECKING:
     Scalar: TypeAlias = SupportsFloat | SupportsComplex
     SelectionValue: TypeAlias = bool | int | np.integer[Any]
     TpsaSeries: TypeAlias = Tpsa | ComplexTpsa
-    # A bare all-integer sequence of full descriptor length denotes exponent orders.
-    # For explicit numeric coordinate indices, use a nested (index, multiplicity) pair.
-    DerivativeSpec: TypeAlias = int | str | Tpsa | Sequence[int | str | tuple[int | str, int]]
+    DerivativeDirection: TypeAlias = int | np.integer[Any] | str | Tpsa | ComplexTpsa
+    # A positional derivative argument is one direction, optionally with a multiplicity.
+    DerivativeSpec: TypeAlias = DerivativeDirection | tuple[DerivativeDirection, int]
     DerivativeGroup: TypeAlias = Literal['vars', 'params', 'all']
 
     T = TypeVar('T')

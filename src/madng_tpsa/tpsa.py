@@ -10,9 +10,10 @@ from __future__ import annotations
 from typing import TYPE_CHECKING, SupportsComplex, SupportsFloat, overload
 
 if TYPE_CHECKING:
-    from collections.abc import Iterable
+    from collections.abc import Iterable, Sequence
     from typing import Any, Literal
 
+    from ._typing import DerivativeDirection, DerivativeSpec
     from .complex_tpsa import ComplexTpsa
     from .formatting import FormatStyle
 
@@ -246,7 +247,7 @@ class Tpsa(_TpsaBase[float, SupportsFloat]):
         lib.mad_tpsa_copy(self._ptr, result._ptr)
         return result
 
-    def integrate(self, wrt: int | str | Tpsa) -> Tpsa:
+    def integrate(self, wrt: DerivativeDirection) -> Tpsa:
         """Return the formal integral with respect to ``wrt``.
 
         Parameters
@@ -261,22 +262,26 @@ class Tpsa(_TpsaBase[float, SupportsFloat]):
         lib.mad_tpsa_integ(self._ptr, result._ptr, variable_index)
         return result
 
-    def derivative(self, wrt: int | str | tuple[int, ...] | Tpsa) -> Tpsa:
-        """Return a partial derivative with respect to ``wrt``.
+    def derivative(self, *wrt: DerivativeSpec, orders: Sequence[int] | None = None) -> Tpsa:
+        """Differentiate along one or more directions, optionally with multiplicities.
 
-        Parameters
-        ----------
-        wrt
-            May be a label, a 1-based variable/parameter index, a monomial tuple,
-            or a TPSA with exactly one non-constant coefficient equal to one. See
-            :meth:`_resolve_single_monomial` for accepted inputs.
+        Examples: ``f.derivative(('k', 2), 'q')`` or
+        ``f.derivative(orders=(1, 0, 2))``. Direction indices are 1-based.
         """
-        monomial = self._resolve_single_monomial(wrt)
-        if any(monomial[self.descriptor.num_vars :]):
-            # MAD-NG's multi-index derivative omits parameter multiplicities.
-            # Repeated first derivatives retain the correct factorial factors.
+        from ._derivatives import resolve_derivative_orders
+
+        return self._derivative_from_orders(
+            resolve_derivative_orders(self.descriptor, *wrt, orders=orders)
+        )
+
+    def _derivative_from_orders(self, orders: tuple[int, ...]) -> Tpsa:
+        """Differentiate using an already validated exponent vector."""
+        if sum(orders) > self.truncation_order or not self.descriptor.is_valid_monomial(orders):
+            return self.descriptor.zero(order=self.truncation_order)
+        if any(orders[self.descriptor.num_vars :]):
+            # Native multi-index derivatives omit parameter multiplicities.
             current: Tpsa = self
-            for index, multiplicity in enumerate(monomial, start=1):
+            for index, multiplicity in enumerate(orders, start=1):
                 for _ in range(multiplicity):
                     result = self.descriptor.zero(order=self.truncation_order)
                     lib.mad_tpsa_deriv(current._ptr, result._ptr, index)
@@ -284,8 +289,8 @@ class Tpsa(_TpsaBase[float, SupportsFloat]):
             return current
 
         result = self.descriptor.zero(order=self.truncation_order)
-        monomial_arr = ffi.new('unsigned char[]', monomial)
-        lib.mad_tpsa_derivm(self._ptr, result._ptr, len(monomial), monomial_arr)
+        monomial_arr = ffi.new('unsigned char[]', orders)
+        lib.mad_tpsa_derivm(self._ptr, result._ptr, len(orders), monomial_arr)
         return result
 
     def poisson_bracket(self, other: Tpsa, num_pairs: Literal['all'] | int = 'all') -> Tpsa:

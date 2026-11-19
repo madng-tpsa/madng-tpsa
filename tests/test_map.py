@@ -110,7 +110,7 @@ def test_rejects_missing_descriptor_for_numeric_components() -> None:
 
 
 def test_rejects_unknown_named_coordinate() -> None:
-    with pytest.raises(ValueError, match='Unknown named components'):
+    with pytest.raises(ValueError, match='Unknown components'):
         TpsaMap(descriptor=_descriptor(), unrecognised_coordinate=1.0)
 
 

@@ -30,6 +30,7 @@ from warnings import warn
 import numpy as np
 
 from ._cffi import ffi, lib
+from ._derivatives import resolve_derivative_orders
 from .complex_tpsa import ComplexTpsa
 from .descriptor import Descriptor
 from .formatting import format_polynomial
@@ -715,99 +716,20 @@ class TpsaTensor(Generic[TpsaSeriesT]):
         """Return a tensor where all TPSAs have order `degree` removed."""
         return self._new_like([tpsa.clear_order(degree) for tpsa in self.flat])
 
-    def _derivative_orders(self, wrt: DerivativeSpec) -> tuple[int, ...]:
-        """Resolve one mixed-partial specification to descriptor exponent orders.
+    def partial_derivative(self, *wrt: DerivativeSpec, orders: Sequence[int] | None = None) -> Self:
+        """Differentiate every component along the specified directions.
 
-        Integer indices are 1-based across variables followed by parameters.
-        An all-integer sequence is a full order vector; a sequence mixing
-        labels/indices and ``(coordinate, count)`` pairs names directions.
+        Each positional argument is a name, 1-based index, unit first-order
+        (Complex)Tpsa, or ``(direction, multiplicity)`` pair. Use ``orders=``
+        for an explicit full exponent vector.
         """
-        size = self.descriptor.monomial_length
-        if isinstance(wrt, Tpsa):
-            # Preserve scalar TPSA's identity-monomial convention and checks.
-            return self.flat[0]._resolve_single_monomial(wrt)
-
-        if isinstance(wrt, str):
-            factors: tuple[int | builtins.str | tuple[int | builtins.str, int], ...] = (wrt,)
-        elif isinstance(wrt, Integral):
-            if isinstance(wrt, (bool, np.bool_)):
-                err_mess = 'Derivative coordinate must be a name or 1-based index'
-                raise TypeError(err_mess)
-            factors = (int(wrt),)
-        elif isinstance(wrt, Sequence) and not isinstance(wrt, (bytes, bytearray)):
-            factors = tuple(wrt)
-            if factors and all(isinstance(v, Integral) for v in factors):
-                if any(isinstance(v, (bool, np.bool_)) for v in factors):
-                    err_mess = 'Derivative orders must be integers, not booleans'
-                    raise TypeError(err_mess)
-                # `all(isinstance(...))` does not narrow tuple element types for ty.
-                orders = tuple(int(v) for v in cast('tuple[int, ...]', factors))
-                if len(orders) != size:
-                    err_mess = f'Derivative order vector must have length {size}'
-                    raise ValueError(err_mess)
-                if any(v < 0 for v in orders):
-                    err_mess = 'Derivative orders must be nonnegative'
-                    raise ValueError(err_mess)
-                if not any(orders):
-                    err_mess = 'Derivative specification must have positive degree'
-                    raise ValueError(err_mess)
-                return orders
-        else:
-            err_mess = 'Invalid derivative specification'
-            raise TypeError(err_mess)
-
-        powers = [0] * size
-        for factor in factors:
-            if isinstance(factor, tuple):
-                if len(factor) != 2:
-                    err_mess = 'Derivative factor must be (coordinate, multiplicity)'
-                    raise ValueError(err_mess)
-                coordinate, count = factor
-            else:
-                coordinate, count = factor, 1
-            if not isinstance(coordinate, (str, Integral)) or isinstance(
-                coordinate, (bool, np.bool_)
-            ):
-                err_mess = 'Derivative coordinate must be a name or 1-based index'
-                raise TypeError(err_mess)
-            if not isinstance(count, Integral) or isinstance(count, (bool, np.bool_)):
-                err_mess = 'Derivative multiplicity must be an integer'
-                raise TypeError(err_mess)
-            if count <= 0:
-                err_mess = 'Derivative multiplicity must be positive'
-                raise ValueError(err_mess)
-            index = self.descriptor.var_or_param_index(coordinate)
-            powers[index - 1] += int(count)
-        if not any(powers):
-            err_mess = 'Derivative specification must have positive degree'
-            raise ValueError(err_mess)
-        return tuple(powers)
-
-    def partial_derivative(self, wrt: DerivativeSpec) -> Self:
-        """Differentiate each TPSA without changing the tensor's shape or type.
-
-        ``wrt`` accepts a 1-based descriptor index, a variable/parameter
-        name, an identity TPSA, a full exponent vector, or a sequence of
-        names/indices and ``(coordinate, multiplicity)`` pairs.
-
-        Examples
-        --------
-        ``tensor.partial_derivative((('q', 2), 'k'))`` computes
-        ``d^3 tensor / dq^2 dk``; ``tensor.partial_derivative((2, 0, 1))``
-        expresses the same derivative for descriptor ``(q, p; k)``.
-        """
-        orders = self._derivative_orders(wrt)
+        parsed = resolve_derivative_orders(self.descriptor, *wrt, orders=orders)
         result: list[Tpsa | ComplexTpsa] = []
         for component in self.flat:
             if not isinstance(component, (Tpsa, ComplexTpsa)):
                 err_mess = 'Tensor contains an unsupported TPSA component'
                 raise TypeError(err_mess)
-            if self.descriptor.is_valid_monomial(orders):
-                result.append(component.derivative(orders))
-            elif isinstance(component, ComplexTpsa):
-                result.append(self.descriptor.complex_zero(order=component.truncation_order))
-            else:
-                result.append(self.descriptor.zero(order=component.truncation_order))
+            result.append(component._derivative_from_orders(parsed))
         return self._new_like(cast('Sequence[TpsaSeriesT]', result))
 
     def derivative_tensor(
@@ -890,7 +812,7 @@ class TpsaTensor(Generic[TpsaSeriesT]):
                     result.append(cached.copy())
                     continue
                 if self.descriptor.is_valid_monomial(key):
-                    derivative = component.derivative(key)
+                    derivative = component._derivative_from_orders(key)
                 elif isinstance(component, ComplexTpsa):
                     derivative = self.descriptor.complex_zero(order=component.truncation_order)
                 else:

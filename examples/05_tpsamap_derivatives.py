@@ -14,8 +14,8 @@ param_values = (4.0,)
 
 # General partials apply the same derivative to each component and keep
 # the existing tensor shape (a map therefore remains a map).
-by_name = mapping.partial_derivative((('q', 2), 'k'))
-by_exponents = mapping.partial_derivative((2, 0, 1))
+by_name = mapping.partial_derivative(('q', 2), 'k')
+by_exponents = mapping.partial_derivative(orders=(2, 0, 1))
 assert isinstance(by_name, TpsaMap)
 assert by_name.shape == mapping.shape
 np.testing.assert_allclose(
@@ -80,7 +80,7 @@ print()
 
 # Rank independence: the same operations work on arbitrary tensors.
 matrix = TpsaTensor([[q**2 * k, q * p], [k * p**2, p**3]])
-differentiated_matrix = matrix.partial_derivative((('q', 2), 'k'))
+differentiated_matrix = matrix.partial_derivative(('q', 2), 'k')
 assert differentiated_matrix.shape == (2, 2)
 higher_matrix = matrix.derivative_tensor(2, wrt='all')
 assert higher_matrix.shape == (2, 2, 3, 3)

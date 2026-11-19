@@ -193,7 +193,7 @@ def test_complex_differential_algebra():
     f = (1 + 2j) * x * x * y
 
     assert f.derivative('x').get((1, 1)) == pytest.approx(2 + 4j)
-    assert f.derivative((2, 1)).const_part == pytest.approx(2 + 4j)
+    assert f.derivative(orders=(2, 1)).const_part == pytest.approx(2 + 4j)
     assert f.integrate('x').get((3, 1)) == pytest.approx((1 + 2j) / 3)
     assert x.poisson_bracket(y).const_part == pytest.approx(1)
 
@@ -210,12 +210,12 @@ def test_complex_derivative_resolves_variable_and_parameter_specifications():
         assert f.derivative(specification).equals(f.derivative(real_x))
     for specification in (2, 'k', real_k):
         assert f.derivative(specification).equals(f.derivative(real_k))
-    assert f.derivative((1, 1)).get((1, 0)) == pytest.approx(2)
-    assert f.derivative(real_x * real_x).equals(f.derivative((2, 0)))
+    assert f.derivative(1, 2).get((1, 0)) == pytest.approx(2)
+    assert f.derivative(real_x, real_x).equals(f.derivative(orders=(2, 0)))
 
-    with pytest.raises(ValueError, match='coefficient 1'):
+    with pytest.raises(ValueError, match='unit first-order'):
         f.derivative(2.0 * real_x)
-    with pytest.raises(ValueError, match='identity variable'):
+    with pytest.raises(ValueError, match='unit first-order'):
         f.integrate(real_x * real_x)
 
 

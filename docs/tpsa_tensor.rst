@@ -16,7 +16,7 @@ array shape; all polynomial components share one descriptor. A rank-one
    tensor = TpsaTensor([[q**2 + k*p, p], [q*p, k*q]])
    assert tensor.shape == (2, 2)
 
-   partial = tensor.partial_derivative((('q', 1), 'k'))
+   partial = tensor.partial_derivative('q', 'k')
    assert partial.shape == (2, 2)
    hessian = tensor.derivative_tensor(2, wrt='all')
    assert hessian.shape == (2, 2, 3, 3)
@@ -24,29 +24,29 @@ array shape; all polynomial components share one descriptor. A rank-one
 Derivatives
 -----------
 
-``partial_derivative(spec)`` preserves the input tensor's shape and class.
-Directions can be specified using names, one-based integer indices, a
-representable single-monomial TPSA, or a full multi-index of exponents. A
-sequence of ``(direction, multiplicity)`` pairs and individual names is also
-accepted. For ``(q, p; k)``, all of the following describe
+``partial_derivative(*wrt, orders=None)`` preserves the tensor's shape and class.
+Each positional argument specifies **one direction** (a name, 1-based index,
+or a unit first-order real/complex TPSA), or a ``(direction, multiplicity)``
+pair. For ``(q, p; k)``, these calls all mean
 :math:`\partial^3 / \partial q^2\partial k`:
 
 .. code-block:: python
 
-   tensor.partial_derivative((('q', 2), 'k'))
-   tensor.partial_derivative(((1, 2), 3))
-   tensor.partial_derivative((2, 0, 1))
+   tensor.partial_derivative(('q', 2), 'k')
+   tensor.partial_derivative((1, 2), 3)
+   tensor.partial_derivative(q, q, k)
+   tensor.partial_derivative(orders=(2, 0, 1))
 
-A bare all-integer sequence is interpreted as a **full exponent vector**, not
-a sequence of coordinate indices. Indices used as individual directions are
-one-based in descriptor variable/parameter order. Invalid names, lengths,
-negative orders, booleans, or unsupported specifications raise an exception.
+An exponent vector is supplied **only** through ``orders=``; a two-integer
+positional tuple means ``(1-based index, multiplicity)`` instead. You cannot
+mix ``orders=`` and positional directions. Invalid names, negative
+multiplicities, booleans, and unsupported specifications raise errors.
 Derivatives beyond the descriptor's representable order evaluate to zero.
 
-``derivative_tensor(order, wrt='variables')`` appends
+``derivative_tensor(order, wrt='vars')`` appends
 ``order`` derivative axes, each of length equal to the number of selected
-directions (specified with ``wrt``, which is  ``'variables'``,
-``'parameters'``, or ``'all'``). Original axes are left unchanged. When
+directions (specified with ``wrt``, which is ``'vars'``,
+``'params'``, or ``'all'``). Original axes are left unchanged. When
 ``wrt='all'``, variables precede parameters in each derivative axis.
 
 For performance and storage, the result has ``tensor.size * n**order``

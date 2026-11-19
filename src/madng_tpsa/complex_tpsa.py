@@ -10,8 +10,10 @@ from __future__ import annotations
 from typing import TYPE_CHECKING, SupportsComplex, SupportsFloat
 
 if TYPE_CHECKING:
-    from collections.abc import Iterable
+    from collections.abc import Iterable, Sequence
     from typing import Any, Literal
+
+    from ._typing import DerivativeDirection, DerivativeSpec
 
 import operator
 from numbers import Integral
@@ -279,7 +281,7 @@ class ComplexTpsa(_TpsaBase[complex, SupportsFloat | SupportsComplex]):
         lib.mad_ctpsa_imag(self._ptr, result._ptr)
         return result
 
-    def integrate(self, wrt: int | str | Tpsa) -> ComplexTpsa:
+    def integrate(self, wrt: DerivativeDirection) -> ComplexTpsa:
         """Return the formal integral with respect to ``wrt``.
 
         Parameters
@@ -293,22 +295,26 @@ class ComplexTpsa(_TpsaBase[complex, SupportsFloat | SupportsComplex]):
         lib.mad_ctpsa_integ(self._ptr, result._ptr, self._integration_index(wrt))
         return result
 
-    def derivative(self, wrt: int | str | tuple[int, ...] | Tpsa) -> ComplexTpsa:
-        """Return a partial derivative with respect to ``wrt``.
+    def derivative(self, *wrt: DerivativeSpec, orders: Sequence[int] | None = None) -> ComplexTpsa:
+        """Differentiate along one or more directions, optionally with multiplicities.
 
-        Parameters
-        ----------
-        wrt
-            May be a label, a 1-based variable/parameter index, a monomial tuple,
-            or a TPSA with exactly one non-constant coefficient equal to one. See
-            :meth:`_resolve_single_monomial` for accepted inputs.
+        Examples: ``f.derivative(('k', 2), 'q')`` or
+        ``f.derivative(orders=(1, 0, 2))``. Direction indices are 1-based.
         """
-        monomial = self._resolve_single_monomial(wrt)
-        if any(monomial[self.descriptor.num_vars :]):
-            # MAD-NG's multi-index derivative omits parameter multiplicities.
-            # Repeated first derivatives retain the correct factorial factors.
+        from ._derivatives import resolve_derivative_orders
+
+        return self._derivative_from_orders(
+            resolve_derivative_orders(self.descriptor, *wrt, orders=orders)
+        )
+
+    def _derivative_from_orders(self, orders: tuple[int, ...]) -> ComplexTpsa:
+        """Differentiate using an already validated exponent vector."""
+        if sum(orders) > self.truncation_order or not self.descriptor.is_valid_monomial(orders):
+            return self.descriptor.complex_zero(order=self.truncation_order)
+        if any(orders[self.descriptor.num_vars :]):
+            # Native multi-index derivatives omit parameter multiplicities.
             current: ComplexTpsa = self
-            for index, multiplicity in enumerate(monomial, start=1):
+            for index, multiplicity in enumerate(orders, start=1):
                 for _ in range(multiplicity):
                     result = self.descriptor.complex_zero(order=self.truncation_order)
                     lib.mad_ctpsa_deriv(current._ptr, result._ptr, index)
@@ -316,8 +322,8 @@ class ComplexTpsa(_TpsaBase[complex, SupportsFloat | SupportsComplex]):
             return current
 
         result = self.descriptor.complex_zero(order=self.truncation_order)
-        monomial_arr = ffi.new('unsigned char[]', monomial)
-        lib.mad_ctpsa_derivm(self._ptr, result._ptr, len(monomial), monomial_arr)
+        monomial_arr = ffi.new('unsigned char[]', orders)
+        lib.mad_ctpsa_derivm(self._ptr, result._ptr, len(orders), monomial_arr)
         return result
 
     def poisson_bracket(

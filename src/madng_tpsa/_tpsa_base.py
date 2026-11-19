@@ -11,7 +11,7 @@ if TYPE_CHECKING:
 
     from numpy.typing import DTypeLike
 
-    from .tpsa import Tpsa
+    from ._typing import DerivativeDirection
 
 import json
 import operator
@@ -273,6 +273,10 @@ class _TpsaBase(ABC, Generic[_Coefficient, _InputCoefficient]):
     def copy(self) -> Self:
         """Return an independent copy of this TPSA."""
 
+    @abstractmethod
+    def _derivative_from_orders(self, orders: tuple[int, ...]) -> Self:
+        """Differentiate using an already validated exponent vector."""
+
     @staticmethod
     @abstractmethod
     def _to_json_friendly_coefficient(value: _Coefficient) -> _JsonCoefficient:
@@ -376,70 +380,19 @@ class _TpsaBase(ABC, Generic[_Coefficient, _InputCoefficient]):
             message = 'Monomial is not valid for this descriptor'
             raise ValueError(message)
 
-    def _resolve_single_monomial(
-        self, monomial: int | builtins.str | tuple[int, ...] | Tpsa
-    ) -> tuple[int, ...]:
-        """Validate and resolve a single non-constant monomial specification to an exponent tuple.
+    def _integration_index(self, wrt: DerivativeDirection) -> int:
+        """Resolve one variable direction for formal integration."""
+        from ._derivatives import resolve_derivative_orders
 
-        Notes
-        -----
-        The input ``monomial`` (variable or parameter) can be specified in different ways.
-
-        * If it's a tuple, the monomial specification is validated and returned directly.
-        * If it's a ``str``, the monomial labelled ``monomial`` in the descriptor is returned.
-        * If it's an ``int``, the monomial whose combined coordinate index is ``monomial`` is
-          returned: for a TPSA with 3 variables and 2 parameters, values 1 to 3 correspond to
-          the variables and 4, 5 to the parameters.
-        * If it's a ``Tpsa``, it's checked that there is exactly one non-zero coefficient and
-          that it's equal to one. The monomial corresponding to that coefficient is returned.
-
-        Validation checks that the monomial does not correspond to the constant part.
-        """
-        from .tpsa import Tpsa
-
-        length = self.descriptor.monomial_length
-
-        if isinstance(monomial, Tpsa):
-            self._check_compatible(monomial)
-            monomial_arr = ffi.new('unsigned char[]', length)
-            if lib.madng_tpsa_tpsa_single_monomial(monomial.ptr, length, monomial_arr) < 0:
-                message = 'TPSA must contain exactly one non-constant monomial with coefficient 1'
-                raise ValueError(message)
-        elif isinstance(monomial, (int, str)):
-            coordinate_index = self.descriptor.var_or_param_index(monomial)
-            monomial_arr = [0] * length
-            monomial_arr[coordinate_index - 1] = 1
-        else:
-            monomial_arr = monomial
-
-        monomial_orders = tuple(monomial_arr)
-
-        if len(monomial_orders) != length:
-            raise ValueError(f'Monomial must have length {length}')
-
-        if sum(monomial_orders) <= 0:
-            message = 'Monomial must have a positive degree'
-            raise ValueError(message)
-
-        if not self.descriptor.is_valid_monomial(monomial_orders):
-            message = 'Monomial is not valid for this descriptor'
-            raise ValueError(message)
-
-        return monomial_orders
-
-    def _integration_index(self, monomial: int | builtins.str | Tpsa) -> int:
-        """Resolve an identity variable for formal integration."""
-        monomial_orders = self._resolve_single_monomial(monomial)
-        if sum(monomial_orders) != 1:
-            message = 'Integration requires an identity variable'
-            raise ValueError(message)
-
-        variable_index = monomial_orders.index(1) + 1
-        if variable_index > self.descriptor.num_vars:
-            message = 'MAD-NG does not support integration with respect to parameters'
-            raise NotImplementedError(message)
-
-        return variable_index
+        orders = resolve_derivative_orders(self.descriptor, wrt)
+        if sum(orders) != 1:
+            err_mess = 'Integration requires a single variable direction'
+            raise ValueError(err_mess)
+        index = orders.index(1) + 1
+        if index > self.descriptor.num_vars:
+            err_mess = 'MAD-NG does not support integration with respect to parameters'
+            raise NotImplementedError(err_mess)
+        return index
 
     def _compatible(self, other: _TpsaBase) -> bool:
         return self.descriptor is other.descriptor and bool(

@@ -36,13 +36,13 @@ def _tensor() -> TpsaTensor:
 
 def test_partial_derivative_preserves_map_type_shape_and_values() -> None:
     m = _map()
-    result = m.partial_derivative((('der_q', 2), 'der_k'))
+    result = m.partial_derivative(('der_q', 2), 'der_k')
     assert isinstance(result, TpsaMap)
     assert result.shape == m.shape
     assert result.component_names == m.component_names
     np.testing.assert_allclose(result.evaluate((2, 3), param_values=(4,)), [2, 0])
     np.testing.assert_allclose(
-        m.partial_derivative((2, 0, 1)).evaluate((2, 3), param_values=(4,)),
+        m.partial_derivative(orders=(2, 0, 1)).evaluate((2, 3), param_values=(4,)),
         [2, 0],
     )
     np.testing.assert_allclose(m.evaluate((2, 3), param_values=(4,)), [152, 146])
@@ -52,26 +52,26 @@ def test_partial_derivative_accepts_labels_indices_repetition_and_identity_tpsa(
     m = _map()
     q = m.descriptor.var('der_q')
     k = m.descriptor.param('der_k')
-    for spec in (1, 'der_q', q, ('der_q',)):
+    for spec in (1, 'der_q', q, ('der_q', 1)):
         np.testing.assert_allclose(
             m.partial_derivative(spec).evaluate((2, 3), param_values=(4,)),
             [34, 25],
         )
-    for spec in (3, 'der_k', k, (('der_k', 1),)):
+    for spec in (3, 'der_k', k, ('der_k', 1)):
         np.testing.assert_allclose(
             m.partial_derivative(spec).evaluate((2, 3), param_values=(4,)),
             [53, 54],
         )
-    for spec in ((('der_q', 2), 'der_k'), ((1, 2), 3), (2, 0, 1)):
+    for directions in ((('der_q', 2), 'der_k'), ((1, 2), 3)):
         np.testing.assert_allclose(
-            m.partial_derivative(spec).evaluate((2, 3), param_values=(4,)),
+            m.partial_derivative(*directions).evaluate((2, 3), param_values=(4,)),
             [2, 0],
         )
 
 
 def test_partial_derivative_preserves_rank_two_tensor_and_view() -> None:
     t = _tensor()
-    result = t.partial_derivative((('ten_q', 2), 'ten_k'))
+    result = t.partial_derivative(('ten_q', 2), 'ten_k')
     assert type(result) is TpsaTensor
     assert result.shape == (2, 2)
     np.testing.assert_allclose(result.evaluate((2, 3), param_values=(4,)), [[2, 0], [0, 0]])
@@ -187,32 +187,34 @@ def test_order_beyond_descriptor_returns_independent_zero_components() -> None:
     fourth = m.derivative_tensor(4)
     assert fourth.shape == (2, 2, 2, 2, 2)
     np.testing.assert_array_equal(fourth.evaluate((2, 3)), np.zeros(fourth.shape))
-    zero_map = m.partial_derivative((4, 0))
+    zero_map = m.partial_derivative(orders=(4, 0))
     np.testing.assert_array_equal(zero_map.evaluate((2, 3)), (0, 0))
     assert zero_map.flat[0] is not m.flat[0]
 
 
 @pytest.mark.parametrize(
-    'spec, error',
+    'args, kwargs, error',
     [
-        ('not_in_descriptor', KeyError),
-        (4, ValueError),
-        (0, ValueError),
-        ((1, 2), ValueError),  # wrong number of exponent entries
-        ((-1, 0, 1), ValueError),
-        ((True, 0, 1), TypeError),
-        ((0, 0, 0), ValueError),
-        ((('der_q', 0),), ValueError),
-        ((('der_q', -1),), ValueError),
-        ((('der_q', 1.5),), TypeError),
-        (True, TypeError),
-        ((('missing', 2),), KeyError),
-        (((5, 2),), ValueError),
+        (('not_in_descriptor',), {}, KeyError),
+        ((4,), {}, ValueError),
+        ((0,), {}, ValueError),
+        ((), {'orders': (1, 2)}, ValueError),
+        ((), {'orders': (-1, 0, 1)}, ValueError),
+        ((), {'orders': (True, 0, 1)}, TypeError),
+        ((), {'orders': (0, 0, 0)}, ValueError),
+        ((('der_q', 0),), {}, ValueError),
+        ((('der_q', -1),), {}, ValueError),
+        ((('der_q', 1.5),), {}, TypeError),
+        ((True,), {}, TypeError),
+        ((('missing', 2),), {}, KeyError),
+        (((5, 2),), {}, ValueError),
     ],
 )
-def test_partial_rejects_invalid_specifications(spec: Any, error: type[Exception]) -> None:
+def test_partial_rejects_invalid_specifications(
+    args: tuple[Any, ...], kwargs: dict[str, Any], error: type[Exception]
+) -> None:
     with pytest.raises(error):
-        _map().partial_derivative(spec)
+        _map().partial_derivative(*args, **kwargs)
 
 
 @pytest.mark.parametrize('order', [0, -1, True, cast('Any', 1.5)])
@@ -260,7 +262,7 @@ def test_tensor_partial_and_full_derivative_consistency() -> None:
     q, p = d.vars()
     m = TpsaMap([q**3 + q * p**2, q * p**3])
     hessian = m.hessian()
-    selected = m.partial_derivative((1, 1))
+    selected = m.partial_derivative(1, 2)
     for i, component in enumerate(selected.components):
         assert component == hessian[i, 0, 1]
 
@@ -276,11 +278,11 @@ def test_real_parameter_multiindex_matches_successive_derivatives() -> None:
     k = d.param('multi_k')
     f = 2 * k**2 * p + 3 * k**2 * q + 5 * k**3
 
-    assert f.derivative((0, 1, 1)) == 4 * k
-    assert f.derivative((0, 0, 2)) == 4 * p + 6 * q + 30 * k
-    assert f.derivative((0, 0, 3)) == d.constant(30)
-    assert f.derivative((0, 0, 2)) == f.derivative('multi_k').derivative('multi_k')
-    assert f.derivative((0, 1, 1)) == f.derivative('multi_p').derivative('multi_k')
+    assert f.derivative('multi_p', 'multi_k') == 4 * k
+    assert f.derivative(orders=(0, 0, 2)) == 4 * p + 6 * q + 30 * k
+    assert f.derivative(('multi_k', 3)) == d.constant(30)
+    assert f.derivative(('multi_k', 2)) == f.derivative('multi_k').derivative('multi_k')
+    assert f.derivative(orders=(0, 1, 1)) == f.derivative('multi_p').derivative('multi_k')
 
 
 def test_complex_parameter_multiindex_matches_successive_derivatives() -> None:
@@ -294,9 +296,9 @@ def test_complex_parameter_multiindex_matches_successive_derivatives() -> None:
     k = d.param('cmulti_k')
     f = (1 + 2j) * k**2 * q + (2 - 1j) * k * q * p + (3 - 4j) * k**3
 
-    assert f.derivative((1, 0, 1)) == (2 + 4j) * k + (2 - 1j) * p
-    assert f.derivative((0, 0, 2)) == (2 + 4j) * q + (18 - 24j) * k
-    assert f.derivative((0, 0, 2)) == f.derivative('cmulti_k').derivative('cmulti_k')
+    assert f.derivative('cmulti_q', 'cmulti_k') == (2 + 4j) * k + (2 - 1j) * p
+    assert f.derivative(orders=(0, 0, 2)) == (2 + 4j) * q + (18 - 24j) * k
+    assert f.derivative(('cmulti_k', 2)) == f.derivative('cmulti_k').derivative('cmulti_k')
 
 
 def test_mixed_multiple_parameters() -> None:
@@ -311,8 +313,8 @@ def test_mixed_multiple_parameters() -> None:
     ell = d.param('two_l')
     f = (2 + 1j) * k**2 * ell * q
 
-    assert f.derivative((0, 0, 2, 1)) == (4 + 2j) * q
-    assert f.derivative((0, 0, 2, 1)) == (
+    assert f.derivative(('two_k', 2), 'two_l') == (4 + 2j) * q
+    assert f.derivative(orders=(0, 0, 2, 1)) == (
         f.derivative('two_k').derivative('two_k').derivative('two_l')
     )
 
@@ -334,7 +336,7 @@ def test_tensor_parameter_hessian_inherits_scalar_fix() -> None:
         [[[10]], [[12]]],
     )
     np.testing.assert_allclose(
-        m.partial_derivative((0, 0, 2)).evaluate((2, 3), param_values=(4,)),
+        m.partial_derivative(orders=(0, 0, 2)).evaluate((2, 3), param_values=(4,)),
         [10, 12],
     )
 
