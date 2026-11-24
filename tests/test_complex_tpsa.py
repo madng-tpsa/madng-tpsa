@@ -461,3 +461,12 @@ def test_complex_grad_uses_full_monomials_with_parameters():
             6 + 7j,
         ]
     )
+
+
+def test_complex_grad_ignores_constant_and_higher_orders():
+    descriptor = madng_tpsa.Descriptor(2, 2, param_names=2, param_order=1)
+    x, px = descriptor.vars([0j, 0j])
+    k1, k2 = descriptor.params([0j, 0j])
+    value = (1 - 2j) + (2 + 3j) * x + 3 * px + 4j * k1 + 5 * k2 + 7 * x * k1 + px**2
+    assert value.grad() == [2 + 3j, 3]
+    assert value.param_grad() == [4j, 5]

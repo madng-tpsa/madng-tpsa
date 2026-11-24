@@ -528,6 +528,15 @@ def test_grad_uses_full_monomials_with_parameters():
     assert value.param_grad() == pytest.approx([4.0, 5.0])
 
 
+def test_grad_ignores_constant_and_higher_orders():
+    descriptor = madng_tpsa.Descriptor(2, 2, param_names=2, param_order=1)
+    x, px = descriptor.vars()
+    k1, k2 = descriptor.params()
+    value = 1.5 + 2 * x + 3 * px + 4 * k1 + 5 * k2 + 7 * x * k1 + px**2
+    assert value.grad() == [2.0, 3.0]
+    assert value.param_grad() == [4.0, 5.0]
+
+
 def test_tpsa_preserves_labelled_descriptor():
     dx = madng_tpsa.Descriptor(var_names=('x', 'px'), order=4)
     dy = madng_tpsa.Descriptor(var_names=('y', 'py'), order=4)
