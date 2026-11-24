@@ -104,15 +104,14 @@ def test_monomial_index_matches_the_stored_coefficient():
     ]
     for value, monomial in enumerate(monomials, start=1):
         t.set(monomial, float(value))
-    for value, monomial in enumerate(monomials, start=1):
-        index = d.monomial_index(monomial)
-        assert lib.mad_tpsa_geti(t.ptr, index) == float(value)
+    indices = d.monomial_index(monomials)
+    assert indices[0] == 0
+    for value, (index, monomial) in enumerate(zip(indices, monomials, strict=True), start=1):
+        assert lib.mad_tpsa_geti(t.ptr, int(index)) == float(value)
         assert t.get(monomial) == float(value)
-
-
-def test_monomial_index_of_the_constant_term_is_zero():
-    d = Descriptor(6, 2)
-    assert d.monomial_index((0, 0, 0, 0, 0, 0)) == 0
+    single = d.monomial_index(monomials[3])
+    assert type(single) is int
+    assert single == indices[3]
 
 
 def test_monomial_index_with_parameters():
@@ -120,19 +119,23 @@ def test_monomial_index_with_parameters():
     t = d.zero()
     monomial = (1, 0, 0, 0, 0, 0, 1, 0)  # one variable times one parameter
     t.set(monomial, 0.25)
-    index = d.monomial_index(monomial)
-    assert lib.mad_tpsa_geti(t.ptr, index) == 0.25
-    # a parameter beyond param_order is not representable
-    with pytest.raises(ValueError, match='Invalid monomial'):
-        d.monomial_index((0, 0, 0, 0, 0, 0, 2, 0))
+    assert lib.mad_tpsa_geti(t.ptr, d.monomial_index(monomial)) == 0.25
 
 
 def test_monomial_index_rejects_invalid_monomials():
-    d = Descriptor(2, 2)
+    d = Descriptor(2, 2, param_names=1, param_order=1)
     with pytest.raises(ValueError, match='Invalid monomial'):
-        d.monomial_index((2, 1))  # total order 3 > 2
+        d.monomial_index((2, 1, 0))  # total order 3 > 2
     with pytest.raises(ValueError, match='Invalid monomial'):
-        d.monomial_index((1, 1, 1))  # wrong length
+        d.monomial_index([(0, 0, 0), (0, 0, 2)])  # beyond param_order
+    with pytest.raises(ValueError, match='Invalid monomial'):
+        d.monomial_index((1, 1))  # wrong length
+    with pytest.raises(TypeError, match='integers'):
+        d.monomial_index((1.0, 0, 0))  # ty: ignore[no-matching-overload]
+    with pytest.raises(TypeError, match='integers'):
+        d.monomial_index(np.ones((1, 3), dtype=bool))
+    with pytest.raises(TypeError, match='integers'):
+        d.monomial_index((True, 0, 0))  # numpy would turn it into 1
 
 
 def test_monomial_index_of_a_low_order_series_is_still_readable():

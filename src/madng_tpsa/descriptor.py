@@ -16,7 +16,7 @@ from __future__ import annotations
 from typing import TYPE_CHECKING, NamedTuple, SupportsComplex, cast, overload
 
 if TYPE_CHECKING:
-    from collections.abc import Iterable, Mapping, Sequence
+    from collections.abc import Mapping, Sequence
     from typing import Any, ClassVar, SupportsFloat
 
     from .complex_tpsa import ComplexTpsa
@@ -394,13 +394,67 @@ class Descriptor:
             return False
         return bool(lib.mad_desc_isvalidm(self._ptr, len(monomial), arr))
 
-    def monomial_index(self, monomial: Iterable[int]) -> int:
-        """Index of ``monomial`` in the descriptor's coefficient array."""
-        m = tuple(int(x) for x in monomial)
-        if not self.is_valid_monomial(m):
-            raise ValueError(f'Invalid monomial {tuple(m)} for this descriptor')
-        arr = ffi.new('unsigned char[]', m)
-        return lib.mad_desc_idxm(self._ptr, len(m), arr)
+    @overload
+    def monomial_index(self, monomials: Sequence[int]) -> int: ...
+
+    @overload
+    def monomial_index(self, monomials: Sequence[Sequence[int]]) -> np.ndarray: ...
+
+    @overload
+    def monomial_index(self, monomials: np.ndarray) -> int | np.ndarray: ...
+
+    def monomial_index(
+        self,
+        monomials: Sequence[int] | Sequence[Sequence[int]] | np.ndarray,
+    ) -> int | np.ndarray:
+        """Return the coefficient-array index of one monomial or of each row of a batch."""
+        rows = np.asarray(monomials)
+        single = rows.ndim == 1
+        if single:
+            rows = rows.reshape(1, -1)
+        length = self.monomial_length
+        if rows.ndim != 2 or rows.shape[1] != length:
+            message = (
+                f'Invalid monomial shape {np.shape(monomials)}, '
+                f'expected ({length},) or (n, {length})'
+            )
+            raise ValueError(message)
+        if rows.dtype.kind not in 'iu':
+            message = f'Monomial orders must be integers, got {rows.dtype}'
+            raise TypeError(message)
+        # numpy turns a bool mixed into a list of ints into an int.
+        if not isinstance(monomials, np.ndarray):
+            orders = (
+                cast('Sequence[object]', monomials)
+                if single
+                else [
+                    order for row in cast('Sequence[Sequence[object]]', monomials) for order in row
+                ]
+            )
+            if any(isinstance(order, (bool, np.bool_)) for order in orders):
+                message = 'Monomial orders must be integers, got a bool'
+                raise TypeError(message)
+        if rows.size and (rows.min() < 0 or rows.max() > 255):
+            message = 'Monomial orders must be in [0, 255]'
+            raise ValueError(message)
+        orders_u8 = np.ascontiguousarray(rows, dtype=np.uint8)
+        pointer = ffi.from_buffer('unsigned char[]', orders_u8)
+        # mad_desc_idxm returns -1 for a monomial beyond the orders.
+        indices = np.array(
+            [
+                lib.mad_desc_idxm(self._ptr, length, pointer + i * length)
+                for i in range(len(orders_u8))
+            ],
+            dtype=np.int64,
+        )
+        invalid = np.flatnonzero(indices < 0)
+        if invalid.size:
+            message = (
+                f'Invalid monomial {tuple(rows[invalid[0]].tolist())}: '
+                'beyond the order or the parameter order of the descriptor'
+            )
+            raise ValueError(message)
+        return int(indices[0]) if single else indices
 
     @overload
     def constant(self, value: SupportsComplex, /) -> ComplexTpsa: ...
