@@ -574,6 +574,15 @@ class TpsaVector(TpsaTensor[TpsaSeriesT]):
         """Promote the components, preserving the TpsaVector container. Only for typing."""
         return cast('TpsaVector[ComplexTpsa]', super().to_complex())
 
+    def substitute(
+        self, /, **substitutions: Scalar | TpsaSeries
+    ) -> TpsaVector[Tpsa] | TpsaVector[ComplexTpsa]:
+        """Substitute variables and parameters, preserving the vector type."""
+        return cast(
+            'TpsaVector[Tpsa] | TpsaVector[ComplexTpsa]',
+            super().substitute(**substitutions),
+        )
+
     @overload
     def __getitem__(self, key: int) -> TpsaSeriesT: ...
 
@@ -830,3 +839,12 @@ class TpsaVectorField(TpsaVector[TpsaSeriesT]):
     def to_complex(self) -> TpsaVectorField[ComplexTpsa]:
         """Promote the components, preserving the TpsaVectorField container. Only for typing."""
         return cast('TpsaVectorField[ComplexTpsa]', super().to_complex())
+
+    def substitute(
+        self, /, **substitutions: Scalar | TpsaSeries
+    ) -> TpsaVectorField[Tpsa] | TpsaVectorField[ComplexTpsa]:
+        """Substitute variables and parameters, preserving the vector field type."""
+        return cast(
+            'TpsaVectorField[Tpsa] | TpsaVectorField[ComplexTpsa]',
+            super().substitute(**substitutions),
+        )

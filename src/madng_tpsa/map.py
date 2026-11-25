@@ -566,3 +566,12 @@ class TpsaMap(TpsaVector[TpsaSeriesT]):
     def compose(self, other: TpsaMap[MapSeriesT]) -> TpsaMap[Tpsa] | TpsaMap[ComplexTpsa]:
         """Compose full coordinate maps, preserving the TpsaMap result type."""
         return cast('TpsaMap[Tpsa] | TpsaMap[ComplexTpsa]', super().compose(other))
+
+    def substitute(
+        self, /, **substitutions: Scalar | TpsaSeries
+    ) -> TpsaMap[Tpsa] | TpsaMap[ComplexTpsa]:
+        """Substitute variables and parameters, preserving the map type."""
+        return cast(
+            'TpsaMap[Tpsa] | TpsaMap[ComplexTpsa]',
+            super().substitute(**substitutions),
+        )

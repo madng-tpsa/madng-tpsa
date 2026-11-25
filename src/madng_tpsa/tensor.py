@@ -974,6 +974,72 @@ class TpsaTensor(Generic[TpsaSeriesT]):
         # Real/complex promotion is dynamic, so the generic result needs a cast.
         return cast('TpsaTensor[Tpsa] | TpsaTensor[ComplexTpsa]', left._new_like(result))
 
+    def substitute(
+        self, /, **substitutions: Scalar | TpsaSeries
+    ) -> TpsaTensor[Tpsa] | TpsaTensor[ComplexTpsa]:
+        """Simultaneously substitute variables and parameters.
+
+        Unspecified variables and parameters retain their identity.
+        Scalars are interpreted as constant polynomials.
+        """
+        if not substitutions:
+            return cast('TpsaTensor[Tpsa] | TpsaTensor[ComplexTpsa]', self.copy())
+
+        descriptor = self.descriptor
+        names = (*descriptor.var_names, *descriptor.param_names)
+        unknown = substitutions.keys() - set(names)
+        if unknown:
+            err_mess = f'Unknown variables or parameters: {sorted(unknown)}'
+            raise KeyError(err_mess)
+
+        # Determine the common descriptor.
+        for value in substitutions.values():
+            if isinstance(value, (Tpsa, ComplexTpsa)):
+                if set(value.descriptor.var_names) != set(descriptor.var_names):
+                    err_mess = 'Incompatible descriptor variables'
+                    raise ValueError(err_mess)
+                descriptor = descriptor.union(value.descriptor)
+
+        # Construct the full substitution array, including parameters.
+        components: list[TpsaSeries] = []
+        names = (*descriptor.var_names, *descriptor.param_names)
+        identities = (*descriptor.vars(), *descriptor.params())
+        for name, identity in zip(names, identities, strict=True):
+            value = substitutions.get(name, identity)
+            if isinstance(value, (Tpsa, ComplexTpsa)):
+                if value.descriptor is not descriptor:
+                    value = value.change_descriptor(descriptor)
+            else:
+                value = descriptor.constant(value)
+            components.append(value)
+
+        # Align descriptors and promote to complex if necessary.
+        left, right, complex_needed = _align_descriptors(
+            self,
+            TpsaTensor(components),
+            allow_var_reordering=True,
+        )
+
+        # Allocate output TPSAs.
+        zero = left.descriptor.complex_zero if complex_needed else left.descriptor.zero
+        result = [zero(order=left.descriptor.order) for _ in range(left.size)]
+        mc = ffi.new('void*[]', [value.ptr for value in result])
+
+        # Construct the substitution pointer array.
+        pointers = [value.ptr for value in right.flat]
+
+        # Work around the native MAD-NG alias-checking bug.
+        pointers.extend([ffi.NULL] * max(0, left.size - right.size))
+        mb = ffi.new('void*[]', pointers)
+        args = (-left.size, left.pointer_array, right.size, mb, mc)
+        if complex_needed:
+            status = lib.madng_ctpsa_protected_map_binary_call(lib.mad_ctpsa_compose, *args)
+        else:
+            status = lib.madng_tpsa_protected_map_binary_call(lib.mad_tpsa_compose, *args)
+        if status:
+            left.flat[0]._raise_mad_error()
+        return cast('TpsaTensor[Tpsa] | TpsaTensor[ComplexTpsa]', left._new_like(result))
+
     # ========================
     # === Numpy Operations ===
     # ========================
