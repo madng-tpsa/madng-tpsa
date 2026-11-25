@@ -26,8 +26,8 @@ f = 2 + 3 * x - y + 4 * x * y + 2 * y**2 + x**3
 
 print('Polynomial f:')
 print('repr:  ', f)
-print('code:  ', f.format('code'))
-print('math:  ', f.format('math'))
+print('code:  ', f.format(style='code'))
+print('math:  ', f.format(style='math'))
 print()
 # repr:   Tpsa({(0, 0): 2.0, (1, 0): 3.0, (0, 1): -1.0, (1, 1): 4.0, (0, 2): 2.0, (3, 0): 1.0})
 # code:   2 + 3 * x - y + 4 * x * y + 2 * y**2 + x**3
@@ -68,27 +68,27 @@ print()
 # highest used order = 3
 
 print('Homogeneous order 2:')
-print(f.homogeneous(2).format('code'))
+print(f.homogeneous(2).format(style='code'))
 print()
 # 4 * x * y + 2 * y**2
 
 print('Truncated through order 2:')
-print(f.truncate(2).format('code'))
+print(f.truncate(2).format(style='code'))
 print()
 # 2 + 3 * x - y + 4 * x * y + 2 * y**2
 
 print('Some algebra and elementary functions:')
 g = (1 + x) ** 2
-print('g =', g.format('code'))
-print('sqrt(g) =', np.sqrt(g).format('code'))
-print('exp(x) =', np.exp(x).format('code'))
+print('g =', g.format(style='code'))
+print('sqrt(g) =', np.sqrt(g).format(style='code'))
+print('exp(x) =', np.exp(x).format(style='code'))
 print()
 # g = 1 + 2 * x + x**2
 # sqrt(g) = 1 + x
 # exp(x) = 1 + x + 0.5 * x**2 + 0.166667 * x**3 + 0.0416667 * x**4
 
 print('Rich coefficient table:')
-console.print(f.format('table'))
+console.print(f.format(style='table'))
 # ┏━━━┳━━━┳━━━━━━━━━━━━━┓
 # ┃ x ┃ y ┃ coefficient ┃
 # ┡━━━╇━━━╇━━━━━━━━━━━━━┩

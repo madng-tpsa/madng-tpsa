@@ -16,6 +16,7 @@ if TYPE_CHECKING:
     from .descriptor import Descriptor
     from .tpsa import Tpsa
 
+from collections import defaultdict
 from numbers import Integral
 
 import numpy as np
@@ -36,6 +37,12 @@ def symplectic_unit_matrix(n: int) -> np.ndarray:
 
     s2 = np.array([[0, 1], [-1, 0]])
     return np.kron(np.eye(n // 2), s2)
+
+
+def symplectic_unit_tensor(n: int, descriptor: Descriptor) -> TpsaTensor:
+    """Canonical symplectic tensor for n phase-space variables."""
+    s = symplectic_unit_matrix(n)
+    return TpsaTensor([[descriptor.constant(float(value)) for value in row] for row in s])
 
 
 def _matrix_norm(matrix: np.ndarray, norm: NormDefinition):
@@ -145,7 +152,9 @@ class TpsaMap(TpsaVector[TpsaSeriesT]):
         res = jj.T @ ss @ jj - ss
         return _matrix_norm(res, norm)
 
-    def non_symplectic_coeffs_by_degree(self, norm: NormDefinition = 'max_abs') -> dict[int, float]:
+    def non_symplectic_coeffs_by_degree(
+        self, norm: NormDefinition = 'max_abs', *, show_params: bool | None = None
+    ) -> tuple[dict[int, float], dict[int | tuple[int, int], float]]:
         """Maximum coefficient-matrix norm per phase-space degree.
 
         Tests formal symplecticity through order N-1.
@@ -161,24 +170,23 @@ class TpsaMap(TpsaVector[TpsaSeriesT]):
 
         for idx, component in enumerate(res.flat):
             i, j = divmod(idx, n)
+            for mono, coeff in component.monomial_coeffs(tol=0).items():
+                if mono not in matrices:
+                    matrices[mono] = np.zeros((n, n), dtype=dtype)
+                matrices[mono][i, j] = coeff
 
-            for monomial, coeff in component.monomial_coeffs(tol=0).items():
-                if monomial not in matrices:
-                    matrices[monomial] = np.zeros((n, n), dtype=dtype)
-
-                matrices[monomial][i, j] = coeff
-
-        # Maximum norm per phase-space degree.
-        result = dict.fromkeys(range(self.truncation_order), 0.0)
+        if show_params is None:
+            show_params = self.num_params > 0
+        result = defaultdict(float)
+        worst_monomials = {}
         for monomial, matrix in matrices.items():
-            degree = sum(monomial[:n])
-            if degree in result:
-                result[degree] = max(
-                    result[degree],
-                    _matrix_norm(matrix, norm),
-                )
+            degree = (sum(monomial[:n]), sum(monomial[n:])) if show_params else sum(monomial[:n])
+            error = _matrix_norm(matrix, norm)
+            if error > result[degree]:
+                result[degree] = error
+                worst_monomials[degree] = monomial
 
-        return result
+        return dict(sorted(result.items())), worst_monomials
 
     # We define the composition operators here, because every composition
     # always involves a map. We use << (lshift) to represent regular

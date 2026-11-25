@@ -16,6 +16,7 @@ if TYPE_CHECKING:
     from ._tpsa_base import _TpsaBase
 
 FormatStyle = Literal['unicode', 'code', 'math', 'table']
+FormatStringStyle = Literal['unicode', 'code']
 
 
 # q is missing
@@ -196,33 +197,43 @@ def format_coord(coord: str) -> str:
 @overload
 def format_polynomial(
     tpsa: _TpsaBase[Any, Any],
-    labels: Sequence[str],
-    style: Literal['unicode', 'code'],
+    *,
+    labels: Sequence[str] | None = None,
+    style: FormatStringStyle,
     max_terms: int | None = None,
+    tol: float | None = None,
 ) -> str: ...
 
 
 @overload
 def format_polynomial(
     tpsa: _TpsaBase[Any, Any],
-    labels: Sequence[str],
+    *,
+    labels: Sequence[str] | None = None,
     style: FormatStyle,
     max_terms: int | None = None,
+    tol: float | None = None,
 ) -> object: ...
 
 
 def format_polynomial(
     tpsa: _TpsaBase[Any, Any],
-    labels: Sequence[str],
-    style: FormatStyle,
+    *,
+    labels: Sequence[str] | None = None,
+    style: FormatStyle = 'unicode',
     max_terms: int | None = None,
+    tol: float | None = None,
 ) -> object:
     """Format ``tpsa`` using ``labels`` for variables and parameters."""
     if max_terms is not None and max_terms < 0:
         message = 'max_terms must be non-negative or None'
         raise ValueError(message)
+    if labels is None:
+        labels = tpsa.descriptor.var_names + tpsa.descriptor.param_names
 
     coeffs = tpsa.monomial_coeffs()
+    if tol is not None:
+        coeffs = {kk: vv for kk, vv in coeffs.items() if abs(vv) > tol}
     end = ''
     if max_terms is not None:
         coefficients = dict(list(coeffs.items())[:max_terms])

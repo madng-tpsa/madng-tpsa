@@ -27,8 +27,8 @@ print()
 # ('x', 'px')
 
 print('Access by name:')
-print('x  ->', turn_map.x.format('code'))
-print('px ->', turn_map.px.format('code'))
+print('x  ->', turn_map.x.format(style='code'))
+print('px ->', turn_map.px.format(style='code'))
 print()
 # x  -> x + px + 0.2 * x**2
 # px -> -0.3 * x + px + 0.1 * x * px
@@ -59,8 +59,8 @@ print()
 
 print('Quadratic part only:')
 quadratic = turn_map.homogeneous(2)
-print('x  ->', quadratic.x.format('code'))
-print('px ->', quadratic.px.format('code'))
+print('x  ->', quadratic.x.format(style='code'))
+print('px ->', quadratic.px.format(style='code'))
 print()
 # x  -> 0.2 * x**2
 # px -> 0.1 * x * px
@@ -84,7 +84,7 @@ print()
 print('Update that coefficient:')
 modified = turn_map.copy()
 modified.set_coefficient('px', (1, 1), 0.25)
-print(modified.px.format('code'))
+print(modified.px.format(style='code'))
 # -0.3 * x + px + 0.25 * x * px
 
 print()

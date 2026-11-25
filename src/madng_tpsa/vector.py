@@ -13,11 +13,11 @@ from types import MappingProxyType
 from typing import TYPE_CHECKING, SupportsComplex, SupportsFloat, cast, overload
 
 if TYPE_CHECKING:
-    import builtins  # To be able to define method 'str' on the class
     from collections.abc import Mapping, Sequence
     from typing import Any, Self
 
-    from ._typing import DerivativeGroup, MapSeriesT, Scalar, TpsaSeries
+    from ._typing import ArraySequence, DerivativeGroup, MapSeriesT, Scalar, TpsaSeries
+    from .formatting import FormatStringStyle
     from .map import TpsaMap
     from .tpsa import Tpsa
 
@@ -29,7 +29,7 @@ from ._cffi import ffi, lib
 from ._typing import TpsaSeriesT
 from .complex_tpsa import ComplexTpsa
 from .descriptor import Descriptor
-from .formatting import format_coord, format_polynomial
+from .formatting import format_coord
 from .tensor import TpsaTensor, _align_descriptors
 from .tpsa import Tpsa
 
@@ -64,7 +64,7 @@ class TpsaVector(TpsaTensor[TpsaSeriesT]):
     """
 
     __slots__ = ('_component_names',)
-    _component_names: tuple[builtins.str, ...]
+    _component_names: tuple[str, ...]
 
     # ===================================
     # === Construction and Access API ===
@@ -73,7 +73,7 @@ class TpsaVector(TpsaTensor[TpsaSeriesT]):
     @staticmethod
     def _scalar_component(
         descriptor: Descriptor,
-        index: int | builtins.str,  # noqa: ARG004
+        index: int | str,  # noqa: ARG004
         value: Scalar,
     ) -> Tpsa | ComplexTpsa:
         return descriptor.constant(value)
@@ -87,7 +87,7 @@ class TpsaVector(TpsaTensor[TpsaSeriesT]):
     ) -> None: ...
     @overload
     def __init__(
-        self, components: Sequence[Scalar | TpsaSeriesT], descriptor: Descriptor | None = None
+        self, components: ArraySequence[Scalar | TpsaSeriesT], descriptor: Descriptor | None = None
     ) -> None: ...
     @overload
     def __init__(
@@ -96,7 +96,7 @@ class TpsaVector(TpsaTensor[TpsaSeriesT]):
 
     def __init__(
         self,
-        components: Descriptor | Sequence[Scalar | TpsaSeriesT] | None = None,
+        components: Descriptor | ArraySequence[Scalar | TpsaSeriesT] | None = None,
         descriptor: Descriptor | None = None,
         **named_components: Scalar | TpsaSeriesT,
     ) -> None:
@@ -172,10 +172,10 @@ class TpsaVector(TpsaTensor[TpsaSeriesT]):
             if named_components:
                 err_mess = 'Cannot mix positional components with named components'
                 raise TypeError(err_mess)
-            if not isinstance(components, Sequence):
+            if not isinstance(components, Sequence | np.ndarray):
                 err_mess = 'Components must be a sequence or a Descriptor'
                 raise TypeError(err_mess)
-            if any(isinstance(tt, Sequence) for tt in components):
+            if any(isinstance(tt, Sequence | np.ndarray) for tt in components):
                 err_mess = 'Nested components require TpsaTensor'
                 raise ValueError(err_mess)
             components = list(components)
@@ -229,7 +229,7 @@ class TpsaVector(TpsaTensor[TpsaSeriesT]):
 
     @classmethod
     def _parse_dict(
-        cls, dct: dict[builtins.str, Any]
+        cls, dct: dict[str, Any]
     ) -> tuple[Descriptor, tuple[int], Sequence[TpsaSeries]]:
         """Parse and validate a dict representing the map."""
         descriptor, shape, tpsa_flat = super()._parse_dict(dct)
@@ -239,7 +239,7 @@ class TpsaVector(TpsaTensor[TpsaSeriesT]):
         return descriptor, shape, tpsa_flat
 
     @classmethod
-    def from_dict(cls, dct: dict[builtins.str, Any]) -> Self:
+    def from_dict(cls, dct: dict[str, Any]) -> Self:
         """Instantiate a TpsaVector from a dictionary representation."""
         _, _, tpsa_flat = cls._parse_dict(dct)
         return cls(tpsa_flat)
@@ -248,8 +248,8 @@ class TpsaVector(TpsaTensor[TpsaSeriesT]):
         self,
         descriptor: Descriptor,
         *,
-        var_name_map: Mapping[builtins.str, builtins.str] | None = None,
-        param_name_map: Mapping[builtins.str, builtins.str] | None = None,
+        var_name_map: Mapping[str, str] | None = None,
+        param_name_map: Mapping[str, str] | None = None,
         truncate: bool = False,
     ) -> Self:
         """Convert a full vector, including its output-coordinate ordering."""
@@ -303,7 +303,7 @@ class TpsaVector(TpsaTensor[TpsaSeriesT]):
         ]
         return self._new_like(cast('Sequence[TpsaSeriesT]', components))
 
-    def __getattr__(self, name: builtins.str) -> TpsaSeriesT:
+    def __getattr__(self, name: str) -> TpsaSeriesT:
         """Access the coordinate TPSAs by coordinate name."""
         try:
             names = object.__getattribute__(self, '_component_names')
@@ -312,42 +312,40 @@ class TpsaVector(TpsaTensor[TpsaSeriesT]):
         except (AttributeError, ValueError):
             raise AttributeError(name) from None
 
-    def str(self, *, max_tpsa: int | None = None, max_terms: int | None = 3) -> builtins.str:
-        """Return a string representation of the vector, specifying how many terms to show."""
-        if max_tpsa is not None and max_tpsa < 0:
-            message = 'max_tpsa must be non-negative or None'
-            raise ValueError(message)
-        if max_terms is not None and max_terms < 0:
-            message = 'max_terms must be non-negative or None'
-            raise ValueError(message)
-        labels = self.descriptor.var_names + self.descriptor.param_names
-        entries = tuple(self.named_components.items())
-        selected = entries[:max_tpsa]
+    def format(
+        self,
+        *,
+        max_tpsa: int | None = None,
+        max_terms: int | None = None,
+        style: FormatStringStyle = 'unicode',
+        tol: float | None = None,
+    ) -> str:
+        """Create a string representation of the tensor, specifying how many terms to show."""
+        components = self._format_components(
+            max_tpsa=max_tpsa, max_terms=max_terms, style=style, tol=tol
+        )
+        fc = format_coord if style == 'unicode' else lambda x: x
+        named_components = [
+            f'{fc(coord)} = {tt}'
+            for coord, tt in zip(self.component_names, components, strict=True)
+        ]
+        if len(self.flat[:max_tpsa]) != self.size:
+            named_components.append('...')
+        return '\n'.join(named_components)
 
-        components: list[builtins.str] = []
-        for coord, tpsa in selected:
-            tt = format_polynomial(tpsa=tpsa, labels=labels, style='unicode', max_terms=max_terms)
-            components.append(f'{format_coord(coord)} = {tt}')
-
-        suffix = ', ...' if len(selected) < len(entries) else ''
+    def __repr__(self) -> str:
+        """Return a compact, human-readable vector representation."""
         name = type(self).__name__
-
-        return f'{name}({", ".join(components)}{suffix})'
-
-    def show(self, *, max_tpsa: int | None = None, max_terms: int | None = None) -> None:
-        """Print a representation of the vector, specifying how many terms to show."""
-        print(self.str(max_tpsa=max_tpsa, max_terms=max_terms))  # noqa: T201
-
-    def __repr__(self) -> builtins.str:
-        """Return a compact, human-readable polynomial representation."""
-        return self.str(max_tpsa=None, max_terms=3)
+        components = self.format(max_tpsa=None, max_terms=3, style='unicode', tol=1e-16)
+        components = components.replace('\n', ', ')
+        return f'{name}({components})'
 
     # ==================
     # === Attributes ===
     # ==================
 
     @property
-    def component_names(self) -> tuple[builtins.str, ...]:
+    def component_names(self) -> tuple[str, ...]:
         """Descriptor-ordered names of the full map outputs."""
         return self._component_names
 
@@ -357,7 +355,7 @@ class TpsaVector(TpsaTensor[TpsaSeriesT]):
         return self.flat
 
     @property
-    def named_components(self) -> Mapping[builtins.str, TpsaSeriesT]:
+    def named_components(self) -> Mapping[str, TpsaSeriesT]:
         """Read-only mapping of output names to mutable TPSA components."""
         return MappingProxyType(dict(zip(self.component_names, self.components, strict=True)))
 
@@ -365,7 +363,7 @@ class TpsaVector(TpsaTensor[TpsaSeriesT]):
     # === TPSA Operations ===
     # =======================
 
-    def _component_index(self, coord: builtins.str | int) -> int:
+    def _component_index(self, coord: str | int) -> int:
         """Resolve a coordinate name or zero-based integer index."""
         if isinstance(coord, str):
             if coord in self.component_names:
@@ -399,7 +397,7 @@ class TpsaVector(TpsaTensor[TpsaSeriesT]):
 
     def coefficient(
         self,
-        component: builtins.str | int,
+        component: str | int,
         monomials: Sequence[int] | Sequence[Sequence[int]] | np.ndarray,
     ) -> float | complex | np.ndarray:
         """Return coefficient(s) from one output series by component name or index."""
@@ -409,7 +407,7 @@ class TpsaVector(TpsaTensor[TpsaSeriesT]):
 
     def set_coefficient(
         self,
-        component: builtins.str | int,
+        component: str | int,
         monomial: Sequence[int] | np.ndarray,
         value: Scalar,
     ) -> None:

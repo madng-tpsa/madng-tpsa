@@ -5,13 +5,13 @@ from __future__ import annotations
 from typing import TYPE_CHECKING, Generic, TypeAlias, TypeVar, cast
 
 if TYPE_CHECKING:
-    import builtins  # To be able to define method 'str' on the class
     from collections.abc import Iterable, Mapping, Sequence
     from typing import Any, Self
 
     from numpy.typing import DTypeLike
 
     from ._typing import DerivativeDirection
+    from .formatting import FormatStringStyle
 
 import json
 import operator
@@ -110,9 +110,7 @@ class _TpsaBase(ABC, Generic[_Coefficient, _InputCoefficient]):
     def __init__(self, descriptor: Descriptor, truncation_order: int | None = None) -> None:
         """Initialize the TPSA object with a descriptor and an optional truncation order."""
 
-    def to_dict(
-        self, *, store_descriptor: bool = True, tol: float = 1e-14
-    ) -> dict[builtins.str, Any]:
+    def to_dict(self, *, store_descriptor: bool = True, tol: float = 1e-14) -> dict[str, Any]:
         """Return a dictionary representation of the TPSA series."""
         dct = {'__class__': self.__class__.__name__}
         if store_descriptor:
@@ -123,7 +121,7 @@ class _TpsaBase(ABC, Generic[_Coefficient, _InputCoefficient]):
         return dct
 
     @classmethod
-    def from_dict(cls, dct: dict[builtins.str, Any], descriptor: Descriptor | None = None) -> Self:
+    def from_dict(cls, dct: dict[str, Any], descriptor: Descriptor | None = None) -> Self:
         """Instantiate a Tpsa from a dictionary representation."""
         class_name = dct.get('__class__')
         if cls.__name__ != class_name:
@@ -174,8 +172,8 @@ class _TpsaBase(ABC, Generic[_Coefficient, _InputCoefficient]):
         self,
         descriptor: Descriptor,
         *,
-        var_name_map: Mapping[builtins.str, builtins.str] | None = None,
-        param_name_map: Mapping[builtins.str, builtins.str] | None = None,
+        var_name_map: Mapping[str, str] | None = None,
+        param_name_map: Mapping[str, str] | None = None,
         truncate: bool = False,
     ) -> Self:
         """Convert this TPSA to a different descriptor.
@@ -296,7 +294,7 @@ class _TpsaBase(ABC, Generic[_Coefficient, _InputCoefficient]):
     def __len__(self) -> int:
         return len(self.monomial_coeffs())
 
-    def __array_ufunc__(self, ufunc: Any, method: builtins.str, *inputs: Any, **kwargs: Any) -> Any:
+    def __array_ufunc__(self, ufunc: Any, method: str, *inputs: Any, **kwargs: Any) -> Any:
         """Map supported NumPy ufunc calls to the matching TPSA operations."""
         if method != '__call__' or kwargs:
             return NotImplemented
@@ -420,20 +418,17 @@ class _TpsaBase(ABC, Generic[_Coefficient, _InputCoefficient]):
         result[()] = self
         return result
 
-    def str(self, *, max_terms: int | None = None) -> builtins.str:
-        """Return a string representation of the TPSA, specifying how many term to show."""
-        if max_terms is not None and max_terms < 0:
-            message = 'max_terms must be non-negative or None'
-            raise ValueError(message)
-        labels = self.descriptor.var_names + self.descriptor.param_names
-        tt = format_polynomial(tpsa=self, labels=labels, style='unicode', max_terms=max_terms)
-        name = self.__class__.__name__
-        return f'{name}({tt})'
+    def format(
+        self,
+        *,
+        max_terms: int | None = None,
+        style: FormatStringStyle = 'unicode',
+        tol: float | None = None,
+    ) -> str:
+        """Create a string representation of the TPSA, specifying how many term to show."""
+        return format_polynomial(tpsa=self, style=style, max_terms=max_terms, tol=tol)
 
-    def show(self, *, max_terms: int | None = None) -> None:
-        """Print a representation of the TPSA, specifying how many term to show."""
-        print(self.str(max_terms=max_terms))  # noqa: T201
-
-    def __repr__(self) -> builtins.str:
+    def __repr__(self) -> str:
         """Return a compact, human-readable polynomial representation."""
-        return self.str(max_terms=3)
+        name = type(self).__name__
+        return f'{name}({self.format(max_terms=3, tol=1e-16)})'

@@ -61,20 +61,20 @@ print()
 generator = k * q**3 / 3
 
 print('Scalar Lie generator:')
-print('f =', generator.format('code'))
+print('f =', generator.format(style='code'))
 print()
 # f = 0.333333 * q**3 * k
 
 field = TpsaVectorField.from_generator(generator)
 print('MAD-NG Hamiltonian vector field G = -S grad(f):')
-print('G_q =', field[0].format('code'))
-print('G_p =', field[1].format('code'))
+print('G_q =', field[0].format(style='code'))
+print('G_p =', field[1].format(style='code'))
 print()
 # G_q = 0
 # G_p = q**2 * k
 
 print('Convert field back to scalar generator:')
-print(field.to_generator().format('code'))
+print(field.to_generator().format(style='code'))
 print()
 # 0.333333 * q**3 * k
 
@@ -92,5 +92,5 @@ assert lie_map.q == q
 assert lie_map.p == p + k * q**2
 
 print('Recover the logarithmic generator:')
-print(lie_map.log_poisson().format('code'))
+print(lie_map.log_poisson().format(style='code'))
 # 0.333333 * q**3 * k

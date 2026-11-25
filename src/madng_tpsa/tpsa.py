@@ -15,7 +15,6 @@ if TYPE_CHECKING:
 
     from ._typing import DerivativeDirection, DerivativeSpec
     from .complex_tpsa import ComplexTpsa
-    from .formatting import FormatStyle
 
 import operator
 from numbers import Integral
@@ -313,16 +312,6 @@ class Tpsa(_TpsaBase[float, SupportsFloat]):
         result = self.descriptor.zero()
         lib.mad_tpsa_poisbra(self._ptr, other._ptr, result._ptr, c_num_vars)
         return result
-
-    def format(self, style: FormatStyle = 'code') -> object:
-        """Format this series as code, LaTeX math, or a rich table.
-
-        Parameters
-        ----------
-        style
-            Output style. See :data:`madng_tpsa.formatting.FormatStyle`.
-        """
-        return self.descriptor.format_polynomial(self, style=style)
 
     # --- arithmetic (fresh result on the same descriptor; scalars mix freely) --- #
 

@@ -15,11 +15,11 @@ from typing import TYPE_CHECKING, Generic, SupportsComplex, SupportsFloat, Suppo
 from ._typing import TpsaSeriesT
 
 if TYPE_CHECKING:
-    import builtins  # To be able to define method 'str' on the class
     from collections.abc import Iterator, Mapping
     from typing import Any, Self
 
     from ._typing import DerivativeGroup, DerivativeSpec, MapSeriesT, Nested, Scalar, TpsaSeries
+    from .formatting import FormatStringStyle
     from .map import TpsaMap
 
 from math import prod
@@ -324,7 +324,7 @@ class TpsaTensor(Generic[TpsaSeriesT]):
 
     @classmethod
     def _parse_dict(
-        cls, dct: dict[builtins.str, Any]
+        cls, dct: dict[str, Any]
     ) -> tuple[Descriptor, tuple[int], Sequence[TpsaSeries]]:
         """Parse and validate a dict representing the tensor."""
         class_name = dct.pop('__class__', None)
@@ -367,12 +367,12 @@ class TpsaTensor(Generic[TpsaSeriesT]):
         return descriptor, shape, tpsa_flat
 
     @classmethod
-    def from_dict(cls, dct: dict[builtins.str, Any]) -> Self:
+    def from_dict(cls, dct: dict[str, Any]) -> Self:
         """Instantiate a TpsaTensor from a dictionary representation."""
         _, shape, tpsa_flat = cls._parse_dict(dct)
         return cls(tpsa_flat, shape=shape)
 
-    def to_dict(self, tol: float = 1e-14) -> dict[builtins.str, Any]:
+    def to_dict(self, tol: float = 1e-14) -> dict[str, Any]:
         """Return a dictionary representation of a TpsaTensor."""
         dct = {
             '__class__': type(self).__name__,
@@ -395,8 +395,8 @@ class TpsaTensor(Generic[TpsaSeriesT]):
         self,
         descriptor: Descriptor,
         *,
-        var_name_map: Mapping[builtins.str, builtins.str] | None = None,
-        param_name_map: Mapping[builtins.str, builtins.str] | None = None,
+        var_name_map: Mapping[str, str] | None = None,
+        param_name_map: Mapping[str, str] | None = None,
         truncate: bool = False,
     ) -> Self:
         """Convert the TpsaTensor to a new descriptor."""
@@ -534,34 +534,47 @@ class TpsaTensor(Generic[TpsaSeriesT]):
         """Test object identity among components, *not* polynomial equality."""
         return any(t is tpsa for t in self.flat)
 
-    def str(self, *, max_tpsa: int | None = None, max_terms: int | None = 3) -> builtins.str:
-        """Return a string representation of the tensor, specifying how many TPSAs to show."""
+    def _format_components(
+        self,
+        *,
+        max_tpsa: int | None = None,
+        max_terms: int | None = None,
+        style: FormatStringStyle = 'unicode',
+        tol: float | None = None,
+    ) -> list[str]:
+        """Return formatted components of the tensor, specifying how many TPSAs to show."""
         if max_tpsa is not None and max_tpsa < 0:
             message = 'max_tpsa must be non-negative or None'
             raise ValueError(message)
-        if max_terms is not None and max_terms < 0:
-            message = 'max_terms must be non-negative or None'
-            raise ValueError(message)
         flat = self.flat[:max_tpsa]
-        end = '' if len(flat) == self.size else ', ...'
-        labels = self.descriptor.var_names + self.descriptor.param_names
         components = []
         for tpsa in flat:
-            tt = format_polynomial(tpsa=tpsa, labels=labels, style='unicode', max_terms=max_terms)
+            tt = format_polynomial(tpsa=tpsa, style=style, max_terms=max_terms, tol=tol)
             components.append(tt)
-        name = type(self).__name__
-        return (
-            f'{name}(shape={self.shape}, size={self.size}, '
-            f'components=[{", ".join(components)}{end}])'
+        return components
+
+    def format(
+        self,
+        *,
+        max_tpsa: int | None = None,
+        max_terms: int | None = None,
+        style: FormatStringStyle = 'unicode',
+        tol: float | None = None,
+    ) -> str:
+        """Create a string representation of the tensor, specifying how many terms to show."""
+        components = self._format_components(
+            max_tpsa=max_tpsa, max_terms=max_terms, style=style, tol=tol
         )
+        if len(self.flat[:max_tpsa]) != self.size:
+            components.append('...')
+        return '\n'.join(components)
 
-    def show(self, *, max_tpsa: int | None = None, max_terms: int | None = None) -> None:
-        """Print a representation of the tensor, specifying how many terms to show."""
-        print(self.str(max_tpsa=max_tpsa, max_terms=max_terms))  # noqa: T201
-
-    def __repr__(self) -> builtins.str:
-        """Return a compact, human-readable polynomial representation."""
-        return self.str(max_tpsa=3, max_terms=3)
+    def __repr__(self) -> str:
+        """Return a compact, human-readable tensor representation."""
+        name = type(self).__name__
+        components = self.format(max_tpsa=3, max_terms=3, style='unicode', tol=1e-16)
+        components = components.replace('\n', ', ')
+        return f'{name}(shape={self.shape}, size={self.size}, components=[{components}])'
 
     # ==================
     # === Attributes ===
@@ -925,6 +938,10 @@ class TpsaTensor(Generic[TpsaSeriesT]):
     # === Numpy Operations ===
     # ========================
 
+    def to_nparray(self):
+        """Return a numpy array of the tensor's components."""
+        return np.reshape(self.flat, self.shape)
+
     def transpose(self, *axes: int) -> TpsaTensor[TpsaSeriesT]:
         """Return a zero-copy permuted view; no TPSA coefficients are copied."""
         if not axes:
@@ -959,7 +976,7 @@ class TpsaTensor(Generic[TpsaSeriesT]):
 
     @staticmethod
     def _contract_einsum(
-        expression: builtins.str, *operands: TpsaTensor[TpsaSeriesT] | np.ndarray
+        expression: str, *operands: TpsaTensor[TpsaSeriesT] | np.ndarray
     ) -> TpsaTensor[Tpsa] | TpsaTensor[ComplexTpsa] | Tpsa | ComplexTpsa:
         """Contract TPSA and numeric operands using explicit Einstein indices.
 
@@ -1005,7 +1022,7 @@ class TpsaTensor(Generic[TpsaSeriesT]):
                 op = op.change_descriptor(descriptor)
             compatible.append(op)
 
-        sizes: dict[builtins.str, int] = {}
+        sizes: dict[str, int] = {}
         for labels, op in zip(inputs, compatible, strict=True):
             shape = op.shape
             if len(labels) != len(shape):
@@ -1042,7 +1059,7 @@ class TpsaTensor(Generic[TpsaSeriesT]):
 
     @staticmethod
     def einsum(
-        expression: builtins.str, *operands: TpsaTensor[Any] | np.ndarray
+        expression: str, *operands: TpsaTensor[Any] | np.ndarray
     ) -> TpsaTensor[Tpsa] | TpsaTensor[ComplexTpsa] | Tpsa | ComplexTpsa:
         """Perform an explicit Einstein contraction over TPSA-valued arrays."""
         return TpsaTensor._contract_einsum(expression, *operands)
@@ -1172,7 +1189,7 @@ class TpsaTensor(Generic[TpsaSeriesT]):
         return self._new_like(cast('Sequence[TpsaSeriesT]', components))
 
     def _elementwise(
-        self, other: object, operation: builtins.str, *, reverse: bool = False
+        self, other: object, operation: str, *, reverse: bool = False
     ) -> TpsaTensor[Tpsa] | TpsaTensor[ComplexTpsa]:
         """Implement consistent descriptor alignment for elementwise arithmetic."""
         left: TpsaTensor[Any] = self
@@ -1236,8 +1253,8 @@ class TpsaTensor(Generic[TpsaSeriesT]):
 
     def __mul__(self, other: object) -> TpsaTensor[Tpsa] | TpsaTensor[ComplexTpsa]:
         """Multiply by a numeric or TPSA scalar, not a tensor."""
-        if isinstance(other, (TpsaTensor, np.ndarray)):
-            return NotImplemented
+        # if isinstance(other, (TpsaTensor, np.ndarray)):
+        #     return NotImplemented
         return self._elementwise(other, 'mul')
 
     __rmul__ = __mul__

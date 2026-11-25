@@ -7,7 +7,7 @@ from madng_tpsa import ComplexTpsa, Descriptor, Tpsa, TpsaMap, TpsaTensor, forma
 
 def _polynomial():
     desc = Descriptor(var_names=['x', 'y'], order=2)
-    t = Tpsa.from_dict(
+    return Tpsa.from_dict(
         {
             '__class__': 'Tpsa',
             'descriptor': desc.to_dict(),
@@ -17,20 +17,19 @@ def _polynomial():
             '[0, 2]': 3.0,
         }
     )
-    return desc, t
 
 
 def test_format_polynomial_as_code():
-    desc, t = _polynomial()
+    t = _polynomial()
 
-    assert desc.format_polynomial(t, style='code') == '-6 + 2 * x + 3 * y**2'
-    assert t.format() == '-6 + 2 * x + 3 * y**2'
+    assert format_polynomial(t, style='code') == '-6 + 2 * x + 3 * y**2'
+    assert t.format(style='code') == '-6 + 2 * x + 3 * y**2'
 
 
 def test_format_polynomial_as_math():
     ipython_display = pytest.importorskip('IPython.display')
 
-    _, t = _polynomial()
+    t = _polynomial()
     formatted = t.format(style='math')
 
     assert isinstance(formatted, ipython_display.Math)
@@ -40,7 +39,7 @@ def test_format_polynomial_as_math():
 def test_format_polynomial_as_table():
     rich_text = pytest.importorskip('rich.text')
 
-    _, t = _polynomial()
+    t = _polynomial()
     table = t.format(style='table')
 
     assert [column.header for column in table.columns] == ['x', 'y', 'coefficient']
@@ -49,16 +48,8 @@ def test_format_polynomial_as_table():
     assert table.columns[-1]._cells[0].style == 'cyan'
 
 
-def test_format_polynomial_rejects_different_descriptor():
-    desc, _ = _polynomial()
-    other = Descriptor(1, 2).zero()
-
-    with pytest.raises(ValueError, match='different descriptor'):
-        desc.format_polynomial(other)
-
-
 def test_format_polynomial_rejects_unknown_style():
-    _, t = _polynomial()
+    t = _polynomial()
 
     with pytest.raises(ValueError, match='Style'):
         t.format(style='bad')
@@ -70,26 +61,27 @@ def test_unicode_formatting_of_complex_coefficients_in_tensor_and_map():
     z = ComplexTpsa.from_tpsa(q)
     polynomial = (2 + 3j) * z**2 + (1 - 2j) * z + 1j * p - 4
 
-    text = format_polynomial(polynomial, d.var_names, style='unicode')
+    text = format_polynomial(polynomial, labels=d.var_names, style='unicode')
     assert '(2+3j)·q²' in text
     assert '(1-2j)·q' in text
     assert '(0+1j)·p' in text
     assert '-4' in text
-    assert '(2+3j) * q**2' in format_polynomial(polynomial, d.var_names, style='code')
+    assert '(2+3j) * q**2' in format_polynomial(polynomial, labels=d.var_names, style='code')
 
     tensor = TpsaTensor([polynomial, q])
     mapping = TpsaMap([polynomial, p])
     for obj in (tensor, mapping):
-        assert '(2+3j)·q²' in obj.str(max_terms=None)
+        assert '(2+3j)·q²' in obj.format(max_terms=None)
         assert 'j)' in repr(obj)
 
 
 def test_max_terms_zero_and_negative_limits():
-    d, t = _polynomial()
+    t = _polynomial()
+    d = t.descriptor
     labels = d.var_names
-    assert format_polynomial(t, labels, style='unicode', max_terms=0) == '...'
-    assert format_polynomial(t, labels, style='code', max_terms=0) == '...'
-    assert format_polynomial(d.zero(), labels, style='unicode', max_terms=0) == '0'
+    assert format_polynomial(t, labels=labels, style='unicode', max_terms=0) == '...'
+    assert format_polynomial(t, labels=labels, style='code', max_terms=0) == '...'
+    assert format_polynomial(d.zero(), labels=labels, style='unicode', max_terms=0) == '0'
     with pytest.raises(ValueError, match='max_terms'):
-        format_polynomial(t, labels, style='unicode', max_terms=-1)
-    assert 'components=[, ...]' not in TpsaTensor([t]).str(max_tpsa=1, max_terms=0)
+        format_polynomial(t, labels=labels, style='unicode', max_terms=-1)
+    assert TpsaTensor([t]).format(max_tpsa=1, max_terms=0) == '...'

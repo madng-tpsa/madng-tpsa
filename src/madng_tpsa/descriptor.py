@@ -20,7 +20,6 @@ if TYPE_CHECKING:
     from typing import Any, ClassVar, SupportsFloat
 
     from .complex_tpsa import ComplexTpsa
-    from .formatting import FormatStyle
     from .tpsa import Tpsa
 
 import warnings
@@ -660,19 +659,3 @@ class Descriptor:
             )
 
         return f'Descriptor(var_names={self.var_names!r}, order={attrs.order})'
-
-    def format_polynomial(self, tpsa: Tpsa, style: FormatStyle = 'code') -> object:
-        """Format ``tpsa`` using this descriptor's variable and parameter labels.
-
-        Parameters
-        ----------
-        style
-            Output style. See :data:`madng_tpsa.formatting.FormatStyle`.
-        """
-        if tpsa.descriptor is not self:
-            message = 'Cannot format a TPSA from a different descriptor'
-            raise ValueError(message)
-
-        from .formatting import format_polynomial
-
-        return format_polynomial(tpsa, self.var_names + self.param_names, style=style)

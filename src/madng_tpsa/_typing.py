@@ -9,6 +9,7 @@ if TYPE_CHECKING:
     from typing import Any, SupportsComplex, SupportsFloat
 
     import numpy as np
+    from numpy.typing import NDArray
 
     from ._tpsa_base import _TpsaBase
     from .complex_tpsa import ComplexTpsa
@@ -17,13 +18,14 @@ if TYPE_CHECKING:
     Scalar: TypeAlias = SupportsFloat | SupportsComplex
     SelectionValue: TypeAlias = bool | int | np.integer[Any]
     TpsaSeries: TypeAlias = Tpsa | ComplexTpsa
-    DerivativeDirection: TypeAlias = int | np.integer[Any] | str | Tpsa | ComplexTpsa
     # A positional derivative argument is one direction, optionally with a multiplicity.
+    DerivativeDirection: TypeAlias = int | np.integer[Any] | str | Tpsa | ComplexTpsa
     DerivativeSpec: TypeAlias = DerivativeDirection | tuple[DerivativeDirection, int]
     DerivativeGroup: TypeAlias = Literal['vars', 'params', 'all']
 
     T = TypeVar('T')
-    Nested: TypeAlias = 'Sequence[T | Nested[T]]'
+    ArraySequence: TypeAlias = Sequence[T] | NDArray[Any]
+    Nested: TypeAlias = 'ArraySequence[T | Nested[T]]'
 
 # Need the following declared type variables at runtime.
 
