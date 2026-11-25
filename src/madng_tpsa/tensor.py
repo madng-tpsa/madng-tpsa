@@ -10,7 +10,16 @@ from __future__ import annotations
 from collections.abc import Sequence
 from itertools import product
 from numbers import Integral
-from typing import TYPE_CHECKING, Generic, SupportsComplex, SupportsFloat, SupportsIndex, cast
+from typing import (
+    TYPE_CHECKING,
+    Generic,
+    Literal,
+    SupportsComplex,
+    SupportsFloat,
+    SupportsIndex,
+    cast,
+    overload,
+)
 
 from ._typing import TpsaSeriesT
 
@@ -19,7 +28,7 @@ if TYPE_CHECKING:
     from typing import Any, Self
 
     from ._typing import DerivativeGroup, DerivativeSpec, MapSeriesT, Nested, Scalar, TpsaSeries
-    from .formatting import FormatStringStyle
+    from .formatting import FormatStringStyle, FormatStyle, LatexExpression, PrintableTable
     from .map import TpsaMap
 
 from math import prod
@@ -33,7 +42,7 @@ from ._cffi import ffi, lib
 from ._derivatives import resolve_derivative_orders
 from .complex_tpsa import ComplexTpsa
 from .descriptor import Descriptor
-from .formatting import format_polynomial
+from .formatting import _format_tensor, format_polynomial
 from .tpsa import Tpsa
 
 
@@ -534,25 +543,11 @@ class TpsaTensor(Generic[TpsaSeriesT]):
         """Test object identity among components, *not* polynomial equality."""
         return any(t is tpsa for t in self.flat)
 
-    def _format_components(
-        self,
-        *,
-        max_tpsa: int | None = None,
-        max_terms: int | None = None,
-        style: FormatStringStyle = 'unicode',
-        tol: float | None = None,
-    ) -> list[str]:
-        """Return formatted components of the tensor, specifying how many TPSAs to show."""
-        if max_tpsa is not None and max_tpsa < 0:
-            message = 'max_tpsa must be non-negative or None'
-            raise ValueError(message)
-        flat = self.flat[:max_tpsa]
-        components = []
-        for tpsa in flat:
-            tt = format_polynomial(tpsa=tpsa, style=style, max_terms=max_terms, tol=tol)
-            components.append(tt)
-        return components
+    def _format_component_names(self) -> tuple[str, ...] | None:
+        """Return output names for named vectors, or None for indexed tensors."""
+        return None
 
+    @overload
     def format(
         self,
         *,
@@ -560,21 +555,66 @@ class TpsaTensor(Generic[TpsaSeriesT]):
         max_terms: int | None = None,
         style: FormatStringStyle = 'unicode',
         tol: float | None = None,
-    ) -> str:
-        """Create a string representation of the tensor, specifying how many terms to show."""
-        components = self._format_components(
-            max_tpsa=max_tpsa, max_terms=max_terms, style=style, tol=tol
+    ) -> str: ...
+
+    @overload
+    def format(
+        self,
+        *,
+        max_tpsa: int | None = None,
+        max_terms: int | None = None,
+        style: Literal['table'],
+        tol: float | None = None,
+    ) -> PrintableTable: ...
+
+    @overload
+    def format(
+        self,
+        *,
+        max_tpsa: int | None = None,
+        max_terms: int | None = None,
+        style: Literal['math'],
+        tol: float | None = None,
+    ) -> LatexExpression: ...
+
+    @overload
+    def format(
+        self,
+        *,
+        max_tpsa: int | None = None,
+        max_terms: int | None = None,
+        style: FormatStyle,
+        tol: float | None = None,
+    ) -> str | PrintableTable: ...
+
+    def format(
+        self,
+        *,
+        max_tpsa: int | None = None,
+        max_terms: int | None = None,
+        style: FormatStyle = 'unicode',
+        tol: float | None = None,
+    ) -> str | PrintableTable:
+        """Format the tensor as text, a Rich table, or LaTeX mathematics."""
+        return _format_tensor(
+            self.flat,
+            self.shape,
+            self.descriptor.var_names + self.descriptor.param_names,
+            names=self._format_component_names(),
+            style=style,
+            max_tpsa=max_tpsa,
+            max_terms=max_terms,
+            tol=tol,
         )
-        if len(self.flat[:max_tpsa]) != self.size:
-            components.append('...')
-        return '\n'.join(components)
 
     def __repr__(self) -> str:
         """Return a compact, human-readable tensor representation."""
         name = type(self).__name__
-        components = self.format(max_tpsa=3, max_terms=3, style='unicode', tol=1e-16)
-        components = components.replace('\n', ', ')
-        return f'{name}(shape={self.shape}, size={self.size}, components=[{components}])'
+        components = [format_polynomial(tpsa, max_terms=3, tol=1e-16) for tpsa in self.flat[:3]]
+        if self.size > 3:
+            components.append('...')
+        formatted = ', '.join(components)
+        return f'{name}(shape={self.shape}, size={self.size}, components=[{formatted}])'
 
     # ==================
     # === Attributes ===

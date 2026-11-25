@@ -2,7 +2,7 @@
 
 from __future__ import annotations
 
-from typing import TYPE_CHECKING, Generic, TypeAlias, TypeVar, cast
+from typing import TYPE_CHECKING, Generic, Literal, TypeAlias, TypeVar, cast, overload
 
 if TYPE_CHECKING:
     from collections.abc import Iterable, Mapping, Sequence
@@ -11,7 +11,7 @@ if TYPE_CHECKING:
     from numpy.typing import DTypeLike
 
     from ._typing import DerivativeDirection
-    from .formatting import FormatStringStyle
+    from .formatting import FormatStringStyle, FormatStyle, LatexExpression, PrintableTable
 
 import json
 import operator
@@ -418,14 +418,50 @@ class _TpsaBase(ABC, Generic[_Coefficient, _InputCoefficient]):
         result[()] = self
         return result
 
+    @overload
     def format(
         self,
         *,
         max_terms: int | None = None,
         style: FormatStringStyle = 'unicode',
         tol: float | None = None,
-    ) -> str:
-        """Create a string representation of the TPSA, specifying how many term to show."""
+    ) -> str: ...
+
+    @overload
+    def format(
+        self,
+        *,
+        max_terms: int | None = None,
+        style: Literal['table'],
+        tol: float | None = None,
+    ) -> PrintableTable: ...
+
+    @overload
+    def format(
+        self,
+        *,
+        max_terms: int | None = None,
+        style: Literal['math'],
+        tol: float | None = None,
+    ) -> LatexExpression: ...
+
+    @overload
+    def format(
+        self,
+        *,
+        max_terms: int | None = None,
+        style: FormatStyle,
+        tol: float | None = None,
+    ) -> str | PrintableTable: ...
+
+    def format(
+        self,
+        *,
+        max_terms: int | None = None,
+        style: FormatStyle = 'unicode',
+        tol: float | None = None,
+    ) -> str | PrintableTable:
+        """Format the TPSA as text, a Rich table, or LaTeX mathematics."""
         return format_polynomial(tpsa=self, style=style, max_terms=max_terms, tol=tol)
 
     def __repr__(self) -> str:

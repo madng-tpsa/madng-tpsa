@@ -30,6 +30,7 @@ dependencies = [
 [dependency-groups]
 dev = [
     "coverage",
+    "ipython",
     "pre-commit",
     "pytest",
     "pytest-github-actions-annotate-failures",

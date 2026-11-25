@@ -17,7 +17,6 @@ if TYPE_CHECKING:
     from typing import Any, Self
 
     from ._typing import ArraySequence, DerivativeGroup, MapSeriesT, Scalar, TpsaSeries
-    from .formatting import FormatStringStyle
     from .map import TpsaMap
     from .tpsa import Tpsa
 
@@ -29,7 +28,6 @@ from ._cffi import ffi, lib
 from ._typing import TpsaSeriesT
 from .complex_tpsa import ComplexTpsa
 from .descriptor import Descriptor
-from .formatting import format_coord
 from .tensor import TpsaTensor, _align_descriptors
 from .tpsa import Tpsa
 
@@ -312,26 +310,9 @@ class TpsaVector(TpsaTensor[TpsaSeriesT]):
         except (AttributeError, ValueError):
             raise AttributeError(name) from None
 
-    def format(
-        self,
-        *,
-        max_tpsa: int | None = None,
-        max_terms: int | None = None,
-        style: FormatStringStyle = 'unicode',
-        tol: float | None = None,
-    ) -> str:
-        """Create a string representation of the tensor, specifying how many terms to show."""
-        components = self._format_components(
-            max_tpsa=max_tpsa, max_terms=max_terms, style=style, tol=tol
-        )
-        fc = format_coord if style == 'unicode' else lambda x: x
-        named_components = [
-            f'{fc(coord)} = {tt}'
-            for coord, tt in zip(self.component_names, components, strict=True)
-        ]
-        if len(self.flat[:max_tpsa]) != self.size:
-            named_components.append('...')
-        return '\n'.join(named_components)
+    def _format_component_names(self) -> tuple[str, ...]:
+        """Return the names of the vector's output coordinates."""
+        return self.component_names
 
     def __repr__(self) -> str:
         """Return a compact, human-readable vector representation."""
