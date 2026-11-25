@@ -39,6 +39,7 @@ CDEF = """
     int mad_tpsa_isnul(const void* t);
     int mad_tpsa_isval(const void* t);
     double mad_tpsa_geti(void* t, int i);
+    void mad_tpsa_getv(const void* t, int i, int n, double* v);
     double mad_tpsa_getm(void* t, int n, const unsigned char* m);
     void mad_tpsa_seti(void* t, int i, double a, double b);
     void mad_tpsa_setm(void* t, int n, const unsigned char* m, double a, double b);
@@ -75,6 +76,7 @@ CDEF = """
     void mad_ctpsa_imag(const void* t, void* r);
     int mad_ctpsa_equ(const void* a, const void* b, double tol);
     void mad_ctpsa_geti_r(const void* t, int i, double _Complex* r);
+    void mad_ctpsa_getv(const void* t, int i, int n, double _Complex* v);
     void mad_ctpsa_getm_r(const void* t, int n, const unsigned char* m, double _Complex* r);
     void mad_ctpsa_seti_r(void* t, int i, double a_re, double a_im, double b_re, double b_im);
     void mad_ctpsa_setm_r(void* t, int n, const unsigned char* m, double a_re, double a_im, double b_re, double b_im);

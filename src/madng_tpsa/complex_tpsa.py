@@ -243,25 +243,22 @@ class ComplexTpsa(_TpsaBase[complex, SupportsFloat | SupportsComplex]):
         """Set all coefficients to zero in place."""
         lib.mad_ctpsa_clear(self._ptr)
 
+    def _first_order(self, start: int, count: int) -> list[complex]:
+        # First-order coefficient k sits at index 1 + k (variables, then parameters).
+        values = np.zeros(count, dtype=complex)
+        lib.mad_ctpsa_getv(
+            self._ptr, 1 + start, count, ffi.from_buffer('double _Complex[]', values)
+        )
+        return values.tolist()
+
     def grad(self) -> list[complex]:
         """First-order coefficients for the descriptor variables."""
-        monomial_len = self.descriptor.monomial_length
-        grad = []
-        for var_idx in range(self.descriptor.num_vars):
-            monomial = [0] * monomial_len
-            monomial[var_idx] = 1
-            grad.append(self.get(monomial))
-        return grad
+        return self._first_order(0, self.descriptor.num_vars)
 
     def param_grad(self) -> list[complex]:
         """First-order coefficients for the descriptor parameters."""
-        length = self.descriptor.monomial_length
-        return [
-            self.get(
-                [int(index == self.descriptor.num_vars + parameter) for index in range(length)]
-            )
-            for parameter in range(self.descriptor.num_params)
-        ]
+        descriptor = self.descriptor
+        return self._first_order(descriptor.num_vars, descriptor.num_params)
 
     def copy(self) -> ComplexTpsa:
         """Return an independent copy of this series."""

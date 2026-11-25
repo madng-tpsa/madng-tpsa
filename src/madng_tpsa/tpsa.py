@@ -219,26 +219,20 @@ class Tpsa(_TpsaBase[float, SupportsFloat]):
         """Set all coefficients to zero in place."""
         lib.mad_tpsa_clear(self._ptr)
 
+    def _first_order(self, start: int, count: int) -> list[float]:
+        # First-order coefficient k sits at index 1 + k (variables, then parameters).
+        values = np.zeros(count)
+        lib.mad_tpsa_getv(self._ptr, 1 + start, count, ffi.from_buffer('double[]', values))
+        return values.tolist()
+
     def grad(self) -> list[float]:
         """First-order coefficients for the descriptor variables."""
-        monomial_len = self.descriptor.monomial_length
-        grad = []
-        for var_idx in range(self.descriptor.num_vars):
-            monomial = [0] * monomial_len
-            monomial[var_idx] = 1
-            grad.append(self.get(monomial))
-        return grad
+        return self._first_order(0, self.descriptor.num_vars)
 
     def param_grad(self) -> list[float]:
         """First-order coefficients for the descriptor parameters."""
-        attrs = self.descriptor._get_descriptor_attrs()
-        monomial_len = attrs.num_vars + attrs.num_params
-        param_grad = []
-        for param_idx in range(attrs.num_params):
-            monomial = [0] * monomial_len
-            monomial[attrs.num_vars + param_idx] = 1
-            param_grad.append(self.get(monomial))
-        return param_grad
+        descriptor = self.descriptor
+        return self._first_order(descriptor.num_vars, descriptor.num_params)
 
     def copy(self) -> Tpsa:
         """Return an independent copy of this series."""
