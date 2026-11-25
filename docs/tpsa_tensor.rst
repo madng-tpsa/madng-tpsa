@@ -102,6 +102,41 @@ Tensor ``+``, ``-``, scalar ``*`` and scalar ``/`` are
 componentwise operations.
 
 
+Polynomial substitution
+-----------------------
+
+``substitute(**substitutions)`` simultaneously replaces selected descriptor
+variables and parameters in every tensor component. It returns a new tensor
+with the original shape and concrete built-in container type.
+
+.. code-block:: python
+
+   nominal = tensor.substitute(k=0)
+   shifted = tensor.substitute(k=k+0.1)
+   rescaled = tensor.substitute(q=2*q, k=0.5)
+   nominal = tensor.substitute(**dict.fromkeys(d.param_names, 0))
+
+Unspecified variables and parameters retain their identity substitutions.
+Numerical values represent constant polynomials; TPSA values allow arbitrary
+polynomial substitutions. Substitutions are simultaneous, not sequential:
+``tensor.substitute(q=p, p=q)`` exchanges the two input coordinates.
+
+Substitution TPSAs must have the same set of variable labels as the original
+descriptor; different label ordering is supported. Compatible descriptors are
+unified, including additional parameters introduced by substitutions, and
+complex substitutions promote real tensors to complex tensors. Unknown
+substitution names raise ``KeyError``.
+
+Unlike ``evaluate()``, this operation returns symbolic TPSA polynomials.
+Unlike ``compose()``, it allows explicit substitution of parameters.
+Setting a parameter to zero removes its polynomial dependence, but does not
+remove the parameter from the descriptor. Use ``change_descriptor()`` to
+remove parameters that are no longer needed.
+
+All results remain subject to the common descriptor's truncation limits.
+Calling ``substitute()`` with no arguments returns an independent copy.
+
+
 Strided views and tensor contractions
 -------------------------------------
 

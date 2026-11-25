@@ -46,6 +46,34 @@ print(one_step.evaluate([0.1, 0.02], param_values=[0.5]))
 print()
 # [0.115 0.015]
 
+# Unlike evaluate(), substitute() returns a symbolic map.
+# Unspecified variables and parameters are left unchanged.
+nominal = one_step.substitute(k=0)
+print('Nominal map (k=0):')
+print(nominal)
+print()
+assert nominal.components == drift.components
+
+fixed_strength = one_step.substitute(k=0.5)
+print('Map at fixed strength (k=0.5):')
+print(fixed_strength)
+print()
+assert fixed_strength.q == q + p - 0.5 * q**2
+assert fixed_strength.p == p - 0.5 * q**2
+
+shifted_strength = one_step.substitute(k=k + 0.5)
+assert shifted_strength.q == q + p - (k + 0.5) * q**2
+assert shifted_strength.p == p - (k + 0.5) * q**2
+
+# Substitute coordinates and parameters simultaneously.
+rescaled = one_step.substitute(q=2 * q, k=0.5)
+assert rescaled.q == 2 * q + p - 2 * q**2
+assert rescaled.p == p - 2 * q**2
+
+# Set all parameters to zero, keeping the original descriptor.
+nominal = one_step.substitute(**dict.fromkeys(descriptor.param_names, 0))
+assert nominal.components == drift.components
+
 print('Formal inverse:')
 inverse = one_step.inverse()
 print(inverse)

@@ -946,33 +946,11 @@ class TpsaTensor(Generic[TpsaSeriesT]):
             err_mess = f'Expected a map with {self.num_vars} components, got {other.size}'
             raise ValueError(err_mess)
 
-        left, right, complex_needed = _align_descriptors(
+        left, right, _ = _align_descriptors(
             self, other, extend_left=False, extend_right=True, allow_var_reordering=True
         )
 
-        result = []
-        for _ in range(left.size):
-            if left.is_complex:
-                result.append(left.descriptor.complex_zero(order=left.descriptor.order))
-            else:
-                result.append(left.descriptor.zero(order=left.descriptor.order))
-        pointer_array = ffi.new('void*[]', [value.ptr for value in result])
-
-        args = (
-            -left.size,  # Negative to allow any size, also != num_vars
-            left.pointer_array,
-            right.size + right.num_params,
-            right.pointer_array_with_params,
-            pointer_array,
-        )
-        if complex_needed:
-            status = lib.madng_ctpsa_protected_map_binary_call(lib.mad_ctpsa_compose, *args)
-        else:
-            status = lib.madng_tpsa_protected_map_binary_call(lib.mad_tpsa_compose, *args)
-        if status:
-            left.flat[0]._raise_mad_error()
-        # Real/complex promotion is dynamic, so the generic result needs a cast.
-        return cast('TpsaTensor[Tpsa] | TpsaTensor[ComplexTpsa]', left._new_like(result))
+        return left._compose_native(right.size + right.num_params, right.pointer_array_with_params)
 
     def substitute(
         self, /, **substitutions: Scalar | TpsaSeries
@@ -1014,31 +992,37 @@ class TpsaTensor(Generic[TpsaSeriesT]):
             components.append(value)
 
         # Align descriptors and promote to complex if necessary.
-        left, right, complex_needed = _align_descriptors(
+        left, right, _ = _align_descriptors(
             self,
             TpsaTensor(components),
             allow_var_reordering=True,
         )
 
-        # Allocate output TPSAs.
-        zero = left.descriptor.complex_zero if complex_needed else left.descriptor.zero
-        result = [zero(order=left.descriptor.order) for _ in range(left.size)]
+        return left._compose_native(right.size, right.pointer_array)
+
+    def _compose_native(self, nb: int, mb: ffi.CData) -> TpsaTensor[Tpsa] | TpsaTensor[ComplexTpsa]:
+        """Compose already-aligned TPSAs with a descriptor-ordered pointer array."""
+        zero = self.descriptor.complex_zero if self.is_complex else self.descriptor.zero
+        result = [zero(order=self.descriptor.order) for _ in range(self.size)]
         mc = ffi.new('void*[]', [value.ptr for value in result])
 
-        # Construct the substitution pointer array.
-        pointers = [value.ptr for value in right.flat]
+        # MAD-NG currently scans abs(na) instead of nb pointers for aliasing.
+        # Pad the backing array, but keep the actual substitution count unchanged.
+        # Remove once the alias check in mad_tpsa_comp.c uses sb instead of sa.
+        if self.size > nb:
+            mb = ffi.new('void*[]', [*mb, *([ffi.NULL] * (self.size - nb))])
 
-        # Work around the native MAD-NG alias-checking bug.
-        pointers.extend([ffi.NULL] * max(0, left.size - right.size))
-        mb = ffi.new('void*[]', pointers)
-        args = (-left.size, left.pointer_array, right.size, mb, mc)
-        if complex_needed:
+        args = (-self.size, self.pointer_array, nb, mb, mc)
+        if self.is_complex:
             status = lib.madng_ctpsa_protected_map_binary_call(lib.mad_ctpsa_compose, *args)
         else:
             status = lib.madng_tpsa_protected_map_binary_call(lib.mad_tpsa_compose, *args)
         if status:
-            left.flat[0]._raise_mad_error()
-        return cast('TpsaTensor[Tpsa] | TpsaTensor[ComplexTpsa]', left._new_like(result))
+            self.flat[0]._raise_mad_error()
+        return cast(
+            'TpsaTensor[Tpsa] | TpsaTensor[ComplexTpsa]',
+            self._new_like(cast('Sequence[TpsaSeriesT]', result)),
+        )
 
     # ========================
     # === Numpy Operations ===

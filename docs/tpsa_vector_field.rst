@@ -84,6 +84,16 @@ The inherited generic methods
 partial derivatives and preserve parameter dependence. See :doc:`tpsa_tensor`
 and ``examples/05_tpsamap_derivatives.py``.
 
+Polynomial substitution
+-----------------------
+
+The inherited :meth:`~madng_tpsa.tensor.TpsaTensor.substitute` method
+substitutes variables and parameters componentwise, preserving the
+``TpsaVectorField`` container type. This is not a geometric pushforward or
+pullback; in particular, substitution of phase-space variables need not
+preserve Hamiltonian structure. See :doc:`tpsa_tensor` for the general
+substitution semantics.
+
 Translation
 -----------
 

@@ -85,8 +85,8 @@ The inherited generic methods
 partial derivatives and preserve parameter dependence. See :doc:`tpsa_tensor`
 and ``examples/05_tpsamap_derivatives.py``.
 
-Composition, translation and pullback
--------------------------------------
+Composition, substitution, translation and pullback
+---------------------------------------------------
 
 ``left << right`` and ``left.compose(right)`` mean :math:`left\circ right`.
 Descriptor parameters are automatically carried through substitution unchanged:
@@ -103,6 +103,20 @@ Descriptor parameters are automatically carried through substitution unchanged:
    translated = left.translate((1., 0.))  # left(q + 1, p; k)
    observable = q**2 + p
    transformed = right.pullback(observable)  # observable composed with right
+
+To explicitly substitute variables or parameters, use the inherited
+:meth:`~madng_tpsa.tensor.TpsaTensor.substitute` method:
+
+.. code-block:: python
+
+   nominal = left.substitute(k=0)      # (q, p)
+   shifted = left.substitute(k=k+0.1)  # (q+k+0.1, p)
+   fixed = left.substitute(k=0.5)      # (q+0.5, p)
+   frozen = left.substitute(q=0)      # (k, p)
+
+Scalar substitutions represent constant input polynomials, not offsets from
+identity coordinates. This differs from the scalar convention of the
+``TpsaMap`` constructor. See :doc:`tpsa_tensor` for the general semantics.
 
 Translation shifts the **inputs** rather than adding to the outputs. Native
 MAD-NG translation is used for parameter-free descriptors; with parameters,
