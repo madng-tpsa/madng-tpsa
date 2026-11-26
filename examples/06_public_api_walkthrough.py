@@ -159,6 +159,23 @@ print('Tensor evaluation:', tensor.evaluate((1, 2), param_values=(3,)))
 print('Tensor derivative:', tensor.partial_derivative('q', 'k').shape)
 print('Tensor Hessian shape:', tensor.derivative_tensor(2).shape)
 print('Tensor composition:', tensor.compose(TpsaMap(d)).shape)
+
+# Symbolic substitution preserves tensor shape and the descriptor's inputs.
+print('Tensor with variables set to zero:', tensor.substitute(0.0))
+print('Tensor with parameters set to zero:', tensor.substitute(None, 0.0))
+print('Tensor with variables zero and parameters one:', tensor.substitute(0.0, 1.0))
+print('Tensor with rescaled inputs:', tensor.substitute([2 * q, p]))
+print('Tensor with shifted parameters:', tensor.substitute(None, [k + 0.125]))
+print('Tensor with named replacements:', tensor.substitute(q=2 * q, k=0.5))
+print('Tensor with complex replacement:', tensor.substitute(None, 1j))
+zero_variables = tensor.substitute(np.zeros(d.num_vars))
+assert zero_variables.shape == tensor.shape
+assert zero_variables.flat == tensor.substitute(0.0).flat
+assert zero_variables.flat == (k, d.zero(), d.zero(), k)
+constants = tensor.substitute(0.0, 0.0)
+np.testing.assert_array_equal(constants.const_part, tensor.const_part)
+assert all(component.is_constant() for component in constants.flat)
+
 print('Tensor arithmetic:', (tensor + tensor).shape, (tensor * 2).shape)
 
 # Map construction in named/positional forms and parameter sensitivity.

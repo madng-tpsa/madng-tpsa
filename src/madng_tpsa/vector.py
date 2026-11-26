@@ -16,7 +16,14 @@ if TYPE_CHECKING:
     from collections.abc import Mapping, Sequence
     from typing import Any, Self
 
-    from ._typing import ArraySequence, DerivativeGroup, MapSeriesT, Scalar, TpsaSeries
+    from ._typing import (
+        ArraySequence,
+        DerivativeGroup,
+        MapSeriesT,
+        Scalar,
+        SubstitutionGroup,
+        TpsaSeries,
+    )
     from .map import TpsaMap
     from .tpsa import Tpsa
 
@@ -575,12 +582,16 @@ class TpsaVector(TpsaTensor[TpsaSeriesT]):
         return cast('TpsaVector[ComplexTpsa]', super().to_complex())
 
     def substitute(
-        self, /, **substitutions: Scalar | TpsaSeries
+        self,
+        var_subs: SubstitutionGroup | None = None,
+        param_subs: SubstitutionGroup | None = None,
+        /,
+        **substitutions: Scalar | TpsaSeries,
     ) -> TpsaVector[Tpsa] | TpsaVector[ComplexTpsa]:
         """Substitute variables and parameters, preserving the vector type."""
         return cast(
             'TpsaVector[Tpsa] | TpsaVector[ComplexTpsa]',
-            super().substitute(**substitutions),
+            super().substitute(var_subs, param_subs, **substitutions),
         )
 
     @overload
@@ -841,10 +852,14 @@ class TpsaVectorField(TpsaVector[TpsaSeriesT]):
         return cast('TpsaVectorField[ComplexTpsa]', super().to_complex())
 
     def substitute(
-        self, /, **substitutions: Scalar | TpsaSeries
+        self,
+        var_subs: SubstitutionGroup | None = None,
+        param_subs: SubstitutionGroup | None = None,
+        /,
+        **substitutions: Scalar | TpsaSeries,
     ) -> TpsaVectorField[Tpsa] | TpsaVectorField[ComplexTpsa]:
         """Substitute variables and parameters, preserving the vector field type."""
         return cast(
             'TpsaVectorField[Tpsa] | TpsaVectorField[ComplexTpsa]',
-            super().substitute(**substitutions),
+            super().substitute(var_subs, param_subs, **substitutions),
         )

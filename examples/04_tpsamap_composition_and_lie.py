@@ -71,8 +71,20 @@ assert rescaled.q == 2 * q + p - 2 * q**2
 assert rescaled.p == p - 2 * q**2
 
 # Set all parameters to zero, keeping the original descriptor.
-nominal = one_step.substitute(**dict.fromkeys(descriptor.param_names, 0))
+nominal = one_step.substitute(None, 0.0)
 assert nominal.components == drift.components
+assert nominal.descriptor is descriptor
+
+# Positional substitutions act on the input coordinates and/or parameters.
+# A scalar broadcasts; None retains the corresponding group's identities.
+assert one_step.substitute(0.0).components == (descriptor.zero(), descriptor.zero())
+assert one_step.substitute(0.0, 1.0).components == (descriptor.zero(), descriptor.zero())
+assert one_step.substitute([2 * q, p], 0.5).components == rescaled.components
+assert one_step.substitute(None, [k + 0.5]).components == shifted_strength.components
+assert one_step.substitute([p, q]).components == one_step.substitute(q=p, p=q).components
+
+# A single polynomial can also be broadcast to all variables.
+assert one_step.substitute(q).components == one_step.substitute(q=q, p=q).components
 
 print('Formal inverse:')
 inverse = one_step.inverse()

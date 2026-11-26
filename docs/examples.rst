@@ -27,7 +27,7 @@ coefficient manipulation.
    :language: python
 
 ``04_tpsamap_composition_and_lie.py`` covers composition, inversion,
-parameter-dependent maps and Lie operations.
+parameter-dependent maps, named and positional substitutions, and Lie operations.
 
 .. literalinclude:: ../examples/04_tpsamap_composition_and_lie.py
    :language: python
@@ -39,7 +39,8 @@ parameter derivatives and mixed partials.
    :language: python
 
 ``06_public_api_walkthrough.py`` surveys conversion, serialization, views,
-mathematical functions and additional public map/tensor operations.
+mathematical functions, tensor substitutions (including NumPy arrays), and
+additional public map/tensor operations.
 
 .. literalinclude:: ../examples/06_public_api_walkthrough.py
    :language: python

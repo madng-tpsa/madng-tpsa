@@ -12,7 +12,14 @@ from typing import TYPE_CHECKING, cast, overload
 if TYPE_CHECKING:
     from collections.abc import Sequence
 
-    from ._typing import MapSeriesT, NormDefinition, Scalar, SelectionValue, TpsaSeries
+    from ._typing import (
+        MapSeriesT,
+        NormDefinition,
+        Scalar,
+        SelectionValue,
+        SubstitutionGroup,
+        TpsaSeries,
+    )
     from .descriptor import Descriptor
     from .tpsa import Tpsa
 
@@ -568,10 +575,14 @@ class TpsaMap(TpsaVector[TpsaSeriesT]):
         return cast('TpsaMap[Tpsa] | TpsaMap[ComplexTpsa]', super().compose(other))
 
     def substitute(
-        self, /, **substitutions: Scalar | TpsaSeries
+        self,
+        var_subs: SubstitutionGroup | None = None,
+        param_subs: SubstitutionGroup | None = None,
+        /,
+        **substitutions: Scalar | TpsaSeries,
     ) -> TpsaMap[Tpsa] | TpsaMap[ComplexTpsa]:
         """Substitute variables and parameters, preserving the map type."""
         return cast(
             'TpsaMap[Tpsa] | TpsaMap[ComplexTpsa]',
-            super().substitute(**substitutions),
+            super().substitute(var_subs, param_subs, **substitutions),
         )

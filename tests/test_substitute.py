@@ -4,6 +4,7 @@ from __future__ import annotations
 
 from typing import Any
 
+import numpy as np
 import pytest
 
 from madng_tpsa import (
@@ -18,6 +19,102 @@ from madng_tpsa import (
 
 def _descriptor() -> Descriptor:
     return Descriptor(var_names=('x', 'px'), order=4, param_names=('k', 'h'), param_order=2)
+
+
+@pytest.mark.parametrize('cls', [TpsaTensor, TpsaVector, TpsaMap, TpsaVectorField])
+def test_substitute_positional_scalars(cls: type[TpsaTensor[Any]]) -> None:
+    d = _descriptor()
+    x, px = d.vars()
+    k, h = d.params()
+    tensor = cls([x + k, px + h])
+
+    result = tensor.substitute(0.0)
+    assert type(result) is cls
+    assert result.shape == tensor.shape
+    assert result.flat == (k, h)
+    assert tensor.substitute(None, 0.0).flat == (x, px)
+    assert tensor.substitute(0.0, 1.0).flat == (d.constant(1.0), d.constant(1.0))
+    assert tensor.flat == (x + k, px + h)
+
+
+def test_substitute_positional_sequences() -> None:
+    d = _descriptor()
+    x, px = d.vars()
+    k, h = d.params()
+    tensor = TpsaTensor([[x + k, px + h], [x * px, k * h]])
+
+    assert tensor.substitute([px, x]).flat == (px + k, x + h, x * px, k * h)
+    assert tensor.substitute(None, [h, k]).flat == (x + h, px + k, x * px, k * h)
+    result = tensor.substitute((px, x), (h, k))
+    assert result.shape == (2, 2)
+    assert result.flat == (px + h, x + k, x * px, k * h)
+    assert tensor.substitute(np.array([2.0, 3.0]), np.array([4.0, 5.0])).flat == (
+        d.constant(6.0),
+        d.constant(8.0),
+        d.constant(6.0),
+        d.constant(20.0),
+    )
+
+
+def test_substitute_broadcast_polynomial() -> None:
+    d = _descriptor()
+    x, px = d.vars()
+    k, h = d.params()
+    tensor = TpsaTensor([x + k, px + h])
+
+    assert tensor.substitute(x + 1).flat == (x + 1 + k, x + 1 + h)
+    assert tensor.substitute(None, k + 1).flat == (x + k + 1, px + k + 1)
+    # Simultaneous, not recursive: the k in the replacement for x is retained.
+    assert tensor.substitute(k, 0.0).flat == (k, k)
+
+
+def test_substitute_positional_complex() -> None:
+    d = _descriptor()
+    x, px = d.vars()
+    k, h = d.params()
+    tensor = TpsaTensor([x + k, px + h])
+    result = tensor.substitute([1j, px], 0.0)
+
+    assert result.is_complex
+    assert result.flat == (d.constant(1j), ComplexTpsa.from_tpsa(px))
+    assert not tensor.is_complex
+
+
+@pytest.mark.parametrize('var_subs, param_subs', [([0.0], None), (None, [0.0]), ([], None)])
+def test_substitute_rejects_wrong_group_size(var_subs: Any, param_subs: Any) -> None:
+    tensor = TpsaMap(_descriptor())
+    with pytest.raises(ValueError, match='Expected 2 substitutions'):
+        tensor.substitute(var_subs, param_subs)
+
+
+def test_substitute_rejects_mixed_arguments() -> None:
+    tensor = TpsaMap(_descriptor())
+    with pytest.raises(TypeError, match='positional and named'):
+        tensor.substitute(0.0, k=1.0)
+    with pytest.raises(TypeError, match='positional and named'):
+        tensor.substitute(None, 0.0, x=1.0)
+    with pytest.raises(ValueError, match='one-dimensional'):
+        tensor.substitute(np.zeros((2, 1)))
+
+
+def test_substitute_empty_groups_and_none() -> None:
+    d = Descriptor(var_names=('x', 'px'), order=3)
+    tensor = TpsaMap(d)
+    for result in (
+        tensor.substitute(None, None),
+        tensor.substitute(None, []),
+        tensor.substitute(None, 0.0),
+    ):
+        assert result.flat == tensor.flat
+        assert all(a is not b for a, b in zip(result.flat, tensor.flat, strict=True))
+
+
+def test_substitute_group_argument_names_are_valid_labels() -> None:
+    d = Descriptor(var_names=('var_subs', 'px'), param_names=('param_subs',), order=3)
+    x, px = d.vars()
+    k = d.param('param_subs')
+    tensor = TpsaTensor([x + k, px])
+    assert tensor.substitute(var_subs=2.0, param_subs=3.0).flat == (d.constant(5.0), px)
 
 
 def test_substitute_zero_parameters() -> None:

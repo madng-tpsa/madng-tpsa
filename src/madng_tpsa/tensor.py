@@ -27,7 +27,15 @@ if TYPE_CHECKING:
     from collections.abc import Iterator, Mapping
     from typing import Any, Self
 
-    from ._typing import DerivativeGroup, DerivativeSpec, MapSeriesT, Nested, Scalar, TpsaSeries
+    from ._typing import (
+        DerivativeGroup,
+        DerivativeSpec,
+        MapSeriesT,
+        Nested,
+        Scalar,
+        SubstitutionGroup,
+        TpsaSeries,
+    )
     from .formatting import FormatStringStyle, FormatStyle, LatexExpression, PrintableTable
     from .map import TpsaMap
 
@@ -953,17 +961,54 @@ class TpsaTensor(Generic[TpsaSeriesT]):
         return left._compose_native(right.size + right.num_params, right.pointer_array_with_params)
 
     def substitute(
-        self, /, **substitutions: Scalar | TpsaSeries
+        self,
+        var_subs: SubstitutionGroup | None = None,
+        param_subs: SubstitutionGroup | None = None,
+        /,
+        **substitutions: Scalar | TpsaSeries,
     ) -> TpsaTensor[Tpsa] | TpsaTensor[ComplexTpsa]:
         """Simultaneously substitute variables and parameters.
 
-        Unspecified variables and parameters retain their identity.
+        Pass positional substitutions for all variables and/or parameters,
+        in descriptor order, or keyword substitutions for individual names.
+        A scalar or TPSA is broadcast to the entire corresponding group.
+        A sequence or one-dimensional array must contain one entry per name.
+        None and unspecified names retain their identity.
         Scalars are interpreted as constant polynomials.
+        Positional and named substitutions cannot be combined.
         """
+        if substitutions and (var_subs is not None or param_subs is not None):
+            err_mess = 'Cannot combine positional and named substitutions'
+            raise TypeError(err_mess)
+
+        descriptor = self.descriptor
+        for values, names, group in (
+            (var_subs, descriptor.var_names, 'variables'),
+            (param_subs, descriptor.param_names, 'parameters'),
+        ):
+            if values is None:
+                continue
+            if isinstance(values, (str, bytes, bytearray)):
+                err_mess = f'Invalid substitution for {group}: expected scalar, TPSA or sequence'
+                raise TypeError(err_mess)
+            if isinstance(values, np.ndarray):
+                if values.ndim != 1:
+                    err_mess = f'Substitution array for {group} must be one-dimensional'
+                    raise ValueError(err_mess)
+                values = values.tolist()
+            if isinstance(values, (Tpsa, ComplexTpsa)):
+                substitutions.update(dict.fromkeys(names, values))
+            elif isinstance(values, Sequence):
+                if len(values) != len(names):
+                    err_mess = f'Expected {len(names)} substitutions for {group}, got {len(values)}'
+                    raise ValueError(err_mess)
+                substitutions.update(zip(names, values, strict=True))
+            else:
+                substitutions.update(dict.fromkeys(names, values))
+
         if not substitutions:
             return cast('TpsaTensor[Tpsa] | TpsaTensor[ComplexTpsa]', self.copy())
 
-        descriptor = self.descriptor
         names = (*descriptor.var_names, *descriptor.param_names)
         unknown = substitutions.keys() - set(names)
         if unknown:

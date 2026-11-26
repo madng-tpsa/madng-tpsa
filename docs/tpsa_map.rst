@@ -105,14 +105,20 @@ Descriptor parameters are automatically carried through substitution unchanged:
    transformed = right.pullback(observable)  # observable composed with right
 
 To explicitly substitute variables or parameters, use the inherited
-:meth:`~madng_tpsa.tensor.TpsaTensor.substitute` method:
+:meth:`~madng_tpsa.tensor.TpsaTensor.substitute` method. Supply whole input
+groups positionally, or use names for individual inputs:
 
 .. code-block:: python
 
-   nominal = left.substitute(k=0)      # (q, p)
-   shifted = left.substitute(k=k+0.1)  # (q+k+0.1, p)
-   fixed = left.substitute(k=0.5)      # (q+0.5, p)
-   frozen = left.substitute(q=0)      # (k, p)
+   nominal = left.substitute(None, 0.)         # (q, p)
+   frozen = left.substitute(0.)                # (k, 0)
+   fixed = left.substitute(0., 1.)             # (1, 0)
+   rescaled = left.substitute([2*q, p])        # (2*q+k, p)
+   shifted = left.substitute(None, [k+0.1])    # (q+k+0.1, p)
+
+   nominal = left.substitute(k=0)              # (q, p)
+   fixed = left.substitute(k=0.5)              # (q+0.5, p)
+   frozen = left.substitute(q=0)               # (k, p)
 
 Scalar substitutions represent constant input polynomials, not offsets from
 identity coordinates. This differs from the scalar convention of the

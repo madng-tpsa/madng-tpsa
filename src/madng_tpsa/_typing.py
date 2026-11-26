@@ -25,6 +25,7 @@ if TYPE_CHECKING:
 
     T = TypeVar('T')
     ArraySequence: TypeAlias = Sequence[T] | NDArray[Any]
+    SubstitutionGroup: TypeAlias = Scalar | TpsaSeries | ArraySequence[Scalar | TpsaSeries]
     Nested: TypeAlias = 'ArraySequence[T | Nested[T]]'
 
 # Need the following declared type variables at runtime.

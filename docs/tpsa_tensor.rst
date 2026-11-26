@@ -105,21 +105,51 @@ componentwise operations.
 Polynomial substitution
 -----------------------
 
-``substitute(**substitutions)`` simultaneously replaces selected descriptor
-variables and parameters in every tensor component. It returns a new tensor
-with the original shape and concrete built-in container type.
+``substitute(var_subs=None, param_subs=None, /, **substitutions)`` simultaneously
+replaces descriptor variables and parameters in every tensor component. It
+returns a new tensor with the original shape and concrete built-in container
+type.
+
+The first two arguments are positional-only and refer to the input variables
+and parameters, respectively, not to the tensor's output components. Each
+argument accepts:
+
+* ``None``: leave that entire group unchanged.
+* A scalar or a single real or complex TPSA: broadcast to every input in the
+  group. Scalars represent constant polynomials, not offsets.
+* A sequence or one-dimensional NumPy array: one scalar or TPSA per input,
+  in the original descriptor's ``var_names`` or ``param_names`` order.
+  The length must equal ``d.num_vars`` or ``d.num_params``, respectively.
+
+.. code-block:: python
+
+   import numpy as np
+
+   variables_zero = tensor.substitute(0.)      # Keep parameter dependence
+   nominal = tensor.substitute(None, 0.)       # Keep variable dependence
+   fixed = tensor.substitute(0., 1.)           # Fix both groups
+   constants = tensor.substitute(0., 0.)       # Constant TPSAs, not an array
+   rescaled = tensor.substitute([2*q, p])      # Substitute all variables
+   shifted = tensor.substitute(None, [k+0.1])  # Substitute all parameters
+   broadcast = tensor.substitute(q)            # Both input variables become q
+   array_input = tensor.substitute(np.zeros(d.num_vars))
+
+Alternatively, use keyword arguments to replace individual named variables
+or parameters. All unspecified inputs retain their identity substitutions.
 
 .. code-block:: python
 
    nominal = tensor.substitute(k=0)
    shifted = tensor.substitute(k=k+0.1)
    rescaled = tensor.substitute(q=2*q, k=0.5)
-   nominal = tensor.substitute(**dict.fromkeys(d.param_names, 0))
+   swapped = tensor.substitute(q=p, p=q)
 
-Unspecified variables and parameters retain their identity substitutions.
-Numerical values represent constant polynomials; TPSA values allow arbitrary
-polynomial substitutions. Substitutions are simultaneous, not sequential:
-``tensor.substitute(q=p, p=q)`` exchanges the two input coordinates.
+Substitutions are simultaneous, not sequential: both ``tensor.substitute(p=q,
+q=p)`` and ``tensor.substitute([p, q])`` exchange the two input coordinates.
+Non-``None`` positional groups cannot be combined with named substitutions
+(``TypeError``). Incorrect group lengths or array dimensions raise
+``ValueError``. The positional-only arguments leave all descriptor labels
+available for named substitution, even labels such as ``var_subs``.
 
 Substitution TPSAs must have the same set of variable labels as the original
 descriptor; different label ordering is supported. Compatible descriptors are
@@ -134,7 +164,9 @@ remove the parameter from the descriptor. Use ``change_descriptor()`` to
 remove parameters that are no longer needed.
 
 All results remain subject to the common descriptor's truncation limits.
-Calling ``substitute()`` with no arguments returns an independent copy.
+Calling ``substitute()`` or ``substitute(None, None)`` returns an independent
+copy. Broadcasting over an empty group (for example, a descriptor without
+parameters) is a no-op. An empty sequence is valid only for an empty group.
 
 
 Strided views and tensor contractions

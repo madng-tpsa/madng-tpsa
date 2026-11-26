@@ -89,10 +89,18 @@ Polynomial substitution
 
 The inherited :meth:`~madng_tpsa.tensor.TpsaTensor.substitute` method
 substitutes variables and parameters componentwise, preserving the
-``TpsaVectorField`` container type. This is not a geometric pushforward or
-pullback; in particular, substitution of phase-space variables need not
-preserve Hamiltonian structure. See :doc:`tpsa_tensor` for the general
-substitution semantics.
+``TpsaVectorField`` container type. For example:
+
+.. code-block:: python
+
+   nominal = m.substitute(None, 0.)  # Set all parameters to zero
+   frozen = m.substitute(0.)        # Set all variables to zero
+   swapped = m.substitute([p, q])   # Exchange the input coordinates
+   shifted = m.substitute(k=k+0.1)  # Replace a named parameter
+
+This is not a geometric pushforward or pullback; in particular, substitution
+of phase-space variables need not preserve Hamiltonian structure. See
+:doc:`tpsa_tensor` for the general substitution semantics.
 
 Translation
 -----------
