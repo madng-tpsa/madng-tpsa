@@ -421,44 +421,44 @@ class _TpsaBase(ABC, Generic[_Coefficient, _InputCoefficient]):
     @overload
     def format(
         self,
+        style: FormatStringStyle = 'unicode',
         *,
         max_terms: int | None = None,
-        style: FormatStringStyle = 'unicode',
         tol: float | None = None,
     ) -> str: ...
 
     @overload
     def format(
         self,
+        style: Literal['table'],
         *,
         max_terms: int | None = None,
-        style: Literal['table'],
         tol: float | None = None,
     ) -> PrintableTable: ...
 
     @overload
     def format(
         self,
+        style: Literal['math'],
         *,
         max_terms: int | None = None,
-        style: Literal['math'],
         tol: float | None = None,
     ) -> LatexExpression: ...
 
     @overload
     def format(
         self,
+        style: FormatStyle,
         *,
         max_terms: int | None = None,
-        style: FormatStyle,
         tol: float | None = None,
     ) -> str | PrintableTable: ...
 
     def format(
         self,
+        style: FormatStyle = 'unicode',
         *,
         max_terms: int | None = None,
-        style: FormatStyle = 'unicode',
         tol: float | None = None,
     ) -> str | PrintableTable:
         """Format the TPSA as text, a Rich table, or LaTeX mathematics."""
