@@ -5,3 +5,4 @@ Descriptor
 
 .. autoclass:: madng_tpsa.descriptor.Descriptor
    :members:
+   :inherited-members:

@@ -7,21 +7,24 @@ TPSA API where operations are defined for complex series.
 
 from __future__ import annotations
 
+from typing import TYPE_CHECKING, SupportsComplex, SupportsFloat
+
+if TYPE_CHECKING:
+    from collections.abc import Iterable, Sequence
+    from typing import Any, Literal
+
+    from ._typing import DerivativeDirection, DerivativeSpec
+
 import operator
 from numbers import Integral
-from typing import TYPE_CHECKING, Any, Literal, SupportsComplex, SupportsFloat
 
 import numpy as np
 
 from . import _cffi
 from ._cffi import ffi, lib
-from ._tpsa_base import _TpsaBase
+from ._tpsa_base import _JsonCoefficient, _TpsaBase
+from .descriptor import Descriptor
 from .tpsa import Tpsa
-
-if TYPE_CHECKING:
-    from collections.abc import Iterable
-
-    from .descriptor import Descriptor
 
 
 class ComplexTpsa(_TpsaBase[complex, SupportsFloat | SupportsComplex]):
@@ -33,24 +36,28 @@ class ComplexTpsa(_TpsaBase[complex, SupportsFloat | SupportsComplex]):
         np.conjugate: operator.methodcaller('conjugate'),
     }
 
-    def __init__(self, descriptor: Descriptor, order: int | None = None) -> None:
+    def __init__(
+        self,
+        descriptor: Descriptor,
+        truncation_order: int | None = None,
+    ) -> None:
         """Create a zero complex series on ``descriptor``."""
-        if order is None:
-            order = lib.mad_tpsa_dflt
-
+        if truncation_order is None:
+            truncation_order = lib.mad_tpsa_dflt
         self._descriptor = descriptor
-        self._ptr = lib.mad_ctpsa_newd(descriptor.ptr, order)
+        self._ptr = lib.mad_ctpsa_newd(descriptor.ptr, truncation_order)
         descriptor._complex_tpsas[int(ffi.cast('uintptr_t', self._ptr))] = self
 
     @classmethod
     def from_ptr(
         cls, ptr: Any, descriptor: Descriptor | None = None, *, owns: bool = False
     ) -> ComplexTpsa:
-        """Return the interned ``ComplexTpsa`` for a raw C pointer.
+        """Retrieve an existing TPSA or adopt an unwrapped native allocation.
 
-        If a live ``ComplexTpsa`` already wraps ``ptr`` it is returned directly,
-        so that at most one Python object exists per C allocation, preventing a
-        use-after-free if two owners existed for the same pointer.
+        An existing wrapper is returned regardless of the number of labelled
+        descriptors sharing its native descriptor.
+
+        For an unknown pointer, owns=True transfers ownership on success.
 
         Parameters
         ----------
@@ -65,51 +72,62 @@ class ComplexTpsa(_TpsaBase[complex, SupportsFloat | SupportsComplex]):
             the allocation and is handing ownership. The default ``False``
             treats an unknown pointer as a bug and will raise.
         """
+        if ptr == ffi.NULL:
+            err_mess = 'Cannot wrap a null TPSA pointer'
+            raise ValueError(err_mess)
         key = int(ffi.cast('uintptr_t', ptr))
+        native_ptr = lib.mad_ctpsa_desc(ptr)
+        native_key = int(ffi.cast('uintptr_t', native_ptr))
+        owner = Descriptor._owners_by_ptr.get(native_key)
+        existing = None if owner is None else owner.complex_tpsas.get(key)
 
-        if descriptor is not None:
-            existing = descriptor._complex_tpsas.get(key)
-            if existing is not None:
-                return existing
-            if not owns:
-                message = (
-                    'No live ComplexTpsa found for the given pointer. '
-                    'Pass owns=True to wrap a freshly allocated pointer.'
-                )
-                raise ValueError(message)
-        elif not owns:
-            message = 'A descriptor must be provided if owns is False.'
-            raise ValueError(message)
-        else:
-            from .descriptor import Descriptor
+        if existing is not None:
+            if descriptor is not None and existing.descriptor is not descriptor:
+                err_mess = 'TPSA is already wrapped with a different labelled descriptor'
+                raise ValueError(err_mess)
+            return existing
 
-            descriptor = Descriptor.from_ptr(lib.mad_ctpsa_desc(ptr))
-            existing = descriptor._complex_tpsas.get(key)
-            if existing is not None:
-                return existing
+        if not owns:
+            err_mess = (
+                'No live TPSA wrapper exists for this pointer. '
+                'Use owns=True to adopt a newly allocated TPSA.'
+            )
+            raise ValueError(err_mess)
 
-        t = cls.__new__(cls)
-        t._descriptor = descriptor
-        t._ptr = ptr
-        descriptor._complex_tpsas[key] = t
-        return t
+        # From here onwards, the native allocation has no Python owner.
+        if descriptor is None:
+            descriptor = Descriptor.from_ptr(native_ptr)
+        elif descriptor.ptr != native_ptr:
+            err_mess = 'Supplied descriptor does not match the native TPSA'
+            raise ValueError(err_mess)
+
+        result = cls.__new__(cls)
+        result._descriptor = descriptor
+        result._ptr = ptr
+        descriptor._owner.complex_tpsas[key] = result
+        return result
 
     @classmethod
     def from_tpsa(cls, real: Tpsa, imag: Tpsa | None = None) -> ComplexTpsa:
         """Promote real and optional imaginary TPSAs to a complex TPSA."""
         if imag is None:
-            imag = real.descriptor.zero(order=real.order)
+            imag = real.descriptor.zero(order=real.truncation_order)
         else:
             real._check_compatible(imag)
-
-        result = cls(real.descriptor, order=real.order)
+        result_order = max(real.truncation_order, imag.truncation_order)
+        result = cls(real.descriptor, truncation_order=result_order)
         lib.mad_ctpsa_cplx(real.ptr, imag.ptr, result.ptr)
         return result
 
     def __del__(self) -> None:
-        if getattr(self, '_ptr', None) is not None and getattr(_cffi, 'lib', None) is not None:
-            _cffi.lib.mad_ctpsa_del(self._ptr)
+        # The underlying object, or the library might have already been released,
+        # if not release the handle now.
+        ptr = getattr(self, '_ptr', None)
+        if ptr is not None:
             self._ptr = None
+            native_lib = getattr(_cffi, 'lib', None)
+            if native_lib is not None:
+                native_lib.mad_ctpsa_del(ptr)
 
     @property
     def ptr(self) -> Any:
@@ -122,13 +140,13 @@ class ComplexTpsa(_TpsaBase[complex, SupportsFloat | SupportsComplex]):
         return self._descriptor
 
     @property
-    def order(self) -> int:
+    def truncation_order(self) -> int:
         """Maximum order stored by this series."""
         highest_non_zero_order = False
         return lib.mad_ctpsa_ord(self._ptr, highest_non_zero_order)
 
     @property
-    def max_nonzero_order(self) -> int:
+    def degree(self) -> int:
         """Highest order currently containing a non-zero coefficient."""
         highest_non_zero_order = True
         return lib.mad_ctpsa_ord(self._ptr, highest_non_zero_order)
@@ -137,6 +155,11 @@ class ComplexTpsa(_TpsaBase[complex, SupportsFloat | SupportsComplex]):
     def const_part(self) -> complex:
         """Constant coefficient of the series."""
         return self._geti(0)
+
+    @const_part.setter
+    def const_part(self, value: SupportsFloat | SupportsComplex) -> None:
+        """Set the constant coefficient."""
+        self._seti(0, complex(value))
 
     def _geti(self, index: int) -> complex:
         value = ffi.new('double _Complex*')
@@ -151,10 +174,6 @@ class ComplexTpsa(_TpsaBase[complex, SupportsFloat | SupportsComplex]):
         value = ffi.new('double _Complex*')
         lib.mad_ctpsa_getm_r(self._ptr, len(monomial_orders), monomial_arr, value)
         return complex(value[0])
-
-    def set_const_part(self, value: SupportsFloat | SupportsComplex) -> None:
-        """Set the constant coefficient."""
-        self._seti(0, complex(value))
 
     def _seti(self, index: int, value: complex) -> None:
         lib.mad_ctpsa_seti_r(self._ptr, index, 0.0, 0.0, value.real, value.imag)
@@ -191,6 +210,27 @@ class ComplexTpsa(_TpsaBase[complex, SupportsFloat | SupportsComplex]):
                 coefficients[tuple(monomial_arr)] = value
         return coefficients
 
+    def homogeneous(self, degree: int) -> ComplexTpsa:
+        """Return only the homogeneous part of exactly `degree`."""
+        degree = self._validate_degree(degree, self.truncation_order)
+        result = self.descriptor.complex_zero(order=degree)
+        lib.mad_ctpsa_getord(self._ptr, result._ptr, degree)
+        return result
+
+    def truncate(self, degree: int) -> ComplexTpsa:
+        """Return the ComplexTpsa truncated through `degree`."""
+        degree = self._validate_degree(degree, self.truncation_order)
+        result = self.descriptor.complex_zero(order=degree)
+        lib.mad_ctpsa_cutord(self._ptr, result._ptr, degree + 1)
+        return result
+
+    def clear_order(self, degree: int) -> ComplexTpsa:
+        """Return a copy with homogeneous degree `degree` removed."""
+        degree = self._validate_degree(degree, self.truncation_order)
+        result = self.copy()
+        lib.mad_ctpsa_clrord(result._ptr, degree)
+        return result
+
     def is_zero(self) -> bool:
         """Return whether this series has no non-zero coefficients."""
         return bool(lib.mad_ctpsa_isnul(self._ptr))
@@ -203,26 +243,26 @@ class ComplexTpsa(_TpsaBase[complex, SupportsFloat | SupportsComplex]):
         """Set all coefficients to zero in place."""
         lib.mad_ctpsa_clear(self._ptr)
 
+    def _first_order(self, start: int, count: int) -> list[complex]:
+        # First-order coefficient k sits at index 1 + k (variables, then parameters).
+        values = np.zeros(count, dtype=complex)
+        lib.mad_ctpsa_getv(
+            self._ptr, 1 + start, count, ffi.from_buffer('double _Complex[]', values)
+        )
+        return values.tolist()
+
     def grad(self) -> list[complex]:
         """First-order coefficients for the descriptor variables."""
-        return [
-            self.get([int(index == variable) for index in range(self.descriptor.num_vars)])
-            for variable in range(self.descriptor.num_vars)
-        ]
+        return self._first_order(0, self.descriptor.num_vars)
 
     def param_grad(self) -> list[complex]:
         """First-order coefficients for the descriptor parameters."""
-        length = self.descriptor.monomial_length
-        return [
-            self.get(
-                [int(index == self.descriptor.num_vars + parameter) for index in range(length)]
-            )
-            for parameter in range(self.descriptor.num_params)
-        ]
+        descriptor = self.descriptor
+        return self._first_order(descriptor.num_vars, descriptor.num_params)
 
     def copy(self) -> ComplexTpsa:
         """Return an independent copy of this series."""
-        result = self.descriptor.complex_zero()
+        result = self.descriptor.complex_zero(order=self.truncation_order)
         lib.mad_ctpsa_copy(self._ptr, result._ptr)
         return result
 
@@ -238,34 +278,49 @@ class ComplexTpsa(_TpsaBase[complex, SupportsFloat | SupportsComplex]):
         lib.mad_ctpsa_imag(self._ptr, result._ptr)
         return result
 
-    def integrate(self, variable: int | str | Tpsa) -> ComplexTpsa:
-        """Return the formal integral with respect to ``variable``.
+    def integrate(self, wrt: DerivativeDirection) -> ComplexTpsa:
+        """Return the formal integral with respect to ``wrt``.
 
         Parameters
         ----------
-        variable
+        wrt
             May be a label, a 1-based variable/parameter index, or a TPSA identity
             variable with exactly one first-order monomial of coefficient 1. See
             :meth:`_resolve_single_monomial` for accepted inputs.
         """
-        result = self.descriptor.complex_zero()
-        lib.mad_ctpsa_integ(self._ptr, result._ptr, self._integration_index(variable))
+        result = self.descriptor.complex_zero(order=self.truncation_order)
+        lib.mad_ctpsa_integ(self._ptr, result._ptr, self._integration_index(wrt))
         return result
 
-    def derivative(self, variable: int | str | tuple[int, ...] | Tpsa) -> ComplexTpsa:
-        """Return a partial derivative with respect to ``variable``.
+    def derivative(self, *wrt: DerivativeSpec, orders: Sequence[int] | None = None) -> ComplexTpsa:
+        """Differentiate along one or more directions, optionally with multiplicities.
 
-        Parameters
-        ----------
-        variable
-            May be a label, a 1-based variable/parameter index, a monomial tuple,
-            or a TPSA with exactly one non-constant coefficient equal to one. See
-            :meth:`_resolve_single_monomial` for accepted inputs.
+        Examples: ``f.derivative(('k', 2), 'q')`` or
+        ``f.derivative(orders=(1, 0, 2))``. Direction indices are 1-based.
         """
-        result = self.descriptor.complex_zero()
-        monomial = self._resolve_single_monomial(variable)
-        monomial_arr = ffi.new('unsigned char[]', monomial)
-        lib.mad_ctpsa_derivm(self._ptr, result._ptr, len(monomial), monomial_arr)
+        from ._derivatives import resolve_derivative_orders
+
+        return self._derivative_from_orders(
+            resolve_derivative_orders(self.descriptor, *wrt, orders=orders)
+        )
+
+    def _derivative_from_orders(self, orders: tuple[int, ...]) -> ComplexTpsa:
+        """Differentiate using an already validated exponent vector."""
+        if sum(orders) > self.truncation_order or not self.descriptor.is_valid_monomial(orders):
+            return self.descriptor.complex_zero(order=self.truncation_order)
+        if any(orders[self.descriptor.num_vars :]):
+            # Native multi-index derivatives omit parameter multiplicities.
+            current: ComplexTpsa = self
+            for index, multiplicity in enumerate(orders, start=1):
+                for _ in range(multiplicity):
+                    result = self.descriptor.complex_zero(order=self.truncation_order)
+                    lib.mad_ctpsa_deriv(current._ptr, result._ptr, index)
+                    current = result
+            return current
+
+        result = self.descriptor.complex_zero(order=self.truncation_order)
+        monomial_arr = ffi.new('unsigned char[]', orders)
+        lib.mad_ctpsa_derivm(self._ptr, result._ptr, len(orders), monomial_arr)
         return result
 
     def poisson_bracket(
@@ -291,15 +346,27 @@ class ComplexTpsa(_TpsaBase[complex, SupportsFloat | SupportsComplex]):
         lib.mad_ctpsa_poisbra(self._ptr, other._ptr, result._ptr, c_num_vars)
         return result
 
-    def __repr__(self) -> str:
-        return f'ComplexTpsa({self.to_dict()!r})'
+    @staticmethod
+    def _to_json_friendly_coefficient(value: complex) -> list[float]:
+        """Convert a coefficient to a JSON-friendly format."""
+        return [value.real, value.imag]
+
+    @staticmethod
+    def _from_json_friendly_coefficient(value: _JsonCoefficient) -> complex:
+        """Convert a JSON-friendly coefficient back to its internal format."""
+        if not isinstance(value, list) or len(value) != 2:
+            err_mess = 'Coefficients for ComplexTpsa monomials must be a list [real, imag].'
+            raise ValueError(err_mess)
+        return complex(value[0], value[1])
 
     def __eq__(self, other: object) -> bool:
         return isinstance(other, ComplexTpsa) and self.equals(other)
 
-    def equals(self, other: ComplexTpsa, tol: float = 0.0) -> bool:
+    def equals(self, other: ComplexTpsa, tol: SupportsFloat = 0.0) -> bool:
         """Return whether this and ``other`` have matching coefficients."""
-        return bool(self._compatible(other) and lib.mad_ctpsa_equ(self._ptr, other._ptr, tol))
+        if not self._compatible(other):
+            return False
+        return bool(lib.mad_ctpsa_equ(self._ptr, other._ptr, float(tol)))
 
     def _binary_op(self, other: ComplexTpsa | Tpsa, function_name: str) -> ComplexTpsa:
         self._check_compatible(other)
@@ -564,11 +631,3 @@ class ComplexTpsa(_TpsaBase[complex, SupportsFloat | SupportsComplex]):
         status = lib.madng_tpsa_protected_binary_call(function, left._ptr, right._ptr, result._ptr)
         if status:
             self._raise_mad_error()
-
-    def _compatible(self, other: ComplexTpsa | Tpsa) -> bool:
-        return bool(lib.madng_tpsa_check_tpsa_compatibility(self._ptr, other._ptr))
-
-    def _check_compatible(self, other: ComplexTpsa | Tpsa) -> None:
-        if not self._compatible(other):
-            message = 'Incompatible TPSA descriptors'
-            raise ValueError(message)

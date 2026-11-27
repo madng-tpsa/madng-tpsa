@@ -1,5 +1,6 @@
 """Tests for complex TPSA series."""
 
+import json
 from decimal import Decimal
 from typing import TYPE_CHECKING, cast
 
@@ -15,7 +16,7 @@ if TYPE_CHECKING:
 
 
 def test_complex_variable_and_parameter_seeds():
-    d = madng_tpsa.Descriptor(variables=['x', 'y'], order=3, params=['k'])
+    d = madng_tpsa.Descriptor(var_names=['x', 'y'], order=3, param_names=['k'])
     x = d.var('x', 1 + 2j)
     y = d.var('y', 0j)
     k = d.param('k', 3 - 4j)
@@ -25,18 +26,21 @@ def test_complex_variable_and_parameter_seeds():
     assert y.grad() == pytest.approx([0, 1])
     assert k.const_part == pytest.approx(3 - 4j)
     assert k.param_grad() == pytest.approx([1])
+    assert len(x) == 2
+    assert len(y) == 1
+    assert len(k) == 2
 
 
 def test_complex_coefficients_and_copy_are_independent():
     d = madng_tpsa.Descriptor(2, 2)
     t = d.complex_zero()
-    t.set_const_part(1 + 2j)
+    t.const_part = 1 + 2j
     t[(1, 1)] = -3 + 4j
 
     copied = t.copy()
-    t.set_const_part(9j)
+    t.const_part = 9j
 
-    assert copied.to_dict() == pytest.approx({(0, 0): 1 + 2j, (1, 1): -3 + 4j})
+    assert copied.monomial_coeffs() == pytest.approx({(0, 0): 1 + 2j, (1, 1): -3 + 4j})
     assert t.coefficient((1, 1)) == pytest.approx(-3 + 4j)
     np.testing.assert_allclose(t.coefficient([(0, 0), (1, 1)]), [9j, -3 + 4j])
 
@@ -47,14 +51,15 @@ def test_complex_series_coefficient_state_operations():
 
     assert t.is_zero()
     assert t.is_constant()
-    assert t.max_nonzero_order == 0
+    assert t.degree == 0
 
-    t.from_dict({(0, 0): 1 + 2j, (2, 0): 3 - 4j})
+    t.update({(0, 0): 1 + 2j, (2, 0): 3 - 4j})
+    assert len(t) == 2
 
     assert t[(2, 0)] == pytest.approx(3 - 4j)
     assert not t.is_zero()
     assert not t.is_constant()
-    assert t.max_nonzero_order == 2
+    assert t.degree == 2
     assert t.norm() == pytest.approx(abs(1 + 2j) + abs(3 - 4j))
 
     t.clear()
@@ -91,7 +96,9 @@ def test_from_tpsa_promotes_real_tpsas():
     assert combined.real().equals(real)
     assert combined.imag().equals(imag)
 
-    with pytest.raises(ValueError, match='Incompatible TPSA descriptors'):
+    with pytest.raises(
+        ValueError, match='TPSAs have incompatible descriptors or coordinate labels'
+    ):
         madng_tpsa.ComplexTpsa.from_tpsa(real, madng_tpsa.Descriptor(2, 2).var(1))
 
 
@@ -107,8 +114,44 @@ def test_complex_from_ptr_interns_and_infers_descriptor():
     assert owned.ptr == ptr
     assert owned.descriptor is d
 
-    with pytest.raises(ValueError, match='A descriptor must be provided'):
-        madng_tpsa.ComplexTpsa.from_ptr(ptr)
+    assert madng_tpsa.ComplexTpsa.from_ptr(t.ptr) is t
+    assert madng_tpsa.ComplexTpsa.from_ptr(owned.ptr) is owned
+
+    ptr = lib.mad_ctpsa_newd(d.ptr, d.order)
+    try:
+        with pytest.raises(ValueError, match='No live'):
+            madng_tpsa.ComplexTpsa.from_ptr(ptr)
+    finally:
+        lib.mad_ctpsa_del(ptr)
+
+
+def test_complex_raise_ambiguous_labelled_descriptors():
+    d1 = madng_tpsa.Descriptor(var_names=('x',), order=2)
+    d2 = madng_tpsa.Descriptor(var_names=('y',), order=2)
+
+    assert d1.ptr == d2.ptr
+    assert d1 is not d2
+
+    ptr = lib.mad_ctpsa_newd(d1.ptr, d1.order)
+    try:
+        with pytest.raises(ValueError, match='ambiguous|Ambiguous'):
+            madng_tpsa.ComplexTpsa.from_ptr(ptr, owns=True)
+    finally:
+        lib.mad_ctpsa_del(ptr)
+
+
+def test_json_round_trip():
+    d = madng_tpsa.Descriptor(2, 2)
+    original = d.complex_zero()
+    original.const_part = 1.5 + 0.2j
+    original.set((1, 0), 2.0 + 0j)
+    original.set((0, 2), -3.0 + 1.3j)
+
+    encoded = json.dumps(original.to_dict())
+    restored = madng_tpsa.ComplexTpsa.from_dict(json.loads(encoded))
+
+    assert restored == original
+    assert restored.to_dict() == original.to_dict()
 
 
 def test_complex_arithmetic_and_mixed_real_operands():
@@ -143,20 +186,20 @@ def test_complex_power_conjugate_and_real_imaginary_parts():
 
 
 def test_complex_differential_algebra():
-    d = madng_tpsa.Descriptor(variables=['x', 'y'], order=4)
+    d = madng_tpsa.Descriptor(var_names=['x', 'y'], order=4)
     x, y = d.vars([0j, 0j])
     assert isinstance(x, madng_tpsa.ComplexTpsa)
     assert isinstance(y, madng_tpsa.ComplexTpsa)
     f = (1 + 2j) * x * x * y
 
     assert f.derivative('x').get((1, 1)) == pytest.approx(2 + 4j)
-    assert f.derivative((2, 1)).const_part == pytest.approx(2 + 4j)
+    assert f.derivative(orders=(2, 1)).const_part == pytest.approx(2 + 4j)
     assert f.integrate('x').get((3, 1)) == pytest.approx((1 + 2j) / 3)
     assert x.poisson_bracket(y).const_part == pytest.approx(1)
 
 
 def test_complex_derivative_resolves_variable_and_parameter_specifications():
-    d = madng_tpsa.Descriptor(variables=['x'], order=3, params=['k'], param_order=3)
+    d = madng_tpsa.Descriptor(var_names=['x'], order=3, param_names=['k'], param_order=3)
     x = d.var('x', 0j)
     k = d.param('k', 0j)
     real_x = d.var('x')
@@ -167,17 +210,17 @@ def test_complex_derivative_resolves_variable_and_parameter_specifications():
         assert f.derivative(specification).equals(f.derivative(real_x))
     for specification in (2, 'k', real_k):
         assert f.derivative(specification).equals(f.derivative(real_k))
-    assert f.derivative((1, 1)).get((1, 0)) == pytest.approx(2)
-    assert f.derivative(real_x * real_x).equals(f.derivative((2, 0)))
+    assert f.derivative(1, 2).get((1, 0)) == pytest.approx(2)
+    assert f.derivative(real_x, real_x).equals(f.derivative(orders=(2, 0)))
 
-    with pytest.raises(ValueError, match='coefficient 1'):
+    with pytest.raises(ValueError, match='unit first-order'):
         f.derivative(2.0 * real_x)
-    with pytest.raises(ValueError, match='identity variable'):
+    with pytest.raises(ValueError, match='unit first-order'):
         f.integrate(real_x * real_x)
 
 
 def test_complex_integrate_resolves_variable_specifications():
-    d = madng_tpsa.Descriptor(variables=['x'], order=3, params=['k'], param_order=3)
+    d = madng_tpsa.Descriptor(var_names=['x'], order=3, param_names=['k'], param_order=3)
     x = d.var('x', 0j)
     real_x = d.var('x')
     f = x * x
@@ -188,7 +231,7 @@ def test_complex_integrate_resolves_variable_specifications():
 
 @pytest.mark.xfail(reason='MAD-NG integration does not support parameters')
 def test_complex_integrate_resolves_parameter_specifications():
-    d = madng_tpsa.Descriptor(variables=['x'], order=3, params=['k'], param_order=3)
+    d = madng_tpsa.Descriptor(var_names=['x'], order=3, param_names=['k'], param_order=3)
     x = d.var('x', 0j)
     k = d.param('k', 0j)
     real_k = d.param('k')
@@ -279,7 +322,9 @@ def test_complex_operations_reject_incompatible_descriptors():
     x = madng_tpsa.Descriptor(1, 2).var(1, 0j)
     y = madng_tpsa.Descriptor(2, 2).var(1, 0j)
 
-    with pytest.raises(ValueError, match='Incompatible TPSA descriptors'):
+    with pytest.raises(
+        ValueError, match='TPSAs have incompatible descriptors or coordinate labels'
+    ):
         x + y
 
 
@@ -330,7 +375,9 @@ def test_tpsa_arithmetic_dunder_dispatches_are_exhaustive():
         d.zero().__rtruediv__(1)
     with pytest.raises(TypeError):
         float(cast('Any', t))
-    with pytest.raises(ValueError, match='Incompatible TPSA descriptors'):
+    with pytest.raises(
+        ValueError, match='TPSAs have incompatible descriptors or coordinate labels'
+    ):
         t.__pow__(madng_tpsa.Descriptor(1, 3).constant(2.0))
 
 
@@ -377,3 +424,49 @@ def test_complex_tpsa_arithmetic_dunder_dispatches_are_exhaustive():
         d.complex_zero().__rtruediv__(1)
     with pytest.raises(TypeError):
         complex(cast('Any', t))
+
+
+def test_complex_get_and_set_reject_wrong_monomial_length_with_parameters():
+    descriptor = madng_tpsa.Descriptor(
+        var_names=['x', 'px'],
+        order=3,
+        param_names=['k'],
+    )
+    x = descriptor.var('x', 0j)
+    with pytest.raises(ValueError, match='Monomial must have length 3'):
+        x.get((1, 0))
+    with pytest.raises(ValueError, match='Monomial must have length 3'):
+        x.set((1, 0), 1 + 2j)
+
+
+def test_complex_grad_uses_full_monomials_with_parameters():
+    descriptor = madng_tpsa.Descriptor(
+        var_names=['x', 'px'],
+        order=2,
+        param_names=['k'],
+        param_order=1,
+    )
+    x = descriptor.var('x', 0j)
+    px = descriptor.var('px', 0j)
+    k = descriptor.param('k', 0j)
+    value = (2 + 3j) * x + (4 - 5j) * px + (6 + 7j) * k
+    assert value.grad() == pytest.approx(
+        [
+            2 + 3j,
+            4 - 5j,
+        ]
+    )
+    assert value.param_grad() == pytest.approx(
+        [
+            6 + 7j,
+        ]
+    )
+
+
+def test_complex_grad_ignores_constant_and_higher_orders():
+    descriptor = madng_tpsa.Descriptor(2, 2, param_names=2, param_order=1)
+    x, px = descriptor.vars([0j, 0j])
+    k1, k2 = descriptor.params([0j, 0j])
+    value = (1 - 2j) + (2 + 3j) * x + 3 * px + 4j * k1 + 5 * k2 + 7 * x * k1 + px**2
+    assert value.grad() == [2 + 3j, 3]
+    assert value.param_grad() == [4j, 5]
